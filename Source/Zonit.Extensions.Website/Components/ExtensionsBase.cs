@@ -14,44 +14,96 @@ public abstract class ExtensionsBase : ComponentBase, IDisposable
     [Inject]
     private IServiceProvider ServiceProvider { get; set; } = default!;
 
+    [Inject]
+    protected NavigationManager Navigation { get; set; } = default!;
+
+    /// <summary>
+    /// Określa, czy komponent powinien zarządzać okruszkami (breadcrumbs).
+    /// - true: Inicjalizuje okruszki z wartością Breadcrumbs
+    /// - false: Nie zmienia aktualnych okruszków (używane w modalach)
+    /// - null: Kasuje okruszki
+    /// </summary>
+    protected virtual bool? ShowBreadcrumbs { get; } = true;
+
+    /// <summary>
+    /// Lista okruszków (breadcrumbs) do wyświetlenia.
+    /// </summary>
+    protected virtual List<BreadcrumbsModel>? Breadcrumbs { get; }
+
     // Leniwe właściwości, które pobierają zależności tylko gdy są używane
-    private ICultureProvider? _culture;
-    protected ICultureProvider Culture => _culture ??= GetService<ICultureProvider>();
+    private readonly Lazy<ICultureProvider> _culture;
+    protected ICultureProvider Culture => _culture.Value;
 
-    private IWorkspaceProvider? _workspace;
-    protected IWorkspaceProvider Workspace => _workspace ??= GetService<IWorkspaceProvider>();
+    private readonly Lazy<IWorkspaceProvider> _workspace;
+    protected IWorkspaceProvider Workspace => _workspace.Value;
 
-    private ICatalogProvider? _catalog;
-    protected ICatalogProvider Catalog => _catalog ??= GetService<ICatalogProvider>();
+    private readonly Lazy<ICatalogProvider> _catalog;
+    protected ICatalogProvider Catalog => _catalog.Value;
 
-    private IAuthenticatedProvider? _authenticated;
-    protected IAuthenticatedProvider Authenticated => _authenticated ??= GetService<IAuthenticatedProvider>();
+    private readonly Lazy<IAuthenticatedProvider> _authenticated;
+    protected IAuthenticatedProvider Authenticated => _authenticated.Value;
 
-    private bool _cultureInitialized;
-    private bool _workspaceInitialized;
-    private bool _catalogInitialized;
+    private readonly Lazy<IBreadcrumbsProvider> _breadcrumbs;
+    protected IBreadcrumbsProvider BreadcrumbsProvider => _breadcrumbs.Value;
+
+    protected ExtensionsBase()
+    {
+        _culture = new Lazy<ICultureProvider>(() =>
+        {
+            var service = GetService<ICultureProvider>();
+            service.OnChange += OnRefreshChangeAsync;
+            return service;
+        });
+
+        _workspace = new Lazy<IWorkspaceProvider>(() =>
+        {
+            var service = GetService<IWorkspaceProvider>();
+            service.OnChange += OnRefreshChangeAsync;
+            return service;
+        });
+
+        _catalog = new Lazy<ICatalogProvider>(() =>
+        {
+            var service = GetService<ICatalogProvider>();
+            service.OnChange += OnRefreshChangeAsync;
+            return service;
+        });
+
+        _authenticated = new Lazy<IAuthenticatedProvider>(() =>
+        {
+            return GetService<IAuthenticatedProvider>();
+        });
+
+        _breadcrumbs = new Lazy<IBreadcrumbsProvider>(() =>
+        {
+            var service = GetService<IBreadcrumbsProvider>();
+            service.OnChange += OnRefreshChangeAsync;
+            return service;
+        });
+    }
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+
+        // Zarządzanie breadcrumbs w zależności od wartości ShowBreadcrumbs:
+        // - true: inicjalizuje breadcrumbs z wartością Breadcrumbs
+        // - false: nic nie robi (nie modyfikuje aktualnych breadcrumbs)
+        // - null: usuwa breadcrumbs
+        if (ShowBreadcrumbs == true)
+        {
+            BreadcrumbsProvider.Initialize(this.Breadcrumbs);
+        }
+        else if (ShowBreadcrumbs == null)
+        {
+            BreadcrumbsProvider.Initialize(null);
+        }
+        // gdy ShowBreadcrumbs == false, nie robimy nic
+    }
 
     private T GetService<T>() where T : class
     {
-        var service = ServiceProvider.GetRequiredService<T>();
-
-        if (service is ICultureProvider cultureProvider && !_cultureInitialized)
-        {
-            cultureProvider.OnChange += OnRefreshChangeAsync;
-            _cultureInitialized = true;
-        }
-        else if (service is IWorkspaceProvider workspaceProvider && !_workspaceInitialized)
-        {
-            workspaceProvider.OnChange += OnRefreshChangeAsync;
-            _workspaceInitialized = true;
-        }
-        else if (service is ICatalogProvider catalogProvider && !_catalogInitialized)
-        {
-            catalogProvider.OnChange += OnRefreshChangeAsync;
-            _catalogInitialized = true;
-        }
-
-        return service;
+        return ServiceProvider.GetRequiredService<T>();
     }
 
     public void Dispose()
@@ -73,14 +125,17 @@ public abstract class ExtensionsBase : ComponentBase, IDisposable
 
         if (disposing)
         {
-            if (_culture is not null && _cultureInitialized)
-                _culture.OnChange -= OnRefreshChangeAsync;
+            if (_culture.IsValueCreated)
+                _culture.Value.OnChange -= OnRefreshChangeAsync;
 
-            if (_workspace is not null && _workspaceInitialized)
-                _workspace.OnChange -= OnRefreshChangeAsync;
+            if (_workspace.IsValueCreated)
+                _workspace.Value.OnChange -= OnRefreshChangeAsync;
 
-            if (_catalog is not null && _catalogInitialized)
-                _catalog.OnChange -= OnRefreshChangeAsync;
+            if (_catalog.IsValueCreated)
+                _catalog.Value.OnChange -= OnRefreshChangeAsync;
+
+            if (_breadcrumbs.IsValueCreated)
+                _breadcrumbs.Value.OnChange -= OnRefreshChangeAsync;
         }
 
         _disposed = true;
