@@ -24,6 +24,11 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
     private DateTime? _lastSubmitTime;
     private readonly TimeSpan _duplicateSubmissionThreshold = TimeSpan.FromSeconds(1);
 
+    // Auto-save na polach
+    private readonly Dictionary<string, Timer> _fieldAutoSaveTimers = new();
+    private readonly Dictionary<string, object?> _lastFieldValues = new();
+    protected virtual TimeSpan AutoSaveDelay => TimeSpan.FromMilliseconds(800);
+
     protected override void OnInitialized()
     {
         InitializeEditContext();
@@ -64,6 +69,9 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
         if (TrackChanges)
             HasChanges = true;
 
+        // Auto-save dla konkretnego pola
+        HandleFieldAutoSave(e.FieldIdentifier);
+
         StateHasChanged();
     }
 
@@ -71,6 +79,19 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
     protected virtual async Task SubmitAsync() { await Task.CompletedTask; }
     protected virtual void OnBeforeSubmit() { }
     protected virtual void OnAfterSubmit(bool success) { }
+
+    // Auto-save hooks - override w klasie pochodnej
+    protected virtual async Task AutoSaveAsync(string fieldName, object? oldValue, object? newValue)
+    {
+        await Task.CompletedTask;
+    }
+
+    protected virtual bool IsFieldAutoSaveEnabled(string fieldName)
+    {
+        // Sprawdź czy pole ma atrybut [AutoSave]
+        var property = typeof(TViewModel).GetProperty(fieldName);
+        return property?.GetCustomAttribute<AutoSaveAttribute>() != null;
+    }
 
     public async Task HandleValidSubmit(EditContext editContext)
     {
@@ -218,6 +239,71 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
         return System.Text.RegularExpressions.Regex.Replace(input, @"\s+", " ");
     }
 
+    private void HandleFieldAutoSave(FieldIdentifier fieldIdentifier)
+    {
+        var fieldName = fieldIdentifier.FieldName;
+
+        if (!IsFieldAutoSaveEnabled(fieldName))
+            return;
+
+        // Anuluj poprzedni timer dla tego pola
+        if (_fieldAutoSaveTimers.TryGetValue(fieldName, out var existingTimer))
+        {
+            existingTimer.Dispose();
+        }
+
+        // Pobierz aktualną wartość pola
+        var currentValue = GetFieldValue(fieldIdentifier);
+        var previousValue = _lastFieldValues.TryGetValue(fieldName, out var prev) ? prev : null;
+
+        // Pobierz delay z atrybutu lub użyj domyślnego
+        var delay = GetFieldAutoSaveDelay(fieldName);
+
+        // Ustaw nowy timer
+        _fieldAutoSaveTimers[fieldName] = new Timer(async _ =>
+        {
+            try
+            {
+                await AutoSaveAsync(fieldName, previousValue, currentValue);
+                _lastFieldValues[fieldName] = currentValue;
+            }
+            catch (Exception ex)
+            {
+                await HandleFieldAutoSaveError(fieldName, ex);
+            }
+        }, null, delay, Timeout.InfiniteTimeSpan);
+    }
+
+    private TimeSpan GetFieldAutoSaveDelay(string fieldName)
+    {
+        var property = typeof(TViewModel).GetProperty(fieldName);
+        var autoSaveAttr = property?.GetCustomAttribute<AutoSaveAttribute>();
+
+        if (autoSaveAttr != null)
+            return TimeSpan.FromMilliseconds(autoSaveAttr.DelayMs);
+
+        return AutoSaveDelay; // Fallback do domyślnego
+    }
+
+    private object? GetFieldValue(FieldIdentifier fieldIdentifier)
+    {
+        try
+        {
+            var property = fieldIdentifier.Model.GetType().GetProperty(fieldIdentifier.FieldName);
+            return property?.GetValue(fieldIdentifier.Model);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    protected virtual async Task HandleFieldAutoSaveError(string fieldName, Exception exception)
+    {
+        // Override w klasie pochodnej do obsługi błędów auto-save
+        await Task.CompletedTask;
+    }
+
     private void HandleValidationRequested(object? sender, ValidationRequestedEventArgs e)
     {
         if (Model is null || EditContext is null)
@@ -247,12 +333,23 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing && EditContext is not null)
+        if (disposing)
         {
-            EditContext.OnFieldChanged -= OnModelChanged;
-            EditContext.OnValidationRequested -= HandleValidationRequested;
-            ValidationMessages?.Clear();
-            ValidationMessages = null;
+            if (EditContext is not null)
+            {
+                EditContext.OnFieldChanged -= OnModelChanged;
+                EditContext.OnValidationRequested -= HandleValidationRequested;
+                ValidationMessages?.Clear();
+                ValidationMessages = null;
+            }
+
+            // Wyczyść timery auto-save
+            foreach (var timer in _fieldAutoSaveTimers.Values)
+            {
+                timer.Dispose();
+            }
+            _fieldAutoSaveTimers.Clear();
+            _lastFieldValues.Clear();
         }
 
         base.Dispose(disposing);
