@@ -1,4 +1,4 @@
-# Zonit.Core.Xml
+# Zonit.Extensions.Xml
 
 ### XmlConvertible:
 This XmlConvertible class provides functionality for converting objects to and from XML format. It includes methods for serializing an object into XML and deserializing XML back into an object, utilizing the .NET XML serialization capabilities.

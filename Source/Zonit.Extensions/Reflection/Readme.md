@@ -1,4 +1,4 @@
-# AssemblyProvider
+# Zonit.Extensions.Reflection
 
 A simple utility class for searching, filtering, and retrieving assemblies and types in an application. It helps you discover unique assemblies or types that implement or inherit from a specified base class or interface. By default, it filters out Microsoft-generated assemblies. You can optionally include them by setting a parameter.
 

@@ -1,5 +1,10 @@
 ## Useful tools for Blazor
 
+### Extensions:
+- [Zonit.Extensions.Reflection](https://github.com/Zonit/Zonit.Extensions/tree/master/Source/Zonit.Extensions/Reflection) - A utility class for discovering assemblies and types that implement or inherit from a specified base type.
+- [Zonit.Extensions.Xml](https://github.com/Zonit/Zonit.Extensions/tree/master/Source/Zonit.Extensions/Xml) - A utility class for serializing objects to XML and deserializing XML back to objects using .NET's XML serialization.
+
+
 **Nuget Package Abstraction**
 ```
 Install-Package Zonit.Extensions.Website.Abstractions 
