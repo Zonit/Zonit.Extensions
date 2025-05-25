@@ -1,4 +1,4 @@
-﻿namespace Zonit.Extensions.Text;
+﻿namespace Zonit.Extensions.Text.OLD.Models;
 
 /// <summary>
 /// Model reprezentujący pojedynczy nagłówek HTML.

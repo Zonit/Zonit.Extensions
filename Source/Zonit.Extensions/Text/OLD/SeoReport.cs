@@ -1,4 +1,6 @@
 ﻿// Modyfikacja klasy SeoReport
+using Zonit.Extensions.Text.OLD.Models;
+
 namespace Zonit.Extensions.Text;
 
 /// <summary>

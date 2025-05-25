@@ -4,16 +4,16 @@ using System.Reflection;
 namespace Zonit.Extensions.Reflection;
 
 /// <summary>
-/// Dostarcza metody do wyszukiwania i filtrowania assembly w aplikacji.
+/// Provides methods for searching and filtering assemblies in the application.
 /// </summary>
 public static class AssemblyProvider
 {
     /// <summary>
-    /// Zwraca unikalne assembly zawieraj¹ce typy implementuj¹ce lub dziedzicz¹ce po typie T.
+    /// Returns unique assemblies containing types that implement or inherit from type T.
     /// </summary>
-    /// <typeparam name="T">Typ bazowy lub interfejs do wyszukania.</typeparam>
-    /// <param name="includeMicrosoftAssemblies">Okreœla czy uwzglêdniaæ assembly Microsoft (domyœlnie false).</param>
-    /// <returns>Kolekcja unikalnych assembly.</returns>
+    /// <typeparam name="T">Base type or interface to search for.</typeparam>
+    /// <param name="includeMicrosoftAssemblies">Specifies whether to include Microsoft assemblies (default is false).</param>
+    /// <returns>A collection of unique assemblies.</returns>
     public static IEnumerable<Assembly> GetAssemblies<T>(bool includeMicrosoftAssemblies = false)
     {
         return AppDomain.CurrentDomain.GetAssemblies()
@@ -25,11 +25,11 @@ public static class AssemblyProvider
     }
 
     /// <summary>
-    /// Zwraca wszystkie typy implementuj¹ce lub dziedzicz¹ce po typie T.
+    /// Returns all types that implement or inherit from type T.
     /// </summary>
-    /// <typeparam name="T">Typ bazowy lub interfejs do wyszukania.</typeparam>
-    /// <param name="includeMicrosoftAssemblies">Okreœla czy uwzglêdniaæ assembly Microsoft (domyœlnie false).</param>
-    /// <returns>Kolekcja typów.</returns>
+    /// <typeparam name="T">Base type or interface to search for.</typeparam>
+    /// <param name="includeMicrosoftAssemblies">Specifies whether to include Microsoft assemblies (default is false).</param>
+    /// <returns>A collection of types.</returns>
     public static IEnumerable<Type> GetTypes<T>(bool includeMicrosoftAssemblies = false)
     {
         return AppDomain.CurrentDomain.GetAssemblies()
@@ -39,15 +39,15 @@ public static class AssemblyProvider
     }
 
     /// <summary>
-    /// Sprawdza czy podane assembly pochodzi od Microsoft.
+    /// Checks whether the given assembly originates from Microsoft.
     /// </summary>
     private static bool IsMicrosoftAssembly(Assembly assembly) =>
-        assembly.FullName != null && 
+        assembly.FullName != null &&
         (assembly.FullName.Contains("Microsoft", StringComparison.OrdinalIgnoreCase) ||
          assembly.FullName.Contains("System.", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
-    /// Bezpiecznie pobiera typy z danego assembly, obs³uguj¹c potencjalne wyj¹tki.
+    /// Safely retrieves types from the given assembly, handling potential exceptions.
     /// </summary>
     private static IEnumerable<Type> GetLoadableTypes(Assembly assembly)
     {
@@ -60,14 +60,14 @@ public static class AssemblyProvider
         }
         catch (ReflectionTypeLoadException ex)
         {
-            Debug.WriteLine($"B³¹d ³adowania assembly {assembly.FullName}: {ex.Message}");
-            
-            // Zwracamy tylko te typy, które uda³o siê za³adowaæ (usuwamy nulle)
+            Debug.WriteLine($"Error loading assembly {assembly.FullName}: {ex.Message}");
+
+            // Return only the types that were successfully loaded (remove nulls)
             return ex.Types.Where(t => t != null)!;
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Nieoczekiwany b³¹d podczas ³adowania typów z {assembly.FullName}: {ex.Message}");
+            Debug.WriteLine($"Unexpected error while loading types from {assembly.FullName}: {ex.Message}");
             return [];
         }
     }
