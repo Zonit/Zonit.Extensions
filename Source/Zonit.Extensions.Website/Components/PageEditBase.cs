@@ -25,8 +25,8 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
     private readonly TimeSpan _duplicateSubmissionThreshold = TimeSpan.FromSeconds(1);
 
     // Auto-save na polach
-    private readonly Dictionary<string, Timer> _fieldAutoSaveTimers = new();
-    private readonly Dictionary<string, object?> _lastFieldValues = new();
+    private readonly Dictionary<string, Timer> _fieldAutoSaveTimers = [];
+    private readonly Dictionary<string, object?> _lastFieldValues = [];
     protected virtual TimeSpan AutoSaveDelay => TimeSpan.FromMilliseconds(800);
 
     protected override void OnInitialized()

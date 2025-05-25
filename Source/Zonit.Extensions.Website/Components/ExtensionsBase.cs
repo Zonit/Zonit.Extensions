@@ -60,6 +60,12 @@ public abstract class ExtensionsBase : ComponentBase, IDisposable
         GC.SuppressFinalize(this);
     }
 
+    public string T(string key, params object[] args)
+        => Culture.Translate(key, args);
+
+    public string Translate(string key, params object[] args)
+        => Culture.Translate(key, args);
+
     protected virtual void Dispose(bool disposing)
     {
         if (_disposed)
