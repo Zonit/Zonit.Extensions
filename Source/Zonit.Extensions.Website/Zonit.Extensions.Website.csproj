@@ -1,0 +1,27 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+	  <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+  </PropertyGroup>
+
+	<ItemGroup>
+		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.JSInterop" />
+		<PackageReference Include="Microsoft.AspNetCore.Components" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Zonit.Extensions.Cultures.Abstractions" />
+		<PackageReference Include="Zonit.Extensions.Organizations.Abstractions" />
+		<PackageReference Include="Zonit.Extensions.Identity.Abstractions" />
+		<PackageReference Include="Zonit.Extensions.Projects.Abstractions" />
+	</ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Zonit.Extensions.Website.Abstractions\Zonit.Extensions.Website.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>
