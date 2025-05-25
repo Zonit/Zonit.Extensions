@@ -68,7 +68,6 @@ public class PageViewBase<T> : ExtensionsBase
         try
         {
             Model = await LoadAsync();
-            await PersistState();
         }
         finally
         {
