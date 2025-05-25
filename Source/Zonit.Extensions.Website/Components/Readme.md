@@ -1,9 +1,10 @@
-# Zonit.Extensions.Website ñ Base Classes for Blazor Components
+# Zonit.Extensions.Website ‚Äì Base Classes for Blazor Components
 
 This repository provides a Blazor-focused set of base classes that help manage:
-ï Data loading and persistence (PageViewBase<T>).  
-ï Form editing, validation, and auto-saving (PageEditBase<TViewModel>).  
-ï Common behaviors and services for user interfaces, breadcrumbs, culture providers, etc. (ExtensionsBase).  
+
+‚Ä¢ Data loading and persistence (PageViewBase<T>).  
+‚Ä¢ Form editing, validation, and auto-saving (PageEditBase<TViewModel>).  
+‚Ä¢ Common behaviors and services for user interfaces, breadcrumbs, culture providers, etc. (ExtensionsBase).  
 
 These classes are intended to streamline writing Blazor components by minimizing boilerplate code and enforcing best practices for data binding, state persistence, and user interactions.
 
@@ -12,28 +13,28 @@ These classes are intended to streamline writing Blazor components by minimizing
 ## Table of Contents
 
 1. [Overview](#overview)  
-2. [Installation](#installation)  
-3. [PageViewBase<T>](#pageviewbaset)  
+2. [PageViewBase<T>](#pageviewbaset)  
     - [Key Features](#key-features)  
     - [Usage Example](#usage-example)  
-4. [PageEditBase<TViewModel>](#pageeditbasetviewmodel)  
+3. [PageEditBase<TViewModel>](#pageeditbasetviewmodel)  
     - [Key Features](#key-features-1)  
     - [Usage Example](#usage-example-1)  
-5. [ExtensionsBase](#extensionsbase)  
+4. [ExtensionsBase](#extensionsbase)  
     - [Key Features](#key-features-2)  
     - [Usage Example](#usage-example-2)  
-6. [Additional Notes](#additional-notes)  
+5. [Additional Notes](#additional-notes)  
 
 --------------------------------------------------------------------------------
 
 ## Overview
 
 This code provides an opinionated infrastructure for building robust Blazor components with:
-ï Automatic state persistence using Microsoft.AspNetCore.Components.PersistentComponentState.  
-ï A consistent approach to data handling, loading, and refreshing.  
-ï Simplified form editing with validation, change-tracking, and auto-save functionality.  
-ï Easy integration with dependency injection for services like culture providers, workspace providers, and more.  
-ï Breadcrumb management for improved site navigation.
+
+‚Ä¢ Automatic state persistence using Microsoft.AspNetCore.Components.PersistentComponentState.  
+‚Ä¢ A consistent approach to data handling, loading, and refreshing.  
+‚Ä¢ Simplified form editing with validation, change-tracking, and auto-save functionality.  
+‚Ä¢ Easy integration with dependency injection for services like culture providers, workspace providers, and more.  
+‚Ä¢ Breadcrumb management for improved site navigation.
 
 --------------------------------------------------------------------------------
 
@@ -43,16 +44,16 @@ Generic base class for components that need to load and display data of type T. 
 
 ### Key Features
 
-ï Generic Model property (T? Model) for reading data.  
-ï Automatic state persistence (PersistentComponentState).  
-ï IsLoading flag set while data is being fetched.  
-ï Async loading logic via LoadAsync().  
-ï RefreshAsync() method for manual data refresh.  
-ï OnRefreshChangeAsync() override for reacting to external refresh events.  
+‚Ä¢ Generic Model property (T? Model) for reading data.  
+‚Ä¢ Automatic state persistence (PersistentComponentState).  
+‚Ä¢ IsLoading flag set while data is being fetched.  
+‚Ä¢ Async loading logic via LoadAsync().  
+‚Ä¢ RefreshAsync() method for manual data refresh.  
+‚Ä¢ OnRefreshChangeAsync() override for reacting to external refresh events.  
 
 ### Usage Example
 
-Suppose you have a data model called ìProductî that you want to display:
+Suppose you have a data model called ‚ÄúProduct‚Äù that you want to display:
 
 ```csharp
 @code {
@@ -88,10 +89,11 @@ Suppose you have a data model called ìProductî that you want to display:
 ```
 
 Key points in the above example:
-ï Model is defined by the generic parameter Product.  
-ï LoadAsync() is overridden to fetch data (your custom logic here).  
-ï The component automatically shows a loading indicator if you choose to reference IsLoading in the Razor markup.  
-ï State is automatically persisted and restored the next time the component is visited (if you configure Blazorís Prerendering and PersistentComponentState properly).  
+
+‚Ä¢ Model is defined by the generic parameter Product.  
+‚Ä¢ LoadAsync() is overridden to fetch data (your custom logic here).  
+‚Ä¢ The component automatically shows a loading indicator if you choose to reference IsLoading in the Razor markup.  
+‚Ä¢ State is automatically persisted and restored the next time the component is visited (if you configure Blazor‚Äôs Prerendering and PersistentComponentState properly).  
 
 --------------------------------------------------------------------------------
 
@@ -101,13 +103,13 @@ A base class for building Blazor forms and editing data. It manages validation, 
 
 ### Key Features
 
-ï EditContext for validation and form handling.  
-ï A TViewModel instance as the data context (Model).  
-ï ValidationMessageStore for dynamic error display.  
-ï AutoTrimStrings and AutoNormalizeWhitespace options to sanitize user input.  
-ï TrackChanges to detect if the user has unsaved changes.  
-ï Auto-save support for fields marked with a custom [AutoSave] attribute.  
-ï HandleValidSubmit and HandleInvalidSubmit overrides for improved form submission control.  
+‚Ä¢ EditContext for validation and form handling.  
+‚Ä¢ A TViewModel instance as the data context (Model).  
+‚Ä¢ ValidationMessageStore for dynamic error display.  
+‚Ä¢ AutoTrimStrings and AutoNormalizeWhitespace options to sanitize user input.  
+‚Ä¢ TrackChanges to detect if the user has unsaved changes.  
+‚Ä¢ Auto-save support for fields marked with a custom [AutoSave] attribute.  
+‚Ä¢ HandleValidSubmit and HandleInvalidSubmit overrides for improved form submission control.  
 
 ### Usage Example
 
@@ -153,7 +155,7 @@ Imagine you have a simple view model for editing user data:
 }
 ```
 
-In your Razor file, youíd also have a form:
+In your Razor file, you‚Äôd also have a form:
 
 ```razor
 @page "/user-edit"
@@ -181,10 +183,10 @@ In your Razor file, youíd also have a form:
 ```
 
 Key points to notice:  
-ï Model is created automatically (new()).  
-ï On form submission (OnValidSubmit), the component runs SubmitAsync().  
-ï Auto field trimming/whitespace normalization is configurable.  
-ï The user can see validation messages from ValidationMessageStore.  
+‚Ä¢ Model is created automatically (new()).  
+‚Ä¢ On form submission (OnValidSubmit), the component runs SubmitAsync().  
+‚Ä¢ Auto field trimming/whitespace normalization is configurable.  
+‚Ä¢ The user can see validation messages from ValidationMessageStore.  
 
 --------------------------------------------------------------------------------
 
@@ -194,14 +196,14 @@ Common base class that provides services and functionalities used by both PageVi
 
 ### Key Features
 
-ï ShowBreadcrumbs property for controlling whether breadcrumbs should be displayed, not set, or cleared.  
-ï Lazy-loaded providers: ICultureProvider, IWorkspaceProvider, ICatalogProvider, etc.  
-ï OnRefreshChangeAsync() as a virtual method to reload data or refresh UI on external changes.  
-ï Automatic disposal of event handlers to avoid memory leaks.  
+‚Ä¢ ShowBreadcrumbs property for controlling whether breadcrumbs should be displayed, not set, or cleared.  
+‚Ä¢ Lazy-loaded providers: ICultureProvider, IWorkspaceProvider, ICatalogProvider, etc.  
+‚Ä¢ OnRefreshChangeAsync() as a virtual method to reload data or refresh UI on external changes.  
+‚Ä¢ Automatic disposal of event handlers to avoid memory leaks.  
 
 ### Usage Example
 
-You typically wonít inherit directly from ExtensionsBase unless youíre creating a specialized base class:
+You typically won‚Äôt inherit directly from ExtensionsBase unless you‚Äôre creating a specialized base class:
 
 ```cs
 public class MyCustomBase : ExtensionsBase
