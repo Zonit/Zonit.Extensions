@@ -95,11 +95,11 @@ public abstract class ExtensionsBase : Base, IDisposable
     private T GetService<T>() where T : class
         => ServiceProvider.GetRequiredService<T>();
 
-    public string T(string key, params object[] args)
-        => Culture.Translate(key, args);
+    public MarkupString T(string key, params object[] args)
+        => new (Culture.Translate(key, args));
 
-    public string Translate(string key, params object[] args)
-        => Culture.Translate(key, args);
+    public MarkupString Translate(string key, params object[] args)
+        => new (Culture.Translate(key, args));
 
     protected override void Dispose(bool disposing)
     {
