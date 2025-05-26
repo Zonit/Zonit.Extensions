@@ -24,9 +24,11 @@ public class PageViewBase<T> : ExtensionsBase
     private PersistingComponentStateSubscription? _persistingSubscription;
     private string StateKey => $"{GetType().Name}_Model";
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnInitializedAsync(CancellationToken cancellationToken)
     {
-        await base.OnInitializedAsync();
+        await base.OnInitializedAsync(cancellationToken);
+
+        ThrowIfCancellationRequested(cancellationToken);
 
         // Automatyczna persystencja stanu
         _persistingSubscription = PersistentComponentState.RegisterOnPersisting(PersistState);
@@ -38,50 +40,55 @@ public class PageViewBase<T> : ExtensionsBase
         }
         else
         {
-            await LoadDataAsync();
+            await LoadDataAsync(cancellationToken);
         }
     }
 
-    protected override async Task OnParametersSetAsync()
+    protected override async Task OnParametersSetAsync(CancellationToken cancellationToken)
     {
-        await base.OnParametersSetAsync();
-        await LoadDataAsync();
+        await base.OnParametersSetAsync(cancellationToken);
+        await LoadDataAsync(cancellationToken);
     }
 
     /// <summary>
     /// Metoda do nadpisania - tutaj kod który musi się wykonać by pojawiły się dane na stronie
     /// </summary>
-    protected virtual async Task<T?> LoadAsync()
-    {
-        await Task.CompletedTask;
-        return default(T);
-    }
+    protected virtual async Task<T?> LoadAsync(CancellationToken cancellationToken)
+        => await Task.FromResult(default(T));
 
     /// <summary>
     /// Ładuje dane i aktualizuje stan
     /// </summary>
-    private async Task LoadDataAsync()
+    private async Task LoadDataAsync(CancellationToken cancellationToken = default)
     {
         IsLoading = true;
         StateHasChanged();
 
         try
         {
-            Model = await LoadAsync();
+            ThrowIfCancellationRequested(cancellationToken);
+            Model = await LoadAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // Operacja została anulowana - normalna sytuacja
         }
         finally
         {
-            IsLoading = false;
-            StateHasChanged();
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                IsLoading = false;
+                StateHasChanged();
+            }
         }
     }
 
     /// <summary>
     /// Publiczna metoda do odświeżenia danych
     /// </summary>
-    protected async Task RefreshAsync()
+    protected async Task RefreshAsync(CancellationToken cancellationToken = default)
     {
-        await LoadDataAsync();
+        await LoadDataAsync(cancellationToken);
     }
 
     /// <summary>
@@ -98,11 +105,22 @@ public class PageViewBase<T> : ExtensionsBase
 
     protected override async void OnRefreshChangeAsync()
     {
-        // Najpierw przeładuj dane
-        await LoadDataAsync();
+        try
+        {
+            var token = CancellationTokenSource?.Token ?? CancellationToken.None;
+            // Najpierw przeładuj dane
+            await LoadDataAsync(token);
 
-        // Potem wywołaj standardowe odświeżanie z klasy bazowej
-        base.OnRefreshChangeAsync();
+            if (token.IsCancellationRequested)
+                return;
+
+            // Potem wywołaj standardowe odświeżanie z klasy bazowej
+            base.OnRefreshChangeAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            // Operacja została anulowana - normalny przebieg
+        }
     }
 
     protected override void Dispose(bool disposing)

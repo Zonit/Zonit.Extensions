@@ -76,15 +76,15 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
     }
 
     protected virtual void HandleInvalidSubmit(string message) { }
-    protected virtual async Task SubmitAsync() { await Task.CompletedTask; }
+    protected virtual async Task SubmitAsync(CancellationToken cancellationToken = default)
+        => await Task.CompletedTask;
+    
     protected virtual void OnBeforeSubmit() { }
     protected virtual void OnAfterSubmit(bool success) { }
 
     // Auto-save hooks - override w klasie pochodnej
-    protected virtual async Task AutoSaveAsync(string fieldName, object? oldValue, object? newValue)
-    {
-        await Task.CompletedTask;
-    }
+    protected virtual async Task AutoSaveAsync(string fieldName, object? oldValue, object? newValue, CancellationToken cancellationToken = default)
+        => await Task.CompletedTask;
 
     protected virtual bool IsFieldAutoSaveEnabled(string fieldName)
     {
@@ -104,6 +104,7 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
 
         Processing = true;
         var success = false;
+        var cancellationToken = CancellationTokenSource?.Token ?? CancellationToken.None;
 
         try
         {
@@ -113,11 +114,15 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
             if (AutoTrimStrings || AutoNormalizeWhitespace)
                 CleanModelData();
 
-            await SubmitAsync();
+            await SubmitAsync(cancellationToken);
             success = true;
 
             if (TrackChanges)
                 HasChanges = false;
+        }
+        catch (OperationCanceledException)
+        {
+            // Operacja została anulowana - nie rób nic
         }
         catch (Exception)
         {
@@ -126,11 +131,15 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
         }
         finally
         {
-            Processing = false;
-            OnAfterSubmit(success);
+            // Jeśli nie było anulowania, aktualizuj stan
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                Processing = false;
+                OnAfterSubmit(success);
 
-            if (PreventDuplicateSubmissions)
-                _lastSubmitTime = DateTime.Now;
+                if (PreventDuplicateSubmissions)
+                    _lastSubmitTime = DateTime.Now;
+            }
         }
     }
 
@@ -239,6 +248,7 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
         return System.Text.RegularExpressions.Regex.Replace(input, @"\s+", " ");
     }
 
+    // Zaktualizowana metoda HandleFieldAutoSave
     private void HandleFieldAutoSave(FieldIdentifier fieldIdentifier)
     {
         var fieldName = fieldIdentifier.FieldName;
@@ -259,17 +269,29 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
         // Pobierz delay z atrybutu lub użyj domyślnego
         var delay = GetFieldAutoSaveDelay(fieldName);
 
+        // Zapisz referencję do bieżącego tokenu anulowania
+        var cancellationToken = CancellationTokenSource?.Token ?? CancellationToken.None;
+
         // Ustaw nowy timer
         _fieldAutoSaveTimers[fieldName] = new Timer(async _ =>
         {
             try
             {
-                await AutoSaveAsync(fieldName, previousValue, currentValue);
-                _lastFieldValues[fieldName] = currentValue;
+                // Sprawdź czy token jest wciąż aktywny
+                if (!cancellationToken.IsCancellationRequested)
+                {
+                    await AutoSaveAsync(fieldName, previousValue, currentValue, cancellationToken);
+                    _lastFieldValues[fieldName] = currentValue;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Operacja została anulowana - nie rób nic
             }
             catch (Exception ex)
             {
-                await HandleFieldAutoSaveError(fieldName, ex);
+                // Wykorzystaj token anulowania również przy błędach
+                await HandleFieldAutoSaveError(fieldName, ex, cancellationToken);
             }
         }, null, delay, Timeout.InfiniteTimeSpan);
     }
@@ -298,11 +320,8 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
         }
     }
 
-    protected virtual async Task HandleFieldAutoSaveError(string fieldName, Exception exception)
-    {
-        // Override w klasie pochodnej do obsługi błędów auto-save
-        await Task.CompletedTask;
-    }
+    protected virtual async Task HandleFieldAutoSaveError(string fieldName, Exception exception, CancellationToken cancellationToken = default)
+        => await Task.CompletedTask;
 
     private void HandleValidationRequested(object? sender, ValidationRequestedEventArgs e)
     {

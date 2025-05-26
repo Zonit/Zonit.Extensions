@@ -7,7 +7,7 @@ using Zonit.Extensions.Projects;
 
 namespace Zonit.Extensions.Website;
 
-public abstract class ExtensionsBase : ComponentBase, IDisposable
+public abstract class ExtensionsBase : Base, IDisposable
 {
     private bool _disposed;
 
@@ -118,7 +118,7 @@ public abstract class ExtensionsBase : ComponentBase, IDisposable
     public string Translate(string key, params object[] args)
         => Culture.Translate(key, args);
 
-    protected virtual void Dispose(bool disposing)
+    protected override void Dispose(bool disposing)
     {
         if (_disposed)
             return;
@@ -139,6 +139,9 @@ public abstract class ExtensionsBase : ComponentBase, IDisposable
         }
 
         _disposed = true;
+
+        // Wywołanie Dispose z klasy bazowej po własnych operacjach
+        base.Dispose(disposing);
     }
 
     ~ExtensionsBase()
@@ -151,8 +154,17 @@ public abstract class ExtensionsBase : ComponentBase, IDisposable
     {
         try
         {
-            await OnInitializedAsync();
+            var token = CancellationTokenSource?.Token ?? CancellationToken.None;
+            await OnInitializedAsync(token);
+
+            if (token.IsCancellationRequested)
+                return;
+
             await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException)
+        {
+            // Operacja została anulowana - normalny przebieg
         }
         catch (Exception ex)
         {
