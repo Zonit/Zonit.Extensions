@@ -24,7 +24,7 @@ public abstract class ExtensionsBase : Base, IDisposable
     /// - false: Nie zmienia aktualnych okruszków (używane w modalach) <br />
     /// - null: Kasuje okruszki <br />
     /// </summary>
-    protected virtual bool? ShowBreadcrumbs { get; } = true;
+    protected virtual bool? ShowBreadcrumbs { get; } = false;
 
     /// <summary>
     /// Lista okruszków (breadcrumbs) do wyświetlenia.
