@@ -12,6 +12,14 @@ public partial class TextNormalizer
         return WhitespaceRegex().Replace(input, " ");
     }
 
+    public static string HyphensToDash(string input)
+    {
+        if (string.IsNullOrEmpty(input))
+            return input;
+
+        return input.Replace('–', '-').Replace('—', '-');
+    }
+
     public static string ReplaceSmartQuotes(string input)
     {
         if (string.IsNullOrEmpty(input))
