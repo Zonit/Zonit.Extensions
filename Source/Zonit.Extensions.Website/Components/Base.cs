@@ -36,77 +36,55 @@ public class Base : ComponentBase, IDisposable
     protected override void OnInitialized()
     {
         base.OnInitialized();
-
-        // Inicjalizacja loggera - używa faktycznego typu obiektu (nawet gdy dziedziczony)
         _lazyLogger = new Lazy<ILogger>(() =>
         {
             var actualType = this.GetType();
             return LoggerFactory?.CreateLogger(actualType.FullName ?? actualType.Name)
                 ?? NullLogger.Instance;
         });
-
-        Logger.LogDebug("Inicjalizacja komponentu {ComponentType}", GetType().Name);
     }
 
     /// <summary>
     /// Metoda wywoływana przy inicjalizacji komponentu z obsługą CancellationToken
     /// </summary>
     protected override Task OnInitializedAsync()
-    {
-        Logger.LogDebug("Inicjalizacja asynchroniczna {ComponentType}", GetType().Name);
-        return OnInitializedAsync(CancellationTokenSource?.Token ?? CancellationToken.None);
-    }
+        => OnInitializedAsync(CancellationTokenSource?.Token ?? CancellationToken.None);
 
     /// <summary>
     /// Rozszerzona metoda inicjalizacji obsługująca token anulowania
     /// </summary>
     protected virtual Task OnInitializedAsync(CancellationToken cancellationToken)
-    {
-        return Task.CompletedTask;
-    }
+        => Task.CompletedTask;
 
     /// <summary>
     /// Metoda wywoływana po ustawieniu parametrów z obsługą CancellationToken
     /// </summary>
     protected override Task OnParametersSetAsync()
-    {
-        return OnParametersSetAsync(CancellationTokenSource?.Token ?? CancellationToken.None);
-    }
+        => OnParametersSetAsync(CancellationTokenSource?.Token ?? CancellationToken.None);
 
     /// <summary>
     /// Rozszerzona metoda ustawiania parametrów obsługująca token anulowania
     /// </summary>
     protected virtual Task OnParametersSetAsync(CancellationToken cancellationToken)
-    {
-        return Task.CompletedTask;
-    }
+        => Task.CompletedTask;
 
     /// <summary>
     /// Metoda wywoływana po renderingu z obsługą CancellationToken
     /// </summary>
     protected override Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender)
-        {
-            Logger.LogDebug("Pierwszy rendering komponentu {ComponentType}", GetType().Name);
-        }
-        return OnAfterRenderAsync(firstRender, CancellationTokenSource?.Token ?? CancellationToken.None);
-    }
+        => OnAfterRenderAsync(firstRender, CancellationTokenSource?.Token ?? CancellationToken.None);
 
     /// <summary>
     /// Rozszerzona metoda wywoływana po renderingu obsługująca token anulowania
     /// </summary>
     protected virtual Task OnAfterRenderAsync(bool firstRender, CancellationToken cancellationToken)
-    {
-        return Task.CompletedTask;
-    }
+        => Task.CompletedTask;
 
     /// <summary>
     /// Implementacja IDisposable.Dispose()
     /// </summary>
     public void Dispose()
     {
-        Logger.LogDebug("Usuwanie komponentu {ComponentType}", GetType().Name);
         Dispose(true);
         GC.SuppressFinalize(this);
     }
@@ -121,7 +99,6 @@ public class Base : ComponentBase, IDisposable
         {
             if (disposing)
             {
-                // Anuluj wszystkie operacje asynchroniczne
                 try
                 {
                     CancellationTokenSource?.Cancel();
@@ -130,7 +107,6 @@ public class Base : ComponentBase, IDisposable
                 catch (ObjectDisposedException)
                 {
                     // Ignoruj błąd, jeśli CancellationTokenSource został już zniszczony
-                    Logger.LogDebug("CancellationTokenSource już zniszczony dla {ComponentType}", GetType().Name);
                 }
                 finally
                 {
@@ -146,9 +122,7 @@ public class Base : ComponentBase, IDisposable
     /// Metoda pomocnicza do sprawdzania czy token anulowania został aktywowany
     /// </summary>
     protected static void ThrowIfCancellationRequested(CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-    }
+        => cancellationToken.ThrowIfCancellationRequested();
 
     /// <summary>
     /// Klasa implementująca pusty logger, gdy nie jest dostępny ILoggerFactory
@@ -159,7 +133,10 @@ public class Base : ComponentBase, IDisposable
 
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
         public bool IsEnabled(LogLevel logLevel) => false;
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) { }
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state,
+            Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+        }
     }
 
     /// <summary>

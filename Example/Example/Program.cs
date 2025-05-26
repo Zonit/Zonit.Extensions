@@ -33,98 +33,98 @@ internal class Program
 
 
         // Przykład 3: Text.Headers - Analiza nagłówków HTML
-        Console.WriteLine("### Przykład 3: Analiza nagłówków HTML (Text.Headers) ###");
-        //var htmlHeaders = "<h1>Główny tytuł</h1><p>Tekst wprowadzający.</p><h2>Podtytuł pierwszy</h2><p>Treść sekcji.</p><h2>Podtytuł drugi</h2><h3>Szczegóły</h3>";
-        var headerAnalyzer = Text.Headers(Article);
+        //Console.WriteLine("### Przykład 3: Analiza nagłówków HTML (Text.Headers) ###");
+        ////var htmlHeaders = "<h1>Główny tytuł</h1><p>Tekst wprowadzający.</p><h2>Podtytuł pierwszy</h2><p>Treść sekcji.</p><h2>Podtytuł drugi</h2><h3>Szczegóły</h3>";
+        //var headerAnalyzer = Text.Headers(Article);
 
-        var headers = headerAnalyzer.GetHeaders();
-        Console.WriteLine($"Znaleziono {headers.Count} nagłówków:");
-        foreach (var header in headers)
-        {
-            Console.WriteLine($"- H{header.Level}: {header.Content}");
-        }
+        //var headers = headerAnalyzer.GetHeaders();
+        //Console.WriteLine($"Znaleziono {headers.Count} nagłówków:");
+        //foreach (var header in headers)
+        //{
+        //    Console.WriteLine($"- H{header.Level}: {header.Content}");
+        //}
 
-        // Analiza struktury nagłówków
-        var headerReport = headerAnalyzer.AnalyzeStructure();
-        Console.WriteLine("Analiza struktury nagłówków:");
-        foreach (var issue in headerReport.Issues)
-        {
-            Console.WriteLine($"- {issue}");
-        }
-        Console.WriteLine();
+        //// Analiza struktury nagłówków
+        //var headerReport = headerAnalyzer.AnalyzeStructure();
+        //Console.WriteLine("Analiza struktury nagłówków:");
+        //foreach (var issue in headerReport.Issues)
+        //{
+        //    Console.WriteLine($"- {issue}");
+        //}
+        //Console.WriteLine();
 
         // Przykład 4: Text.Keywords - Analiza słów kluczowych
-        Console.WriteLine("### Przykład 4: Analiza słów kluczowych (Text.Keywords) ###");
-        string sampleText = "Analiza słów kluczowych jest ważnym elementem optymalizacji SEO. Słowa kluczowe pomagają pozycjonować strony w wyszukiwarkach. Analiza pomaga zrozumieć, jakie słowa kluczowe są najważniejsze dla danej treści. Dobre słowa kluczowe zwiększają widoczność strony.";
-        var keywordAnalyzer = Text.Keywords(Article);
+        //Console.WriteLine("### Przykład 4: Analiza słów kluczowych (Text.Keywords) ###");
+        //string sampleText = "Analiza słów kluczowych jest ważnym elementem optymalizacji SEO. Słowa kluczowe pomagają pozycjonować strony w wyszukiwarkach. Analiza pomaga zrozumieć, jakie słowa kluczowe są najważniejsze dla danej treści. Dobre słowa kluczowe zwiększają widoczność strony.";
+        //var keywordAnalyzer = Text.Keywords(Article);
 
-        var topKeywords = keywordAnalyzer.GetTopKeywords(minLength: 4, maxCount: 5);
-        Console.WriteLine("Top 5 słów kluczowych:");
-        foreach (var keyword in topKeywords)
-        {
-            Console.WriteLine($"- '{keyword.Word}': {keyword.Count} wystąpień, gęstość: {keyword.Density:F2}%");
-        }
+        //var topKeywords = keywordAnalyzer.GetTopKeywords(minLength: 4, maxCount: 5);
+        //Console.WriteLine("Top 5 słów kluczowych:");
+        //foreach (var keyword in topKeywords)
+        //{
+        //    Console.WriteLine($"- '{keyword.Word}': {keyword.Count} wystąpień, gęstość: {keyword.Density:F2}%");
+        //}
 
-        // Analiza fraz (słów kluczowych wielowyrazowych)
-        var phrases = keywordAnalyzer.AnalyzePhrases(maxLength: 3, topCount: 3);
-        Console.WriteLine("Najczęstsze frazy:");
-        foreach (var (phrase, count) in phrases)
-        {
-            Console.WriteLine($"- \"{phrase}\": {count} wystąpień");
-        }
+        //// Analiza fraz (słów kluczowych wielowyrazowych)
+        //var phrases = keywordAnalyzer.AnalyzePhrases(maxLength: 3, topCount: 3);
+        //Console.WriteLine("Najczęstsze frazy:");
+        //foreach (var (phrase, count) in phrases)
+        //{
+        //    Console.WriteLine($"- \"{phrase}\": {count} wystąpień");
+        //}
 
-        // Szczegółowa analiza wybranego słowa kluczowego
-        var keywordReport = keywordAnalyzer.GenerateKeywordReport("elektryczny");
-        Console.WriteLine($"\nSzczegółowa analiza słowa 'elektryczny':");
-        Console.WriteLine($"- Liczba wystąpień: {keywordReport.Occurrences}");
-        Console.WriteLine($"- Gęstość: {keywordReport.Density:F2}%");
-        Console.WriteLine($"- Występuje w nagłówkach: {keywordReport.OccurrencesInHeaders} razy");
-        Console.WriteLine();
+        //// Szczegółowa analiza wybranego słowa kluczowego
+        //var keywordReport = keywordAnalyzer.GenerateKeywordReport("elektryczny");
+        //Console.WriteLine($"\nSzczegółowa analiza słowa 'elektryczny':");
+        //Console.WriteLine($"- Liczba wystąpień: {keywordReport.Occurrences}");
+        //Console.WriteLine($"- Gęstość: {keywordReport.Density:F2}%");
+        //Console.WriteLine($"- Występuje w nagłówkach: {keywordReport.OccurrencesInHeaders} razy");
+        //Console.WriteLine();
 
-        // Przykład 5: Text.Seo - Kompleksowa analiza SEO
-        Console.WriteLine("### Przykład 5: Kompleksowa analiza SEO (Text.Seo) ###");
-        // Użyjemy fragmentu artykułu z dostarczonych danych
-        var seoAnalyzer = Text.Seo(Program.Article);
+        //// Przykład 5: Text.Seo - Kompleksowa analiza SEO
+        //Console.WriteLine("### Przykład 5: Kompleksowa analiza SEO (Text.Seo) ###");
+        //// Użyjemy fragmentu artykułu z dostarczonych danych
+        //var seoAnalyzer = Text.Seo(Program.Article);
 
-        var seoReport = seoAnalyzer.GenerateReport();
-        Console.WriteLine($"Analiza SEO dla artykułu:");
-        Console.WriteLine($"- Długość tekstu: {seoReport.WordCount} słów");
-        Console.WriteLine($"- Czytelność: {seoReport.ReadabilityScore:F1}/100");
-        Console.WriteLine($"- Czas czytania: {seoReport.ReadingTime} sekund");
-        Console.WriteLine($"- Liczba nagłówków: {seoReport.Headers.Count}");
+        //var seoReport = seoAnalyzer.GenerateReport();
+        //Console.WriteLine($"Analiza SEO dla artykułu:");
+        //Console.WriteLine($"- Długość tekstu: {seoReport.WordCount} słów");
+        //Console.WriteLine($"- Czytelność: {seoReport.ReadabilityScore:F1}/100");
+        //Console.WriteLine($"- Czas czytania: {seoReport.ReadingTime} sekund");
+        //Console.WriteLine($"- Liczba nagłówków: {seoReport.Headers.Count}");
 
-        Console.WriteLine($"Ocena ogólna: {seoReport.OverallScore:F1}/100");
+        //Console.WriteLine($"Ocena ogólna: {seoReport.OverallScore:F1}/100");
 
-        Console.WriteLine("\nGłówne słowo kluczowe:");
-        if (seoReport.TopKeywords.Count > 0)
-        {
-            var mainKeyword = seoReport.TopKeywords[0];
-            Console.WriteLine($"- '{mainKeyword.Word}': {mainKeyword.Count} wystąpień, gęstość: {mainKeyword.Density:F2}%");
-        }
+        //Console.WriteLine("\nGłówne słowo kluczowe:");
+        //if (seoReport.TopKeywords.Count > 0)
+        //{
+        //    var mainKeyword = seoReport.TopKeywords[0];
+        //    Console.WriteLine($"- '{mainKeyword.Word}': {mainKeyword.Count} wystąpień, gęstość: {mainKeyword.Density:F2}%");
+        //}
 
-        Console.WriteLine("\nProblemy SEO:");
-        foreach (var issue in seoReport.Issues.Take(3))
-        {
-            Console.WriteLine($"- {issue}");
-        }
+        //Console.WriteLine("\nProblemy SEO:");
+        //foreach (var issue in seoReport.Issues.Take(3))
+        //{
+        //    Console.WriteLine($"- {issue}");
+        //}
 
-        Console.WriteLine("\nRekomendacje SEO:");
-        foreach (var recommendation in seoReport.Recommendations.Take(3))
-        {
-            Console.WriteLine($"- {recommendation}");
-        }
+        //Console.WriteLine("\nRekomendacje SEO:");
+        //foreach (var recommendation in seoReport.Recommendations.Take(3))
+        //{
+        //    Console.WriteLine($"- {recommendation}");
+        //}
 
-        // Sprawdzenie przyjazności SEO dla wybranego słowa kluczowego
-        var (isSeoFriendly, reasons) = seoAnalyzer.CheckSeoFriendliness("elektryczny", minWords: 300);
-        Console.WriteLine($"\nCzy treść jest przyjazna dla SEO dla słowa 'elektryczny': {isSeoFriendly}");
-        if (!isSeoFriendly && reasons.Any())
-        {
-            Console.WriteLine("Powody:");
-            foreach (var reason in reasons.Take(2))
-            {
-                Console.WriteLine($"- {reason}");
-            }
-        }
+        //// Sprawdzenie przyjazności SEO dla wybranego słowa kluczowego
+        //var (isSeoFriendly, reasons) = seoAnalyzer.CheckSeoFriendliness("elektryczny", minWords: 300);
+        //Console.WriteLine($"\nCzy treść jest przyjazna dla SEO dla słowa 'elektryczny': {isSeoFriendly}");
+        //if (!isSeoFriendly && reasons.Any())
+        //{
+        //    Console.WriteLine("Powody:");
+        //    foreach (var reason in reasons.Take(2))
+        //    {
+        //        Console.WriteLine($"- {reason}");
+        //    }
+        //}
     }
 
     public static string Article = @"

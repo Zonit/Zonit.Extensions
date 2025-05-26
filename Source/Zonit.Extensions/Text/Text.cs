@@ -8,13 +8,13 @@ public static class Text
 
     public static TextAnalyzer Analyzer(string text)
         => new(text);
-
+}
 
     // AI CONTENT:
-    public static HeaderAnalyzer Headers(string html)
-        => new(html);
-    public static KeywordAnalyzer Keywords(string text)
-        => new(text);
-    public static SeoAnalyzer Seo(string html)
-        => new(html);
-}
+//    public static HeaderAnalyzer Headers(string html)
+//        => new(html);
+//    public static KeywordAnalyzer Keywords(string text)
+//        => new(text);
+//    public static SeoAnalyzer Seo(string html)
+//        => new(html);
+//}
