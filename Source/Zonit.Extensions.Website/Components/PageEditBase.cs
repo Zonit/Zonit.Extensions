@@ -1,10 +1,10 @@
-﻿using Microsoft.AspNetCore.Components.Forms;
-using Microsoft.AspNetCore.Components;
+﻿using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Forms;
+using Microsoft.Extensions.Logging;
 using System.ComponentModel.DataAnnotations;
 using System.Reflection;
 
 namespace Zonit.Extensions.Website;
-
 public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : class, new()
 {
     [SupplyParameterFromForm]
@@ -31,12 +31,16 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
 
     protected override void OnInitialized()
     {
+        Logger.LogDebug("Inicjalizacja PageEditBase<{ViewModelType}> dla {ComponentType}",
+            typeof(TViewModel).Name, GetType().Name);
+
         InitializeEditContext();
         base.OnInitialized();
     }
 
     protected override void OnParametersSet()
     {
+        Logger.LogDebug("Parametry ustawione, aktualizacja EditContext dla {ComponentType}", GetType().Name);
         InitializeEditContext();
         base.OnParametersSet();
     }
@@ -47,9 +51,12 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
 
         if (EditContext == null || !ReferenceEquals(EditContext.Model, Model))
         {
+            Logger.LogDebug("Inicjalizacja nowego EditContext dla {ComponentType}", GetType().Name);
+
             // Jeśli istnieje poprzedni EditContext, odsubskrybuj zdarzenia
             if (EditContext is not null)
             {
+                Logger.LogTrace("Odsubskrypcja zdarzeń poprzedniego EditContext dla {ComponentType}", GetType().Name);
                 EditContext.OnFieldChanged -= OnModelChanged;
                 EditContext.OnValidationRequested -= HandleValidationRequested;
             }
@@ -58,6 +65,7 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
             EditContext.OnFieldChanged += OnModelChanged;
             EditContext.OnValidationRequested += HandleValidationRequested;
             ValidationMessages = new ValidationMessageStore(EditContext);
+            Logger.LogDebug("Utworzono nowy EditContext i ValidationMessageStore dla {ComponentType}", GetType().Name);
 
             if (TrackChanges)
                 HasChanges = false;
@@ -66,6 +74,9 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
 
     protected virtual void OnModelChanged(object? sender, FieldChangedEventArgs e)
     {
+        Logger.LogDebug("Zmiana pola {FieldName} dla {ComponentType}",
+            e.FieldIdentifier.FieldName, GetType().Name);
+
         if (TrackChanges)
             HasChanges = true;
 
@@ -75,32 +86,65 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
         StateHasChanged();
     }
 
-    protected virtual void HandleInvalidSubmit(string message) { }
+    protected virtual void HandleInvalidSubmit(string message)
+    {
+        Logger.LogWarning("Nieprawidłowa submisja dla {ComponentType}: {Message}",
+            GetType().Name, message);
+    }
+
     protected virtual async Task SubmitAsync(CancellationToken cancellationToken = default)
-        => await Task.CompletedTask;
-    
-    protected virtual void OnBeforeSubmit() { }
-    protected virtual void OnAfterSubmit(bool success) { }
+    {
+        Logger.LogDebug("Domyślna implementacja SubmitAsync dla {ComponentType}", GetType().Name);
+        await Task.CompletedTask;
+    }
+
+    protected virtual void OnBeforeSubmit()
+    {
+        Logger.LogDebug("Przygotowanie do submisji dla {ComponentType}", GetType().Name);
+    }
+
+    protected virtual void OnAfterSubmit(bool success)
+    {
+        Logger.LogDebug("Zakończenie submisji dla {ComponentType} - Status: {Success}",
+            GetType().Name, success ? "Sukces" : "Błąd");
+    }
 
     // Auto-save hooks - override w klasie pochodnej
     protected virtual async Task AutoSaveAsync(string fieldName, object? oldValue, object? newValue, CancellationToken cancellationToken = default)
-        => await Task.CompletedTask;
+    {
+        Logger.LogDebug("Domyślna implementacja AutoSaveAsync dla pola {FieldName} w {ComponentType}",
+            fieldName, GetType().Name);
+        await Task.CompletedTask;
+    }
 
     protected virtual bool IsFieldAutoSaveEnabled(string fieldName)
     {
         // Sprawdź czy pole ma atrybut [AutoSave]
         var property = typeof(TViewModel).GetProperty(fieldName);
-        return property?.GetCustomAttribute<AutoSaveAttribute>() != null;
+        var isEnabled = property?.GetCustomAttribute<AutoSaveAttribute>() != null;
+
+        Logger.LogTrace("Sprawdzenie auto-save dla pola {FieldName} w {ComponentType}: {IsEnabled}",
+            fieldName, GetType().Name, isEnabled);
+
+        return isEnabled;
     }
 
     public async Task HandleValidSubmit(EditContext editContext)
     {
+        Logger.LogDebug("Obsługa prawidłowej submisji dla {ComponentType}", GetType().Name);
+
         if (editContext.Validate() is false)
+        {
+            Logger.LogWarning("Walidacja nie powiodła się dla {ComponentType}", GetType().Name);
             return;
+        }
 
         // Sprawdź czy nie jest to duplikat submissji
         if (PreventDuplicateSubmissions && IsDuplicateSubmission())
+        {
+            Logger.LogWarning("Wykryto duplikat submisji dla {ComponentType}", GetType().Name);
             return;
+        }
 
         Processing = true;
         var success = false;
@@ -108,25 +152,32 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
 
         try
         {
+            Logger.LogInformation("Rozpoczęcie przetwarzania formularza dla {ComponentType}", GetType().Name);
             OnBeforeSubmit();
 
             // Wyczyść i znormalizuj dane przed wysłaniem
             if (AutoTrimStrings || AutoNormalizeWhitespace)
+            {
+                Logger.LogDebug("Czyszczenie danych modelu dla {ComponentType}", GetType().Name);
                 CleanModelData();
+            }
 
             await SubmitAsync(cancellationToken);
             success = true;
+            Logger.LogInformation("Formularz pomyślnie przetworzony dla {ComponentType}", GetType().Name);
 
             if (TrackChanges)
                 HasChanges = false;
         }
         catch (OperationCanceledException)
         {
-            // Operacja została anulowana - nie rób nic
+            Logger.LogDebug("Submisja anulowana dla {ComponentType}", GetType().Name);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             success = false;
+            Logger.LogError(ex, "Błąd podczas przetwarzania formularza dla {ComponentType}: {Message}",
+                GetType().Name, ex.Message);
             throw;
         }
         finally
@@ -145,10 +196,14 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
 
     public void HandleInvalidSubmit()
     {
+        Logger.LogWarning("Obsługa nieprawidłowej submisji dla {ComponentType}", GetType().Name);
+
         if (EditContext is null)
             return;
 
         var messages = EditContext.GetValidationMessages();
+        Logger.LogDebug("Liczba komunikatów walidacyjnych: {Count} dla {ComponentType}",
+            messages.Count(), GetType().Name);
 
         foreach (var error in messages)
         {
@@ -156,12 +211,15 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
                 continue;
 
             var message = Culture.Translate(error);
+            Logger.LogWarning("Błąd walidacji dla {ComponentType}: {Message}", GetType().Name, message);
             HandleInvalidSubmit(message);
         }
     }
 
     public void ResetModel()
     {
+        Logger.LogInformation("Resetowanie modelu dla {ComponentType}", GetType().Name);
+
         if (EditContext is not null)
         {
             EditContext.OnFieldChanged -= OnModelChanged;
@@ -176,10 +234,15 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
 
         if (TrackChanges)
             HasChanges = false;
+
+        Logger.LogDebug("Model i EditContext zresetowane dla {ComponentType}", GetType().Name);
     }
 
     public void AddValidationMessage(string fieldName, string message)
     {
+        Logger.LogDebug("Dodawanie komunikatu walidacyjnego dla pola {FieldName} w {ComponentType}: {Message}",
+            fieldName, GetType().Name, message);
+
         if (EditContext is null)
             return;
 
@@ -189,6 +252,7 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
 
     public void ClearValidationMessages()
     {
+        Logger.LogDebug("Czyszczenie wszystkich komunikatów walidacyjnych dla {ComponentType}", GetType().Name);
         ValidationMessages?.Clear();
         EditContext?.NotifyValidationStateChanged();
     }
@@ -196,25 +260,42 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
     public void MarkAsChanged()
     {
         if (TrackChanges)
+        {
+            Logger.LogDebug("Oznaczenie jako zmienione dla {ComponentType}", GetType().Name);
             HasChanges = true;
+        }
     }
 
     public void MarkAsUnchanged()
     {
         if (TrackChanges)
+        {
+            Logger.LogDebug("Oznaczenie jako niezmienione dla {ComponentType}", GetType().Name);
             HasChanges = false;
+        }
     }
 
     private bool IsDuplicateSubmission()
     {
-        return _lastSubmitTime.HasValue &&
+        var isDuplicate = _lastSubmitTime.HasValue &&
                DateTime.Now - _lastSubmitTime.Value < _duplicateSubmissionThreshold;
+
+        if (isDuplicate)
+        {
+            Logger.LogWarning("Wykryto duplikat submisji dla {ComponentType} - ostatnia: {LastSubmitTime}",
+                GetType().Name, _lastSubmitTime);
+        }
+
+        return isDuplicate;
     }
 
     private void CleanModelData()
     {
         if (Model is null)
             return;
+
+        Logger.LogDebug("Czyszczenie danych modelu dla {ComponentType}", GetType().Name);
+        var changedCount = 0;
 
         var properties = typeof(TViewModel).GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Where(p => p.CanRead && p.CanWrite && p.PropertyType == typeof(string));
@@ -235,8 +316,14 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
 
             // Ustaw z powrotem tylko jeśli wartość się zmieniła
             if (cleanedValue != value)
+            {
                 property.SetValue(Model, cleanedValue);
+                changedCount++;
+            }
         }
+
+        Logger.LogDebug("Zakończono czyszczenie modelu dla {ComponentType} - zmieniono {Count} wartości",
+            GetType().Name, changedCount);
     }
 
     private static string NormalizeWhitespace(string input)
@@ -248,7 +335,6 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
         return System.Text.RegularExpressions.Regex.Replace(input, @"\s+", " ");
     }
 
-    // Zaktualizowana metoda HandleFieldAutoSave
     private void HandleFieldAutoSave(FieldIdentifier fieldIdentifier)
     {
         var fieldName = fieldIdentifier.FieldName;
@@ -256,10 +342,14 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
         if (!IsFieldAutoSaveEnabled(fieldName))
             return;
 
+        Logger.LogDebug("Auto-save dla pola {FieldName} w {ComponentType}", fieldName, GetType().Name);
+
         // Anuluj poprzedni timer dla tego pola
         if (_fieldAutoSaveTimers.TryGetValue(fieldName, out var existingTimer))
         {
             existingTimer.Dispose();
+            Logger.LogTrace("Anulowano poprzedni timer auto-save dla pola {FieldName} w {ComponentType}",
+                fieldName, GetType().Name);
         }
 
         // Pobierz aktualną wartość pola
@@ -268,6 +358,8 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
 
         // Pobierz delay z atrybutu lub użyj domyślnego
         var delay = GetFieldAutoSaveDelay(fieldName);
+        Logger.LogTrace("Ustawiono opóźnienie auto-save {Delay}ms dla pola {FieldName} w {ComponentType}",
+            delay.TotalMilliseconds, fieldName, GetType().Name);
 
         // Zapisz referencję do bieżącego tokenu anulowania
         var cancellationToken = CancellationTokenSource?.Token ?? CancellationToken.None;
@@ -280,16 +372,24 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
                 // Sprawdź czy token jest wciąż aktywny
                 if (!cancellationToken.IsCancellationRequested)
                 {
+                    Logger.LogDebug("Wykonywanie auto-save dla pola {FieldName} w {ComponentType}",
+                        fieldName, GetType().Name);
                     await AutoSaveAsync(fieldName, previousValue, currentValue, cancellationToken);
                     _lastFieldValues[fieldName] = currentValue;
+                    Logger.LogDebug("Zakończono auto-save dla pola {FieldName} w {ComponentType}",
+                        fieldName, GetType().Name);
                 }
             }
             catch (OperationCanceledException)
             {
-                // Operacja została anulowana - nie rób nic
+                Logger.LogDebug("Auto-save anulowany dla pola {FieldName} w {ComponentType}",
+                    fieldName, GetType().Name);
             }
             catch (Exception ex)
             {
+                Logger.LogError(ex, "Błąd podczas auto-save dla pola {FieldName} w {ComponentType}: {Message}",
+                    fieldName, GetType().Name, ex.Message);
+
                 // Wykorzystaj token anulowania również przy błędach
                 await HandleFieldAutoSaveError(fieldName, ex, cancellationToken);
             }
@@ -314,17 +414,25 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
             var property = fieldIdentifier.Model.GetType().GetProperty(fieldIdentifier.FieldName);
             return property?.GetValue(fieldIdentifier.Model);
         }
-        catch
+        catch (Exception ex)
         {
+            Logger.LogError(ex, "Błąd podczas pobierania wartości pola {FieldName} w {ComponentType}",
+                fieldIdentifier.FieldName, GetType().Name);
             return null;
         }
     }
 
     protected virtual async Task HandleFieldAutoSaveError(string fieldName, Exception exception, CancellationToken cancellationToken = default)
-        => await Task.CompletedTask;
+    {
+        Logger.LogError(exception, "Błąd auto-save dla pola {FieldName} w {ComponentType}: {Message}",
+            fieldName, GetType().Name, exception.Message);
+        await Task.CompletedTask;
+    }
 
     private void HandleValidationRequested(object? sender, ValidationRequestedEventArgs e)
     {
+        Logger.LogDebug("Walidacja żądana dla {ComponentType}", GetType().Name);
+
         if (Model is null || EditContext is null)
             return;
 
@@ -334,6 +442,7 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
         var validationContext = new ValidationContext(Model);
 
         bool isValid = Validator.TryValidateObject(Model, validationContext, validationResults, true);
+        Logger.LogDebug("Wynik walidacji dla {ComponentType}: {IsValid}", GetType().Name, isValid ? "Poprawny" : "Niepoprawny");
 
         if (!isValid)
         {
@@ -342,7 +451,10 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
                 foreach (var memberName in validationResult.MemberNames)
                 {
                     var field = EditContext.Field(memberName);
-                    ValidationMessages?.Add(field, Culture.Translate(validationResult.ErrorMessage!));
+                    var message = Culture.Translate(validationResult.ErrorMessage!);
+                    ValidationMessages?.Add(field, message);
+                    Logger.LogWarning("Błąd walidacji dla pola {FieldName} w {ComponentType}: {Message}",
+                        memberName, GetType().Name, message);
                 }
             }
         }
@@ -354,8 +466,11 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
     {
         if (disposing)
         {
+            Logger.LogDebug("Zwalnianie zasobów PageEditBase dla {ComponentType}", GetType().Name);
+
             if (EditContext is not null)
             {
+                Logger.LogTrace("Usuwanie subskrypcji EditContext dla {ComponentType}", GetType().Name);
                 EditContext.OnFieldChanged -= OnModelChanged;
                 EditContext.OnValidationRequested -= HandleValidationRequested;
                 ValidationMessages?.Clear();
@@ -363,6 +478,7 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
             }
 
             // Wyczyść timery auto-save
+            Logger.LogTrace("Usuwanie timerów auto-save dla {ComponentType}", GetType().Name);
             foreach (var timer in _fieldAutoSaveTimers.Values)
             {
                 timer.Dispose();

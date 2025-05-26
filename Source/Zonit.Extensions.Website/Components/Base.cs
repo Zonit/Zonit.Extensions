@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.Logging;
 
 namespace Zonit.Extensions.Website;
 
@@ -14,9 +15,37 @@ public class Base : ComponentBase, IDisposable
     /// </summary>
     protected bool IsDisposed { get; private set; }
 
+    /// <summary>
+    /// Logger dla komponentu - automatycznie wykorzystuje nazwę typu wywołującego
+    /// </summary>
+    [Inject]
+    protected ILoggerFactory? LoggerFactory { get; set; }
+
+    /// <summary>
+    /// Właściwość zwracająca logger dla aktualnego typu
+    /// </summary>
+    protected ILogger Logger => _lazyLogger?.Value ?? NullLogger.Instance;
+
+    private Lazy<ILogger>? _lazyLogger;
+
     public Base()
     {
         CancellationTokenSource = new CancellationTokenSource();
+    }
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+
+        // Inicjalizacja loggera - używa faktycznego typu obiektu (nawet gdy dziedziczony)
+        _lazyLogger = new Lazy<ILogger>(() =>
+        {
+            var actualType = this.GetType();
+            return LoggerFactory?.CreateLogger(actualType.FullName ?? actualType.Name)
+                ?? NullLogger.Instance;
+        });
+
+        Logger.LogDebug("Inicjalizacja komponentu {ComponentType}", GetType().Name);
     }
 
     /// <summary>
@@ -24,6 +53,7 @@ public class Base : ComponentBase, IDisposable
     /// </summary>
     protected override Task OnInitializedAsync()
     {
+        Logger.LogDebug("Inicjalizacja asynchroniczna {ComponentType}", GetType().Name);
         return OnInitializedAsync(CancellationTokenSource?.Token ?? CancellationToken.None);
     }
 
@@ -56,6 +86,10 @@ public class Base : ComponentBase, IDisposable
     /// </summary>
     protected override Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender)
+        {
+            Logger.LogDebug("Pierwszy rendering komponentu {ComponentType}", GetType().Name);
+        }
         return OnAfterRenderAsync(firstRender, CancellationTokenSource?.Token ?? CancellationToken.None);
     }
 
@@ -72,6 +106,7 @@ public class Base : ComponentBase, IDisposable
     /// </summary>
     public void Dispose()
     {
+        Logger.LogDebug("Usuwanie komponentu {ComponentType}", GetType().Name);
         Dispose(true);
         GC.SuppressFinalize(this);
     }
@@ -95,6 +130,7 @@ public class Base : ComponentBase, IDisposable
                 catch (ObjectDisposedException)
                 {
                     // Ignoruj błąd, jeśli CancellationTokenSource został już zniszczony
+                    Logger.LogDebug("CancellationTokenSource już zniszczony dla {ComponentType}", GetType().Name);
                 }
                 finally
                 {
@@ -112,6 +148,18 @@ public class Base : ComponentBase, IDisposable
     protected static void ThrowIfCancellationRequested(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+    }
+
+    /// <summary>
+    /// Klasa implementująca pusty logger, gdy nie jest dostępny ILoggerFactory
+    /// </summary>
+    private class NullLogger : ILogger
+    {
+        public static readonly ILogger Instance = new NullLogger();
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => false;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) { }
     }
 
     /// <summary>
