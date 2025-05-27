@@ -18,6 +18,8 @@ public class PageViewBase<TViewModel> : ExtensionsBase where TViewModel : class
     /// Czy dane są aktualnie ładowane
     /// </summary>
     protected bool IsLoading { get; private set; }
+    
+    protected virtual bool DisablePersistent { get; } = false;
 
     [Inject]
     protected PersistentComponentState PersistentComponentState { get; set; } = default!;
@@ -30,14 +32,24 @@ public class PageViewBase<TViewModel> : ExtensionsBase where TViewModel : class
         await base.OnInitializedAsync(cancellationToken);
         ThrowIfCancellationRequested(cancellationToken);
 
-        _persistingSubscription = PersistentComponentState.RegisterOnPersisting(PersistState);
+        if(DisablePersistent is true)
+        {
+            _persistingSubscription = PersistentComponentState.RegisterOnPersisting(PersistState);
 
-        if (PersistentComponentState.TryTakeFromJson<TViewModel>(StateKey, out var restored))
-            Model = restored;
+            if (PersistentComponentState.TryTakeFromJson<TViewModel>(StateKey, out var restored))
+                Model = restored;
+            else
+                await LoadDataAsync(cancellationToken);
+        }
         else
+        {
             await LoadDataAsync(cancellationToken);
+        }
     }
 
+    // FIXME: Zweryfikuj czy jeżeli wyzwala się oninitlizedasync to nie wykonuje się też onparameterssetasync
+    // Powinno wykryć że tylko w momencie zmiany parametrów powinno się wykonać
+    // Gdy coś się wykonuje w oninitializedasync to nie powinno się wykonywać onparameterssetasync
     protected override async Task OnParametersSetAsync(CancellationToken cancellationToken)
     {
         await base.OnParametersSetAsync(cancellationToken);
