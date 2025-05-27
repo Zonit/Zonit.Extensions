@@ -110,13 +110,13 @@ public abstract class ExtensionsBase : Base, IDisposable
         {
             if (_culture.IsValueCreated)
                 _culture.Value.OnChange -= OnRefreshChangeAsync;
-            
+
             if (_workspace.IsValueCreated)
                 _workspace.Value.OnChange -= OnRefreshChangeAsync;
 
             if (_catalog.IsValueCreated)
                 _catalog.Value.OnChange -= OnRefreshChangeAsync;
-  
+
             if (_breadcrumbs.IsValueCreated)
                 _breadcrumbs.Value.OnChange -= OnRefreshChangeAsync;
         }

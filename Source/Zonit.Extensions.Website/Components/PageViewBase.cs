@@ -6,13 +6,13 @@ namespace Zonit.Extensions.Website;
 /// <summary>
 /// Prosta klasa bazowa dla komponentów wyświetlających dane
 /// </summary>
-/// <typeparam name="T">Typ modelu danych</typeparam>
-public class PageViewBase<T> : ExtensionsBase
+/// <typeparam name="TViewModel">Typ modelu danych</typeparam>
+public class PageViewBase<TViewModel> : ExtensionsBase where TViewModel : class
 {
     /// <summary>
     /// Model danych do wyświetlenia
     /// </summary>
-    public T? Model { get; set; }
+    protected TViewModel? Model { get; set; }
 
     /// <summary>
     /// Czy dane są aktualnie ładowane
@@ -32,7 +32,7 @@ public class PageViewBase<T> : ExtensionsBase
 
         _persistingSubscription = PersistentComponentState.RegisterOnPersisting(PersistState);
 
-        if (PersistentComponentState.TryTakeFromJson<T>(StateKey, out var restored))
+        if (PersistentComponentState.TryTakeFromJson<TViewModel>(StateKey, out var restored))
             Model = restored;
         else
             await LoadDataAsync(cancellationToken);
@@ -47,8 +47,8 @@ public class PageViewBase<T> : ExtensionsBase
     /// <summary>
     /// Metoda do nadpisania - tutaj kod który musi się wykonać by pojawiły się dane na stronie
     /// </summary>
-    protected virtual async Task<T?> LoadAsync(CancellationToken cancellationToken)
-        => await Task.FromResult(default(T));
+    protected virtual async Task<TViewModel?> LoadAsync(CancellationToken cancellationToken)
+        => await Task.FromResult(default(TViewModel));
 
     /// <summary>
     /// Ładuje dane i aktualizuje stan
