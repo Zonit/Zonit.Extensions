@@ -19,7 +19,7 @@ public class PageViewBase<TViewModel> : ExtensionsBase where TViewModel : class
     /// </summary>
     protected bool IsLoading { get; private set; }
     
-    protected virtual bool DisablePersistent { get; } = false;
+    protected virtual bool PersistentModel { get; } = true;
 
     [Inject]
     protected PersistentComponentState PersistentComponentState { get; set; } = default!;
@@ -32,28 +32,34 @@ public class PageViewBase<TViewModel> : ExtensionsBase where TViewModel : class
         await base.OnInitializedAsync(cancellationToken);
         ThrowIfCancellationRequested(cancellationToken);
 
-        if(DisablePersistent is true)
+        // Zarejestruj persystencję tylko gdy potrzebna
+        if (PersistentModel)
         {
             _persistingSubscription = PersistentComponentState.RegisterOnPersisting(PersistState);
 
+            // Próba odzyskania modelu z persystencji
             if (PersistentComponentState.TryTakeFromJson<TViewModel>(StateKey, out var restored))
+            {
                 Model = restored;
-            else
-                await LoadDataAsync(cancellationToken);
+                // Nie ładuj danych ponownie jeśli już odzyskano z persystencji
+                return;
+            }
         }
-        else
-        {
-            await LoadDataAsync(cancellationToken);
-        }
+
+        // Ładuj dane tylko jeśli nie odzyskano z persystencji
+        await LoadDataAsync(cancellationToken);
     }
 
-    // FIXME: Zweryfikuj czy jeżeli wyzwala się oninitlizedasync to nie wykonuje się też onparameterssetasync
-    // Powinno wykryć że tylko w momencie zmiany parametrów powinno się wykonać
-    // Gdy coś się wykonuje w oninitializedasync to nie powinno się wykonywać onparameterssetasync
     protected override async Task OnParametersSetAsync(CancellationToken cancellationToken)
     {
         await base.OnParametersSetAsync(cancellationToken);
-        await LoadDataAsync(cancellationToken);
+
+        // Ładuj dane tylko gdy model jest null (nie został odzyskany z persystencji)
+        // lub gdy persystencja jest wyłączona
+        if (!PersistentModel && Model == null)
+        {
+            await LoadDataAsync(cancellationToken);
+        }
     }
 
     /// <summary>
@@ -106,9 +112,9 @@ public class PageViewBase<TViewModel> : ExtensionsBase where TViewModel : class
     /// </summary>
     private Task PersistState()
     {
-        if (Model != null)
+        if (PersistentModel && Model != null)
             PersistentComponentState.PersistAsJson(StateKey, Model);
-        
+
         return Task.CompletedTask;
     }
 
