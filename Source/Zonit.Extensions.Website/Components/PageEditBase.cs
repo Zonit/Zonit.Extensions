@@ -51,12 +51,12 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
         {
             if (EditContext is not null)
             {
-                EditContext.OnFieldChanged -= OnModelChanged;
+                EditContext.OnFieldChanged -= HandleModelFieldChanged;
                 EditContext.OnValidationRequested -= HandleValidationRequested;
             }
 
             EditContext = new EditContext(Model);
-            EditContext.OnFieldChanged += OnModelChanged;
+            EditContext.OnFieldChanged += HandleModelFieldChanged;
             EditContext.OnValidationRequested += HandleValidationRequested;
             ValidationMessages = new ValidationMessageStore(EditContext);
 
@@ -65,13 +65,24 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
         }
     }
 
-    protected virtual void OnModelChanged(object? sender, FieldChangedEventArgs e)
+    private async void HandleModelFieldChanged(object? sender, FieldChangedEventArgs e)
     {
         if (TrackChanges)
             HasChanges = true;
 
+        var fieldName = e.FieldIdentifier.FieldName;
+        var currentValue = GetFieldValue(e.FieldIdentifier);
+        var previousValue = _lastFieldValues.TryGetValue(fieldName, out var prev) ? prev : null;
+
+        // Zachowaj aktualną wartość dla przyszłych porównań
+        _lastFieldValues[fieldName] = currentValue;
+
         // Auto-save dla konkretnego pola
         HandleFieldAutoSave(e.FieldIdentifier);
+
+        // Wywołaj OnModelChanged dla każdej zmiany modelu
+        var cancellationToken = CancellationTokenSource?.Token ?? CancellationToken.None;
+        await OnModelChanged(fieldName, previousValue, currentValue, cancellationToken);
 
         StateHasChanged();
     }
@@ -86,12 +97,20 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
     protected virtual void OnAfterSubmit(bool success) { }
 
     protected virtual async Task AutoSaveAsync(
-        string fieldName,
-        object? oldValue,
-        object? newValue,
-        CancellationToken cancellationToken = default
-    )
-        => await Task.CompletedTask;
+            string fieldName,
+            object? oldValue,
+            object? newValue,
+            CancellationToken cancellationToken = default
+        )
+            => await Task.CompletedTask;
+
+    protected virtual async Task OnModelChanged(
+            string fieldName,
+            object? oldValue,
+            object? newValue,
+            CancellationToken cancellationToken = default
+        ) 
+            => await Task.CompletedTask;
 
     protected virtual bool IsFieldAutoSaveEnabled(string fieldName)
     {
@@ -172,12 +191,12 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
 
         if (EditContext is not null)
         {
-            EditContext.OnFieldChanged -= OnModelChanged;
+            EditContext.OnFieldChanged -= HandleModelFieldChanged;
             EditContext.OnValidationRequested -= HandleValidationRequested;
         }
 
         EditContext = new EditContext(Model);
-        EditContext.OnFieldChanged += OnModelChanged;
+        EditContext.OnFieldChanged += HandleModelFieldChanged;
         EditContext.OnValidationRequested += HandleValidationRequested;
         ValidationMessages = new ValidationMessageStore(EditContext);
 
@@ -354,13 +373,54 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
         EditContext.NotifyValidationStateChanged();
     }
 
+    /// <summary>
+    /// Tworzy EventCallback dla właściwości modelu, pozwalając na składnię OnValueChanged(Model.Property)
+    /// </summary>
+    /// <typeparam name="T">Typ wartości właściwości</typeparam>
+    /// <param name="modelValue">Wartość właściwości modelu (np. Model.Property)</param>
+    /// <returns>EventCallback do przypisania do ValueChanged</returns>
+    protected EventCallback<T> OnValueChanged<T>(T modelValue)
+    {
+        return EventCallback.Factory.Create<T>(this, newValue =>
+        {
+            if (Model is null)
+                return;
+
+            // Znajdź właściwość w modelu, która odpowiada tej wartości
+            var properties = typeof(TViewModel)
+                .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                .Where(p => p.CanRead && p.CanWrite && p.PropertyType == typeof(T));
+
+            foreach (var property in properties)
+            {
+                var currentValue = property.GetValue(Model);
+
+                // Sprawdź czy wartości są równe - to jest właściwość, którą chcemy zaktualizować
+                if (EqualityComparer<T>.Default.Equals((T)currentValue!, modelValue))
+                {
+                    // Aktualizuj wartość właściwości
+                    property.SetValue(Model, newValue);
+
+                    // Powiadom EditContext o zmianie
+                    if (EditContext != null)
+                    {
+                        EditContext.NotifyFieldChanged(EditContext.Field(property.Name));
+                    }
+
+                    // Znaleźliśmy pasującą właściwość, nie musimy sprawdzać dalej
+                    break;
+                }
+            }
+        });
+    }
+
     protected override void Dispose(bool disposing)
     {
         if (disposing)
         {
             if (EditContext is not null)
             {
-                EditContext.OnFieldChanged -= OnModelChanged;
+                EditContext.OnFieldChanged -= HandleModelFieldChanged;
                 EditContext.OnValidationRequested -= HandleValidationRequested;
                 ValidationMessages?.Clear();
                 ValidationMessages = null;
