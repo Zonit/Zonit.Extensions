@@ -129,34 +129,20 @@ public class PageViewBase<TViewModel> : ExtensionsBase where TViewModel : class
         return Task.CompletedTask;
     }
 
-    protected virtual async void OnRefreshChangeAsync()
+    protected override async void OnRefreshChangeAsync()
     {
         try
         {
-            // Utwórz nowy CancellationTokenSource jeśli został zniszczony
-            if (CancellationTokenSource == null || CancellationTokenSource.IsCancellationRequested)
-            {
-                CancellationTokenSource?.Dispose();
-                CancellationTokenSource = new CancellationTokenSource();
-            }
-
-            var token = CancellationTokenSource.Token;
-            await OnInitializedAsync(token);
-
-            if (token.IsCancellationRequested)
-            {
+            if (IsLoading)
                 return;
-            }
 
-            await InvokeAsync(StateHasChanged);
+            await RefreshAsync(CancellationTokenSource?.Token ?? CancellationToken.None);
         }
-        catch (OperationCanceledException)
-        {
-            // Ignoruj anulowane operacje podczas przejścia między render modes
-        }
+        catch (OperationCanceledException) { }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Błąd podczas odświeżania komponentu {ComponentType}: {Message}",
+            Logger.LogError(ex,
+                "Błąd podczas odświeżania komponentu {ComponentType}: {Message}",
                 GetType().Name, ex.Message);
         }
     }

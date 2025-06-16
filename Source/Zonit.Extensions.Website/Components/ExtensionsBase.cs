@@ -139,15 +139,11 @@ public abstract class ExtensionsBase : Base, IDisposable
             await OnInitializedAsync(token);
 
             if (token.IsCancellationRequested)
-            {
                 return;
-            }
 
             await InvokeAsync(StateHasChanged);
         }
-        catch (OperationCanceledException)
-        {
-        }
+        catch (OperationCanceledException) { }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Błąd podczas odświeżania komponentu {ComponentType}: {Message}",
