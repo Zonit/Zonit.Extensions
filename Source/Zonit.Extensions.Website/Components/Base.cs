@@ -8,7 +8,7 @@ public class Base : ComponentBase, IDisposable
     /// <summary>
     /// Token anulowania operacji asynchronicznych
     /// </summary>
-    protected CancellationTokenSource? CancellationTokenSource { get; private set; }
+    protected CancellationTokenSource? CancellationTokenSource { get; set; }
 
     /// <summary>
     /// Flaga oznaczająca, czy komponent został zniszczony
@@ -101,7 +101,6 @@ public class Base : ComponentBase, IDisposable
             {
                 try
                 {
-                    CancellationTokenSource?.Cancel();
                     CancellationTokenSource?.Dispose();
                 }
                 catch (ObjectDisposedException)

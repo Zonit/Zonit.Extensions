@@ -30,6 +30,11 @@ public class PageViewBase<TViewModel> : ExtensionsBase where TViewModel : class
     protected override async Task OnInitializedAsync(CancellationToken cancellationToken)
     {
         await base.OnInitializedAsync(cancellationToken);
+
+        // Nie ładuj danych jeśli komponent jest już disposed lub token anulowany
+        if (IsDisposed || cancellationToken.IsCancellationRequested)
+            return;
+
         ThrowIfCancellationRequested(cancellationToken);
 
         // Zarejestruj persystencję tylko gdy potrzebna
@@ -73,6 +78,10 @@ public class PageViewBase<TViewModel> : ExtensionsBase where TViewModel : class
     /// </summary>
     private async Task LoadDataAsync(CancellationToken cancellationToken = default)
     {
+        // Sprawdź czy to nie jest prerendering, który zostanie anulowany
+        if (cancellationToken.IsCancellationRequested)
+            return;
+
         IsLoading = true;
         StateHasChanged();
 
@@ -83,7 +92,9 @@ public class PageViewBase<TViewModel> : ExtensionsBase where TViewModel : class
         }
         catch (OperationCanceledException)
         {
-            throw;
+            // Nie rzucaj wyjątku jeśli to anulowanie podczas przejścia render modes
+            if (!IsDisposed)
+                throw;
         }
         catch (Exception ex)
         {
@@ -93,7 +104,7 @@ public class PageViewBase<TViewModel> : ExtensionsBase where TViewModel : class
         }
         finally
         {
-            if (!cancellationToken.IsCancellationRequested)
+            if (!cancellationToken.IsCancellationRequested && !IsDisposed)
             {
                 IsLoading = false;
                 StateHasChanged();
@@ -118,25 +129,34 @@ public class PageViewBase<TViewModel> : ExtensionsBase where TViewModel : class
         return Task.CompletedTask;
     }
 
-    protected override async void OnRefreshChangeAsync()
+    protected virtual async void OnRefreshChangeAsync()
     {
         try
         {
-            var token = CancellationTokenSource?.Token ?? CancellationToken.None;
+            // Utwórz nowy CancellationTokenSource jeśli został zniszczony
+            if (CancellationTokenSource == null || CancellationTokenSource.IsCancellationRequested)
+            {
+                CancellationTokenSource?.Dispose();
+                CancellationTokenSource = new CancellationTokenSource();
+            }
 
-            await LoadDataAsync(token);
+            var token = CancellationTokenSource.Token;
+            await OnInitializedAsync(token);
 
             if (token.IsCancellationRequested)
+            {
                 return;
+            }
 
-            base.OnRefreshChangeAsync();
+            await InvokeAsync(StateHasChanged);
         }
         catch (OperationCanceledException)
         {
+            // Ignoruj anulowane operacje podczas przejścia między render modes
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Błąd w OnRefreshChangeAsync dla {ComponentType}: {Message}",
+            Logger.LogError(ex, "Błąd podczas odświeżania komponentu {ComponentType}: {Message}",
                 GetType().Name, ex.Message);
         }
     }
