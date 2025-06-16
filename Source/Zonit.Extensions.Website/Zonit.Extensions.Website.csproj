@@ -18,6 +18,10 @@
 		<PackageReference Include="Zonit.Extensions.Organizations.Abstractions" />
 		<PackageReference Include="Zonit.Extensions.Identity.Abstractions" />
 		<PackageReference Include="Zonit.Extensions.Projects.Abstractions" />
+		<PackageReference Include="Microsoft.SourceLink.GitHub">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
 	</ItemGroup>
 
   <ItemGroup>
