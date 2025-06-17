@@ -8,7 +8,7 @@ public class Base : ComponentBase, IDisposable
     /// <summary>
     /// Token anulowania operacji asynchronicznych
     /// </summary>
-    protected CancellationTokenSource? CancellationTokenSource { get; set; }
+    protected CancellationTokenSource? CancellationTokenSource { get; private set; }
 
     /// <summary>
     /// Flaga oznaczająca, czy komponent został zniszczony

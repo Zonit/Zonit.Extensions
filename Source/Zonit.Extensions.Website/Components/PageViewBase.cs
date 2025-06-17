@@ -134,6 +134,8 @@ public class PageViewBase<TViewModel> : ExtensionsBase where TViewModel : class
 
     protected override async void OnRefreshChangeAsync()
     {
+        base.OnRefreshChangeAsync();
+
         try
         {
             if (IsLoading)
