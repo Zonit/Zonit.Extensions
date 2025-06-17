@@ -82,6 +82,9 @@ public class PageViewBase<TViewModel> : ExtensionsBase where TViewModel : class
         if (cancellationToken.IsCancellationRequested)
             return;
 
+        if(IsLoading)
+            return;
+
         IsLoading = true;
         StateHasChanged();
 
