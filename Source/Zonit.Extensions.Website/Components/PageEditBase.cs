@@ -7,10 +7,12 @@ using Zonit.Extensions.Text;
 
 namespace Zonit.Extensions.Website;
 
-public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : class, new()
+public abstract class PageEditBase<TViewModel> : PageViewBase<TViewModel> where TViewModel : class, new()
 {
     [SupplyParameterFromForm]
-    protected TViewModel Model { get; private set; } = new TViewModel();
+#pragma warning disable CS8765 // Dopuszczanie wartości null dla typu parametru nie jest zgodne z przesłoniętą składową (prawdopodobnie z powodu atrybutów dopuszczania wartości null).
+    protected override TViewModel Model { get; set; } = new TViewModel();
+#pragma warning restore CS8765 // Dopuszczanie wartości null dla typu parametru nie jest zgodne z przesłoniętą składową (prawdopodobnie z powodu atrybutów dopuszczania wartości null).
     protected EditContext? EditContext { get; private set; }
     protected ValidationMessageStore? ValidationMessages { get; private set; }
     protected bool Processing { get; set; } = false;
@@ -241,9 +243,6 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
 
     private void CleanModelData()
     {
-        if (Model is null)
-            return;
-
         var properties = typeof(TViewModel)
             .GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Where(p => p.CanRead && p.CanWrite && p.PropertyType == typeof(string));
@@ -385,7 +384,6 @@ public abstract class PageEditBase<TViewModel> : PageBase where TViewModel : cla
         {
             if (Model is null)
                 return;
-
             // Znajdź właściwość w modelu, która odpowiada tej wartości
             var properties = typeof(TViewModel)
                 .GetProperties(BindingFlags.Public | BindingFlags.Instance)

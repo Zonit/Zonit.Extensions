@@ -7,12 +7,12 @@ namespace Zonit.Extensions.Website;
 /// Prosta klasa bazowa dla komponentów wyświetlających dane
 /// </summary>
 /// <typeparam name="TViewModel">Typ modelu danych</typeparam>
-public class PageViewBase<TViewModel> : ExtensionsBase where TViewModel : class
+public class PageViewBase<TViewModel> : PageBase where TViewModel : class
 {
     /// <summary>
     /// Model danych do wyświetlenia
     /// </summary>
-    protected TViewModel? Model { get; set; }
+    protected virtual TViewModel? Model { get; set; }
 
     /// <summary>
     /// Czy dane są aktualnie ładowane

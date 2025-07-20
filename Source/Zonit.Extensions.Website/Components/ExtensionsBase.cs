@@ -46,6 +46,9 @@ public abstract class ExtensionsBase : Base, IDisposable
     private readonly Lazy<IBreadcrumbsProvider> _breadcrumbs;
     protected IBreadcrumbsProvider BreadcrumbsProvider => _breadcrumbs.Value;
 
+    private readonly Lazy<IToastProvider> _toast;
+    protected IToastProvider Toast => _toast.Value;
+
     protected ExtensionsBase()
     {
         _culture = new Lazy<ICultureProvider>(() =>
@@ -79,6 +82,11 @@ public abstract class ExtensionsBase : Base, IDisposable
             var service = GetService<IBreadcrumbsProvider>();
             service.OnChange += OnRefreshChangeAsync;
             return service;
+        });
+
+        _toast = new Lazy<IToastProvider>(() =>
+        {
+            return GetService<IToastProvider>();
         });
     }
 
