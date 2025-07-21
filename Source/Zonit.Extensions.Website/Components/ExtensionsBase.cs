@@ -12,6 +12,7 @@ namespace Zonit.Extensions.Website;
 public abstract class ExtensionsBase : Base, IDisposable
 {
     private bool _disposed;
+    private readonly Dictionary<Type, IDisposable> _optionsMonitorSubscriptions = new();
 
     [Inject]
     private IServiceProvider ServiceProvider { get; set; } = default!;
@@ -113,12 +114,26 @@ public abstract class ExtensionsBase : Base, IDisposable
         => ServiceProvider.GetRequiredService<T>();
 
     /// <summary>
-    /// Pobiera opcje konfiguracji typu TModel
+    /// Pobiera opcje konfiguracji typu TModel z automatycznym odświeżaniem interfejsu przy zmianie
     /// </summary>
     /// <typeparam name="TModel">Typ modelu opcji</typeparam>
-    /// <returns>Wartości opcji</returns>
+    /// <returns>Wartości opcji z monitorowaniem</returns>
     protected TModel Options<TModel>() where TModel : class
-        => ServiceProvider.GetRequiredService<IOptions<TModel>>().Value;
+    {
+        var monitor = ServiceProvider.GetRequiredService<IOptionsMonitor<TModel>>();
+        
+        // Zarejestruj callback tylko jeśli jeszcze nie istnieje dla tego typu
+        if (!_optionsMonitorSubscriptions.ContainsKey(typeof(TModel)))
+        {
+            var subscription = monitor.OnChange((options, name) =>
+            {
+                OnRefreshChangeAsync();
+            });
+            _optionsMonitorSubscriptions[typeof(TModel)] = subscription;
+        }
+
+        return monitor.CurrentValue;
+    }
 
     public MarkupString T(string key, params object[] args)
         => new (Culture.Translate(key, args));
@@ -144,6 +159,13 @@ public abstract class ExtensionsBase : Base, IDisposable
 
             if (_breadcrumbs.IsValueCreated)
                 _breadcrumbs.Value.OnChange -= OnUIRefreshChangeAsync;
+
+            // Dispose wszystkich subskrypcji IOptionsMonitor
+            foreach (var subscription in _optionsMonitorSubscriptions.Values)
+            {
+                subscription?.Dispose();
+            }
+            _optionsMonitorSubscriptions.Clear();
         }
 
         _disposed = true;
