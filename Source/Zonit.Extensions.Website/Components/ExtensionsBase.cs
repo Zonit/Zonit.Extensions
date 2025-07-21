@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Zonit.Extensions.Cultures;
 using Zonit.Extensions.Identity;
 using Zonit.Extensions.Organizations;
@@ -49,12 +50,15 @@ public abstract class ExtensionsBase : Base, IDisposable
     private readonly Lazy<IToastProvider> _toast;
     protected IToastProvider Toast => _toast.Value;
 
+    private readonly Lazy<ICookieProvider> _cookie;
+    protected ICookieProvider Cookie => _cookie.Value;
+
     protected ExtensionsBase()
     {
         _culture = new Lazy<ICultureProvider>(() =>
         {
             var service = GetService<ICultureProvider>();
-            service.OnChange += OnRefreshChangeAsync;
+            service.OnChange += OnUIRefreshChangeAsync;
             return service;
         });
 
@@ -80,13 +84,18 @@ public abstract class ExtensionsBase : Base, IDisposable
         _breadcrumbs = new Lazy<IBreadcrumbsProvider>(() =>
         {
             var service = GetService<IBreadcrumbsProvider>();
-            service.OnChange += OnRefreshChangeAsync;
+            service.OnChange += OnUIRefreshChangeAsync;
             return service;
         });
 
         _toast = new Lazy<IToastProvider>(() =>
         {
             return GetService<IToastProvider>();
+        });
+
+        _cookie = new Lazy<ICookieProvider>(() =>
+        {
+            return GetService<ICookieProvider>();
         });
     }
 
@@ -103,6 +112,14 @@ public abstract class ExtensionsBase : Base, IDisposable
     private T GetService<T>() where T : class
         => ServiceProvider.GetRequiredService<T>();
 
+    /// <summary>
+    /// Pobiera opcje konfiguracji typu TModel
+    /// </summary>
+    /// <typeparam name="TModel">Typ modelu opcji</typeparam>
+    /// <returns>Wartości opcji</returns>
+    protected TModel Options<TModel>() where TModel : class
+        => ServiceProvider.GetRequiredService<IOptions<TModel>>().Value;
+
     public MarkupString T(string key, params object[] args)
         => new (Culture.Translate(key, args));
 
@@ -117,7 +134,7 @@ public abstract class ExtensionsBase : Base, IDisposable
         if (disposing)
         {
             if (_culture.IsValueCreated)
-                _culture.Value.OnChange -= OnRefreshChangeAsync;
+                _culture.Value.OnChange -= OnUIRefreshChangeAsync;
 
             if (_workspace.IsValueCreated)
                 _workspace.Value.OnChange -= OnRefreshChangeAsync;
@@ -126,7 +143,7 @@ public abstract class ExtensionsBase : Base, IDisposable
                 _catalog.Value.OnChange -= OnRefreshChangeAsync;
 
             if (_breadcrumbs.IsValueCreated)
-                _breadcrumbs.Value.OnChange -= OnRefreshChangeAsync;
+                _breadcrumbs.Value.OnChange -= OnUIRefreshChangeAsync;
         }
 
         _disposed = true;
@@ -135,6 +152,28 @@ public abstract class ExtensionsBase : Base, IDisposable
 
     ~ExtensionsBase()
         => Dispose(false);
+
+    /// <summary>
+    /// Metoda do odświeżania tylko interfejsu użytkownika bez przeładowania danych
+    /// </summary>
+    protected virtual async void OnUIRefreshChangeAsync()
+    {
+        try
+        {
+            var token = CancellationTokenSource?.Token ?? CancellationToken.None;
+
+            if (token.IsCancellationRequested)
+                return;
+
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Błąd podczas odświeżania interfejsu komponentu {ComponentType}: {Message}",
+                GetType().Name, ex.Message);
+        }
+    }
 
     /// <summary>
     /// Klasa do ponownego przeładowania treści na stronie, danych np z bazy danych
