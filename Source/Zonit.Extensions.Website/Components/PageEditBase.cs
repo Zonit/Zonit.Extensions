@@ -213,6 +213,8 @@ public abstract class PageEditBase<TViewModel> : PageViewBase<TViewModel> where 
 
         var field = EditContext.Field(fieldName);
         ValidationMessages?.Add(field, message);
+        EditContext.NotifyValidationStateChanged();
+        StateHasChanged();
     }
 
     public void ClearValidationMessages()
