@@ -100,6 +100,14 @@ Advanced base classes for Blazor components with built-in data loading, form han
 
 **[📚 Learn more about Blazor Components →](Source/Zonit.Extensions.Website/Components/Readme.md)**
 
+### 🛠 Additional Website Features
+The Website package also includes additional utilities for web development:
+
+- **[Breadcrumbs Management](Source/Zonit.Extensions.Website/Breadcrumbs/Readme.md)** - Simple breadcrumb navigation system with customizable items
+- **Response Compression** - Optimized compression settings for web applications including Brotli and Gzip
+- **Proxy Support** - Forwarded headers configuration for reverse proxy scenarios
+- **HSTS Configuration** - HTTP Strict Transport Security setup utilities
+
 ## 🎯 Getting Started
 
 1. **Choose your packages** based on your needs
@@ -115,6 +123,7 @@ Each component has detailed documentation with examples:
 - [XML Processing Documentation](Source/Zonit.Extensions/Xml/Readme.md)
 - [Text Analysis Documentation](Source/Zonit.Extensions/Text/Readme.md)
 - [Blazor Components Documentation](Source/Zonit.Extensions.Website/Components/Readme.md)
+- [Breadcrumbs Documentation](Source/Zonit.Extensions.Website/Breadcrumbs/Readme.md)
 
 ## 🤝 Contributing
 
