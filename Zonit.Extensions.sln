@@ -34,6 +34,11 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zonit.Extensions.Website", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zonit.Extensions.Website.Abstractions", "Source\Zonit.Extensions.Website.Abstractions\Zonit.Extensions.Website.Abstractions.csproj", "{9647BC62-7A72-49F5-96DC-D69C23EE1AB4}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "prompts", "prompts", "{E0AAE86E-E3E5-476E-AE7A-6A7AC0A8F431}"
+	ProjectSection(SolutionItems) = preProject
+		.github\prompts\Zonit-Extensions-Website.prompt.md = .github\prompts\Zonit-Extensions-Website.prompt.md
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -72,6 +77,7 @@ Global
 		{453A385E-2C7B-4E69-A3CC-9FF34B38E69A} = {D0711348-103D-4AA0-889C-9E464B373DF4}
 		{B3C00FBC-10D5-40C3-BF01-CAC9D1C25206} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 		{9647BC62-7A72-49F5-96DC-D69C23EE1AB4} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+		{E0AAE86E-E3E5-476E-AE7A-6A7AC0A8F431} = {61090823-DF6B-4E31-98D8-81D1214D0559}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {19890891-B329-40B4-BE5A-94AA9E7B63E0}

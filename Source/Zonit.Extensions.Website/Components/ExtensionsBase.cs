@@ -121,7 +121,7 @@ public abstract class ExtensionsBase : Base, IDisposable
     protected TModel Options<TModel>() where TModel : class
     {
         var monitor = ServiceProvider.GetRequiredService<IOptionsMonitor<TModel>>();
-        
+
         // Zarejestruj callback tylko jeśli jeszcze nie istnieje dla tego typu
         if (!_optionsMonitorSubscriptions.ContainsKey(typeof(TModel)))
         {
@@ -129,17 +129,20 @@ public abstract class ExtensionsBase : Base, IDisposable
             {
                 OnRefreshChangeAsync();
             });
-            _optionsMonitorSubscriptions[typeof(TModel)] = subscription;
+
+            // Zapisuj subscription tylko jeśli nie jest null
+            if (subscription != null)
+                _optionsMonitorSubscriptions[typeof(TModel)] = subscription;
         }
 
         return monitor.CurrentValue;
     }
 
-    public MarkupString T(string key, params object[] args)
-        => new (Culture.Translate(key, args));
+    public Translated T(string content, params object[] args)
+        => Culture.Translate(content, args);
 
-    public MarkupString Translate(string key, params object[] args)
-        => new (Culture.Translate(key, args));
+    public Translated Translate(string content, params object[] args)
+        => Culture.Translate(content, args);
 
     protected override void Dispose(bool disposing)
     {
