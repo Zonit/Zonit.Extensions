@@ -4,7 +4,7 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AssemblyVersion>0.1.24</AssemblyVersion>
+    <AssemblyVersion>0.1.25</AssemblyVersion>
     <FileVersion>$(AssemblyVersion)</FileVersion>
     <Version>$(AssemblyVersion)</Version>
     <Authors>Zonit</Authors>
@@ -43,7 +43,7 @@
   </ItemGroup>
   <ItemGroup>
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
-    <PackageVersion Include="Zonit.Extensions.Cultures.Abstractions" Version="0.1.4" />
+    <PackageVersion Include="Zonit.Extensions.Cultures.Abstractions" Version="0.1.5" />
     <PackageVersion Include="Zonit.Extensions.Organizations.Abstractions" Version="0.1.8" />
     <PackageVersion Include="Zonit.Extensions.Identity.Abstractions" Version="0.1.6" />
     <PackageVersion Include="Zonit.Extensions.Projects.Abstractions" Version="0.1.4" />
