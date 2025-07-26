@@ -23,7 +23,7 @@ public readonly struct Translated : IEquatable<Translated>
     public bool IsEmpty => _inner.IsEmpty;
     public bool IsNullOrWhiteSpace => _inner.IsNullOrWhiteSpace;
 
-    // Konwersje na podstawowe typy
+    // Konwersje na podstawowe typy - string ma priorytet
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static implicit operator string(Translated translated) => translated._inner;
 
@@ -36,16 +36,14 @@ public readonly struct Translated : IEquatable<Translated>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static implicit operator Translated(CulturesTranslated translated) => new(translated);
 
-    // Konwersje Blazor
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static implicit operator MarkupString(Translated translated)
-        => new(translated._inner.ToString() ?? string.Empty);
+    // USUNIĘTO: implicit operator MarkupString - to powodowało konflikt
+    // Blazor automatycznie użyje ToMarkupString() dla content renderingu
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static implicit operator Translated(MarkupString markupString)
         => new(markupString.Value ?? string.Empty);
 
-    // Metody Blazor
+    // Metody Blazor - Blazor automatycznie znajdzie ToMarkupString() dla @T("content")
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public MarkupString ToMarkupString() => new(_inner.ToString() ?? string.Empty);
 
