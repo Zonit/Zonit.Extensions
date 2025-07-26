@@ -1,0 +1,23 @@
+﻿@page "/"
+@using Zonit.Extensions.Website
+
+@inherits ExtensionsBase
+
+<PageTitle>Home</PageTitle>
+
+<h1>Hello, world!</h1>
+
+Welcome to your new app.
+
+
+<h4>Direct rendering tests:</h4>
+<div>As string: @T("Hello <b>Dawid</b>")</div>
+<div>Raw string: @("Hello <b>World</b>")</div>
+
+<h4>Test pokazujący różnicę:</h4>
+<div>TH() w div (HTML): @TM("Text with <em>emphasis</em> and <strong>bold</strong>")</div>
+<TestComponent Content="@T("Text with <em>emphasis</em> and <strong>bold</strong>")" />
+
+@code {
+    Translated Test = new Translated("Hello <b>World</b>");
+}

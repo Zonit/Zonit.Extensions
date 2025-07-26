@@ -138,9 +138,23 @@ public abstract class ExtensionsBase : Base, IDisposable
         return monitor.CurrentValue;
     }
 
-    public Translated T(string content, params object[] args)
-        => Culture.Translate(content, args);
+    // *** PROSTE ROZWIĄZANIE: T() = string, TH() = HTML MarkupString ***
+    
+    /// <summary>
+    /// Zwraca tłumaczenie jako string (domyślna metoda dla parametrów komponentów)
+    /// </summary>
+    public string T(string content, params object[] args)
+        => Culture.Translate(content, args).ToString();
 
+    /// <summary>
+    /// Alias dla TH() - TM = Translation Markup 
+    /// </summary>
+    public MarkupString TM(string content, params object[] args)
+        => new MarkupString(Culture.Translate(content, args));
+
+    /// <summary>
+    /// Alias dla kompatybilności wstecznej - zwraca Translated
+    /// </summary>
     public Translated Translate(string content, params object[] args)
         => Culture.Translate(content, args);
 

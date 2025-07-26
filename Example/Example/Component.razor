@@ -1,0 +1,23 @@
+﻿@using Zonit.Extensions.Website
+
+@inherits ExtensionsBase
+
+<h3>Component - Proste API</h3>
+
+<!-- NOWE PROSTE ROZWIĄZANIE -->
+<h4>Proste i intuicyjne API:</h4>
+<TestComponent Content="@T("Hello <b>Dawid</b>")" />
+<div>@TM("Hello <em>alternative</em> HTML")</div>
+
+<h4>Porównanie:</h4>
+<div>T() (string): @T("Text with <em>emphasis</em> and <strong>bold</strong>")</div>
+<div>TM() (HTML): @TM("Text with <em>emphasis</em> and <strong>bold</strong>")</div>
+<TestComponent Content="@T("Text with <em>emphasis</em> and <strong>bold</strong>")" />
+
+<h4>Czytelny kod:</h4>
+<div>@T("Zwykły tekst")</div>
+<TestComponent Content="@T("Parametr komponentu")" />
+
+@code {
+    Translated Test = new Translated("Hello <b>World</b>");
+}

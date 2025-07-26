@@ -23,9 +23,14 @@ public readonly struct Translated : IEquatable<Translated>
     public bool IsEmpty => _inner.IsEmpty;
     public bool IsNullOrWhiteSpace => _inner.IsNullOrWhiteSpace;
 
-    // Konwersje na podstawowe typy - string ma priorytet
+    // ZMIANA: MarkupString ma priorytet jako implicit - będzie używany w @T("text")
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static implicit operator string(Translated translated) => translated._inner;
+    public static implicit operator MarkupString(Translated translated) 
+        => new(translated._inner.ToString() ?? string.Empty);
+
+    // String jest explicit - trzeba używać .ToString() dla komponentów
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static explicit operator string(Translated translated) => translated._inner;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static implicit operator Translated(string text) => new(text);
@@ -36,23 +41,24 @@ public readonly struct Translated : IEquatable<Translated>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static implicit operator Translated(CulturesTranslated translated) => new(translated);
 
-    // USUNIĘTO: implicit operator MarkupString - to powodowało konflikt
-    // Blazor automatycznie użyje ToMarkupString() dla content renderingu
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static implicit operator Translated(MarkupString markupString)
         => new(markupString.Value ?? string.Empty);
 
-    // Metody Blazor - Blazor automatycznie znajdzie ToMarkupString() dla @T("content")
+    // Skrótowa metoda dla explicit conversion do MarkupString (już niepotrzebna bo mamy implicit)
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public MarkupString ToMarkupString() => new(_inner.ToString() ?? string.Empty);
+    public MarkupString AsMarkup() => this; // Teraz używa implicit conversion
+
+    // Metoda ToMarkupString() dla zgodności z Blazor patterns
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public MarkupString ToMarkupString() => this; // Teraz używa implicit conversion
 
     public MarkupString ToMarkupString(params object?[]? args)
     {
         var text = _inner.ToString() ?? string.Empty;
 
         if (args is null || args.Length == 0)
-            return new MarkupString(text);
+            return this; // Używa implicit conversion
 
         try
         {
@@ -60,7 +66,7 @@ public readonly struct Translated : IEquatable<Translated>
         }
         catch (FormatException)
         {
-            return new MarkupString(text);
+            return this; // Używa implicit conversion
         }
         catch (ArgumentNullException)
         {
