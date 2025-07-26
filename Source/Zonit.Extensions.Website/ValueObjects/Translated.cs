@@ -5,75 +5,56 @@ using CulturesTranslated = Zonit.Extensions.Cultures.Translated;
 namespace Zonit.Extensions.Website;
 
 /// <summary>
-/// Rozszerzenie dla klasy Translated z Zonit.Extensions.Cultures
-/// dodające wsparcie dla MarkupString w aplikacjach Blazor
+/// Wrapper dla Translated z Zonit.Extensions.Cultures
+/// dodający wsparcie dla MarkupString w aplikacjach Blazor
 /// </summary>
-public readonly partial struct Translated
+public readonly struct Translated : IEquatable<Translated>
 {
-    /// <summary>
-    /// Konwertuje Translated na MarkupString dla renderowania HTML w Blazor
-    /// </summary>
+    private readonly CulturesTranslated _inner;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public Translated(CulturesTranslated translated) => _inner = translated;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public Translated(string text) => _inner = new CulturesTranslated(text);
+
+    // Deleguj wszystkie właściwości do _inner
+    public string Value => _inner.Value;
+    public bool IsEmpty => _inner.IsEmpty;
+    public bool IsNullOrWhiteSpace => _inner.IsNullOrWhiteSpace;
+
+    // Konwersje na podstawowe typy
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static implicit operator string(Translated translated) => translated._inner;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static implicit operator Translated(string text) => new(text);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static implicit operator CulturesTranslated(Translated translated) => translated._inner;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static implicit operator Translated(CulturesTranslated translated) => new(translated);
+
+    // Konwersje Blazor
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static implicit operator MarkupString(Translated translated)
-        => new(translated.ToString() ?? string.Empty);
+        => new(translated._inner.ToString() ?? string.Empty);
 
-    /// <summary>
-    /// Konwertuje MarkupString na Translated
-    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static implicit operator Translated(MarkupString markupString)
-    {
-        string text = markupString.Value ?? string.Empty;
-        return CreateFromString(text);
-    }
+        => new(markupString.Value ?? string.Empty);
 
-    /// <summary>
-    /// Konwertuje Zonit.Extensions.Cultures.Translated na Zonit.Extensions.Website.Translated
-    /// Używa Unsafe.As dla bezpośredniej konwersji bez boxing/unboxing
-    /// </summary>
+    // Metody Blazor
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static implicit operator Translated(CulturesTranslated culturesTranslated)
-    {
-        return Unsafe.As<CulturesTranslated, Translated>(ref culturesTranslated);
-    }
+    public MarkupString ToMarkupString() => new(_inner.ToString() ?? string.Empty);
 
-    /// <summary>
-    /// Konwertuje Zonit.Extensions.Website.Translated na Zonit.Extensions.Cultures.Translated
-    /// Używa Unsafe.As dla bezpośredniej konwersji bez boxing/unboxing
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static implicit operator CulturesTranslated(Translated websiteTranslated)
-    {
-        return Unsafe.As<Translated, CulturesTranslated>(ref websiteTranslated);
-    }
-
-    /// <summary>
-    /// Wydajne tworzenie Translated z string przez delegację do kultury
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static Translated CreateFromString(string text)
-    {
-        CulturesTranslated culturesTranslated = text;
-        return Unsafe.As<CulturesTranslated, Translated>(ref culturesTranslated);
-    }
-
-    /// <summary>
-    /// Tworzy MarkupString z obecnego obiektu Translated
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public MarkupString ToMarkupString() => new(ToString() ?? string.Empty);
-
-    /// <summary>
-    /// Tworzy MarkupString z formatowaniem, używając obecnego tekstu jako szablonu
-    /// </summary>
     public MarkupString ToMarkupString(params object?[]? args)
     {
-        var text = ToString() ?? string.Empty;
+        var text = _inner.ToString() ?? string.Empty;
 
         if (args is null || args.Length == 0)
-        {
             return new MarkupString(text);
-        }
 
         try
         {
@@ -88,4 +69,15 @@ public readonly partial struct Translated
             return new MarkupString(string.Empty);
         }
     }
+
+    // Deleguj metody
+    public override string ToString() => _inner.ToString();
+    public bool Equals(Translated other) => _inner.Equals(other._inner);
+    public override bool Equals(object? obj) => obj is Translated other && Equals(other);
+    public override int GetHashCode() => _inner.GetHashCode();
+
+    public static bool operator ==(Translated left, Translated right) => left.Equals(right);
+    public static bool operator !=(Translated left, Translated right) => !left.Equals(right);
+
+    public static readonly Translated Empty = new(CulturesTranslated.Empty);
 }
