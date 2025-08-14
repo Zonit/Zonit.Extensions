@@ -89,7 +89,8 @@ public abstract class PageEditBase<TViewModel> : PageViewBase<TViewModel> where 
         StateHasChanged();
     }
 
-    protected virtual void HandleInvalidSubmit(string message) { }
+    protected virtual void HandleInvalidSubmit(string message)
+        => Toast.AddError(message);
 
     protected virtual async Task SubmitAsync(CancellationToken cancellationToken = default)
         => await Task.CompletedTask;

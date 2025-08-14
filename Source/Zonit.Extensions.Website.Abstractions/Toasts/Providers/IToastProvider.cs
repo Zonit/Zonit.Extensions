@@ -4,11 +4,20 @@ namespace Zonit.Extensions.Website;
 
 public interface IToastProvider
 {
-    public void Add(string message, ToastType taskType);
+    public void Add(string message, ToastType taskType, params object[]? args);
 
-    public void AddNormal(string message) => Add(message, ToastType.Normal);
-    public void AddInfo(string message) => Add(message, ToastType.Info);
-    public void AddSuccess(string message) => Add(message, ToastType.Success);
-    public void AddWarning(string message) => Add(message, ToastType.Warning);
-    public void AddError(string message) => Add(message, ToastType.Error);
+    public void AddNormal(string message, params object[]? args) 
+        => Add(message, ToastType.Normal, args);
+
+    public void AddInfo(string message, params object[]? args) 
+        => Add(message, ToastType.Info, args);
+
+    public void AddSuccess(string message, params object[]? args) 
+        => Add(message, ToastType.Success, args);
+
+    public void AddWarning(string message, params object[]? args) 
+        => Add(message, ToastType.Warning, args);
+
+    public void AddError(string message, params object[]? args) 
+        => Add(message, ToastType.Error, args);
 }
