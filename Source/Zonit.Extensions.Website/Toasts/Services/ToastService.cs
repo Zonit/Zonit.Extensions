@@ -4,7 +4,7 @@ namespace Zonit.Extensions.Website.Toasts.Services;
 
 public class ToastService : IToastProvider
 {
-    public void Add(string message, ToastType taskType, params object[]? args)
+    public void Add(ToastType taskType, string message, params object[]? args)
     {
         
     }
