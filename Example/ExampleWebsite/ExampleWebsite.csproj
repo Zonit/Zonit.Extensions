@@ -1,17 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
-
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <TargetFrameworks>net8.0;net9.0</TargetFrameworks>
   </PropertyGroup>
-
   <ItemGroup>
-    <PackageReference Include="Zonit.Extensions.Cultures" Version="0.1.5" />
+    <PackageReference Include="Zonit.Extensions.Cultures" />
   </ItemGroup>
-	<ItemGroup>
-		<ProjectReference Include="..\..\Source\Zonit.Extensions.Website\Zonit.Extensions.Website.csproj" />
-		<ProjectReference Include="..\..\Source\Zonit.Extensions\Zonit.Extensions.csproj" />
-	</ItemGroup>
-
+  <ItemGroup>
+    <ProjectReference Include="..\..\Source\Zonit.Extensions.Website\Zonit.Extensions.Website.csproj" />
+    <ProjectReference Include="..\..\Source\Zonit.Extensions\Zonit.Extensions.csproj" />
+  </ItemGroup>
 </Project>
