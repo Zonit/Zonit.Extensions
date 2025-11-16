@@ -1,0 +1,57 @@
+{
+  "Timestamp": "2025-11-16 16:47:00",
+  "ProjectsFound": 6,
+  "TargetFrameworks": [
+    "net8.0",
+    "net9.0",
+    "net10.0"
+  ],
+  "Summary": {
+    "FrameworkSpecificGroups": 3,
+    "ProjectsUpdated": 6,
+    "PackagesChanged": 6,
+    "DirectoryPackagesPropsUpdated": true,
+    "PackagesConfigured": 7,
+    "FrameworksSet": "net8.0;net9.0;net10.0"
+  },
+  "PackagesFound": 7,
+  "ChangeSummaryText": "Zonit.Extensions.Cultures : (new) -> 0.1.7\nZonit.Extensions.Cultures.Abstractions : 0.1.5 -> 0.1.7",
+  "PackageChanges": [
+    {
+      "Package": "Zonit.Extensions.Cultures",
+      "Framework": "net8.0",
+      "OldVersion": "(new)",
+      "NewVersion": "0.1.7"
+    },
+    {
+      "Package": "Zonit.Extensions.Cultures.Abstractions",
+      "Framework": "net8.0",
+      "OldVersion": "0.1.5",
+      "NewVersion": "0.1.7"
+    },
+    {
+      "Package": "Zonit.Extensions.Cultures",
+      "Framework": "net9.0",
+      "OldVersion": "(new)",
+      "NewVersion": "0.1.7"
+    },
+    {
+      "Package": "Zonit.Extensions.Cultures.Abstractions",
+      "Framework": "net9.0",
+      "OldVersion": "0.1.5",
+      "NewVersion": "0.1.7"
+    },
+    {
+      "Package": "Zonit.Extensions.Cultures",
+      "Framework": "net10.0",
+      "OldVersion": "(new)",
+      "NewVersion": "0.1.7"
+    },
+    {
+      "Package": "Zonit.Extensions.Cultures.Abstractions",
+      "Framework": "net10.0",
+      "OldVersion": "0.1.5",
+      "NewVersion": "0.1.7"
+    }
+  ]
+}
