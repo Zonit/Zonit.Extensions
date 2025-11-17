@@ -1,0 +1,18 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageVersion Include="Diacritics" Version="4" />
+    <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageVersion>
+    <PackageVersion Include="Zonit.Extensions.Cultures" Version="0" />
+    <PackageVersion Include="Zonit.Extensions.Cultures.Abstractions" Version="0" />
+    <PackageVersion Include="Zonit.Extensions.Identity.Abstractions" Version="0" />
+    <PackageVersion Include="Zonit.Extensions.Organizations.Abstractions" Version="0" />
+    <PackageVersion Include="Zonit.Extensions.Projects.Abstractions" Version="0" />
+  </ItemGroup>
+</Project>
