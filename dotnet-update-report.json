@@ -1,57 +1,64 @@
 {
+  "PackageChanges": [
+    {
+      "Package": "Diacritics",
+      "Framework": "common",
+      "OldVersion": "4.0.17",
+      "NewVersion": "4"
+    },
+    {
+      "Package": "Microsoft.SourceLink.GitHub",
+      "Framework": "common",
+      "OldVersion": "8.0.0",
+      "NewVersion": "8"
+    },
+    {
+      "Package": "Zonit.Extensions.Cultures",
+      "Framework": "common",
+      "OldVersion": "(new)",
+      "NewVersion": "0"
+    },
+    {
+      "Package": "Zonit.Extensions.Cultures.Abstractions",
+      "Framework": "common",
+      "OldVersion": "0.1.5",
+      "NewVersion": "0"
+    },
+    {
+      "Package": "Zonit.Extensions.Identity.Abstractions",
+      "Framework": "common",
+      "OldVersion": "0.1.6",
+      "NewVersion": "0"
+    },
+    {
+      "Package": "Zonit.Extensions.Organizations.Abstractions",
+      "Framework": "common",
+      "OldVersion": "0.1.8",
+      "NewVersion": "0"
+    },
+    {
+      "Package": "Zonit.Extensions.Projects.Abstractions",
+      "Framework": "common",
+      "OldVersion": "0.1.4",
+      "NewVersion": "0"
+    }
+  ],
   "TargetFrameworks": [
     "net8.0",
     "net9.0",
     "net10.0"
   ],
+  "ChangeSummaryText": "Diacritics : 4.0.17 -> 4\nMicrosoft.SourceLink.GitHub : 8.0.0 -> 8\nZonit.Extensions.Cultures : (new) -> 0\nZonit.Extensions.Cultures.Abstractions : 0.1.5 -> 0\nZonit.Extensions.Identity.Abstractions : 0.1.6 -> 0\nZonit.Extensions.Organizations.Abstractions : 0.1.8 -> 0\nZonit.Extensions.Projects.Abstractions : 0.1.4 -> 0",
   "Summary": {
-    "FrameworksSet": "net8.0;net9.0;net10.0",
-    "PackagesConfigured": 7,
-    "FrameworkSpecificGroups": 3,
-    "DirectoryPackagesPropsUpdated": true,
+    "PackagesChanged": 7,
+    "CommonPackages": 7,
     "ProjectsUpdated": 6,
-    "PackagesChanged": 6
+    "FrameworkSpecificPackages": 0,
+    "FrameworksSet": "net8.0;net9.0;net10.0",
+    "DirectoryPackagesPropsUpdated": true,
+    "PackagesConfigured": 7
   },
-  "PackageChanges": [
-    {
-      "Package": "Zonit.Extensions.Cultures",
-      "Framework": "net8.0",
-      "OldVersion": "(new)",
-      "NewVersion": "0.1.7"
-    },
-    {
-      "Package": "Zonit.Extensions.Cultures.Abstractions",
-      "Framework": "net8.0",
-      "OldVersion": "0.1.5",
-      "NewVersion": "0.1.7"
-    },
-    {
-      "Package": "Zonit.Extensions.Cultures",
-      "Framework": "net9.0",
-      "OldVersion": "(new)",
-      "NewVersion": "0.1.7"
-    },
-    {
-      "Package": "Zonit.Extensions.Cultures.Abstractions",
-      "Framework": "net9.0",
-      "OldVersion": "0.1.5",
-      "NewVersion": "0.1.7"
-    },
-    {
-      "Package": "Zonit.Extensions.Cultures",
-      "Framework": "net10.0",
-      "OldVersion": "(new)",
-      "NewVersion": "0.1.7"
-    },
-    {
-      "Package": "Zonit.Extensions.Cultures.Abstractions",
-      "Framework": "net10.0",
-      "OldVersion": "0.1.5",
-      "NewVersion": "0.1.7"
-    }
-  ],
-  "Timestamp": "2025-11-17 02:09:29",
+  "ProjectsFound": 6,
   "PackagesFound": 7,
-  "ChangeSummaryText": "Zonit.Extensions.Cultures : (new) -> 0.1.7\nZonit.Extensions.Cultures.Abstractions : 0.1.5 -> 0.1.7",
-  "ProjectsFound": 6
+  "Timestamp": "2025-11-17 05:24:27"
 }
