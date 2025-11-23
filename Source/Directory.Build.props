@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <!-- Mark all projects in Zonit.Extensions as AOT-compatible -->
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+</Project>
