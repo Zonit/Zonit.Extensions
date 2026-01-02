@@ -1,7 +1,7 @@
 ﻿using Diacritics.Extensions;
 using System.Text.RegularExpressions;
 
-namespace Zonit.Extensions.Text;
+namespace Zonit.Extensions;
 
 /// <summary>
 /// Reprezentuje przyjazny dla URL slug wygenerowany z tekstu.
