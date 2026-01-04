@@ -1,19 +1,62 @@
+# Zonit.Extensions
+
 ## Useful tools for Blazor
 
-### Extensions:
-- [Zonit.Extensions.Reflection](https://github.com/Zonit/Zonit.Extensions/tree/master/Source/Zonit.Extensions/Reflection) - A utility class for discovering assemblies and types that implement or inherit from a specified base type.
-- [Zonit.Extensions.Xml](https://github.com/Zonit/Zonit.Extensions/tree/master/Source/Zonit.Extensions/Xml) - A utility class for serializing objects to XML and deserializing XML back to objects using .NET's XML serialization.
-- [Zonit.Extensions.Website.Components](https://github.com/Zonit/Zonit.Extensions/tree/master/Source/Zonit.Extensions.Website/Components)
+---
 
-**Nuget Package Abstraction**
-```
-Install-Package Zonit.Extensions.Website.Abstractions 
+### Abstractions Package
+
+#### Zonit.Extensions.Abstractions - Interfaces and base abstractions
+
+[![NuGet](https://img.shields.io/nuget/v/Zonit.Extensions.Abstractions.svg)](https://www.nuget.org/packages/Zonit.Extensions.Abstractions/)
+[![NuGet Downloads](https://img.shields.io/nuget/dt/Zonit.Extensions.Abstractions.svg)](https://www.nuget.org/packages/Zonit.Extensions.Abstractions/)
+
+```bash
+dotnet add package Zonit.Extensions.Abstractions
 ```
 
-**Nuget Package Extensions**
+#### Zonit.Extensions - Core utilities and extensions
+
+[![NuGet](https://img.shields.io/nuget/v/Zonit.Extensions.svg)](https://www.nuget.org/packages/Zonit.Extensions/)
+[![NuGet Downloads](https://img.shields.io/nuget/dt/Zonit.Extensions.svg)](https://www.nuget.org/packages/Zonit.Extensions/)
+
+```bash
+dotnet add package Zonit.Extensions
 ```
-Install-Package Zonit.Extensions.Website
+
+**What's included:**
+- [Exceptions](Source/Zonit.Extensions/Exceptions) - Structured exception handling with i18n support, error codes, and strongly-typed error parameters
+- [Reflection](Source/Zonit.Extensions/Reflection) - Utility class for discovering assemblies and types that implement or inherit from a specified base type
+- [Xml](Source/Zonit.Extensions/Xml) - Utility class for serializing objects to XML and deserializing XML back to objects
+- [ValueObjects](Source/Zonit.Extensions/ValueObjects) - Immutable value objects for common domain concepts (Price, Title, Description, UrlSlug, Culture)
+
+---
+
+### Blazor Website Extensions
+
+#### Zonit.Extensions.Website.Abstractions - Interfaces and abstractions for Blazor
+
+[![NuGet](https://img.shields.io/nuget/v/Zonit.Extensions.Website.Abstractions.svg)](https://www.nuget.org/packages/Zonit.Extensions.Website.Abstractions/)
+[![NuGet Downloads](https://img.shields.io/nuget/dt/Zonit.Extensions.Website.Abstractions.svg)](https://www.nuget.org/packages/Zonit.Extensions.Website.Abstractions/)
+
+```bash
+dotnet add package Zonit.Extensions.Website.Abstractions 
 ```
+
+#### Zonit.Extensions.Website - Blazor-specific components and utilities
+
+[![NuGet](https://img.shields.io/nuget/v/Zonit.Extensions.Website.svg)](https://www.nuget.org/packages/Zonit.Extensions.Website/)
+[![NuGet Downloads](https://img.shields.io/nuget/dt/Zonit.Extensions.Website.svg)](https://www.nuget.org/packages/Zonit.Extensions.Website/)
+
+```bash
+dotnet add package Zonit.Extensions.Website
+```
+
+**What's included:**
+- [Components](Source/Zonit.Extensions.Website/Components) - Reusable Blazor components
+- Cookie handling with Blazor support (see below)
+
+---
 
 ## Cookie handling with support for Blazor
 
