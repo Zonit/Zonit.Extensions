@@ -1,4 +1,4 @@
-# BaseException - Structured Exception Handling
+﻿# BaseException - Structured Exception Handling
 
 A flexible, strongly-typed exception base classes for .NET applications with built-in support for localization (i18n), error codes, and structured error handling.
 
@@ -53,7 +53,11 @@ public enum WalletErrorCode
 
     [Display(Name = "Wallets.NotFound", 
              Description = "Wallet {0} was not found")]
-    NotFound
+    NotFound,
+
+    [Display(Name = "Wallets.InvalidUsername", 
+             Description = "Invalid username")]
+    InvalidUsername  // ← NOWY przykład bez parametrów
 }
 ```
 
@@ -67,9 +71,12 @@ public class WalletException(WalletErrorCode code, params object[] args)
 
 **Step 3: Throw and catch**
 ```csharp
-// Throwing
+// Throwing with parameters
 throw new WalletException(WalletErrorCode.NotFound, "wallet-123");
 throw new WalletException(WalletErrorCode.InsufficientBalance, 100.50m, 50.00m);
+
+// Throwing without parameters
+throw new WalletException(WalletErrorCode.InvalidUsername);
 
 // Catching
 try
@@ -83,6 +90,20 @@ catch (WalletException ex)
     Console.WriteLine(ex.Template);   // "Wallet {0} was not found"
     Console.WriteLine(ex.Message);    // "Wallet wallet-123 was not found"
     Console.WriteLine(ex.Parameters?[0]); // "wallet-123"
+}
+
+// Exception without parameters
+try
+{
+    throw new WalletException(WalletErrorCode.InvalidUsername);
+}
+catch (WalletException ex)
+{
+    Console.WriteLine(ex.Code);       // WalletErrorCode.InvalidUsername
+    Console.WriteLine(ex.ErrorKey);   // "Wallets.InvalidUsername"
+    Console.WriteLine(ex.Template);   // "Invalid username"
+    Console.WriteLine(ex.Message);    // "Invalid username"
+    Console.WriteLine(ex.Parameters); // null or empty array
 }
 ```
 
@@ -167,11 +188,11 @@ catch (WalletException ex)
 {
     // Get translated template
     var translatedTemplate = GetTranslation(ex.Template); 
-    // e.g., "Portfel {0} nie zosta� znaleziony"
+    // e.g., "Portfel {0} nie został znaleziony"
     
     // Re-format with original parameters
     var localizedMessage = string.Format(translatedTemplate, ex.Parameters ?? []);
-    // Result: "Portfel wallet-123 nie zosta� znaleziony"
+    // Result: "Portfel wallet-123 nie został znaleziony"
 }
 ```
 
@@ -195,57 +216,6 @@ catch (InsufficientBalanceException ex)
 
 ---
 
-## Error Handling Middleware Example
-
-```csharp
-app.UseExceptionHandler(builder =>
-{
-    builder.Run(async context =>
-    {
-        var ex = context.Features.Get<IExceptionHandlerFeature>()?.Error;
-        
-        var response = ex switch
-        {
-            BaseException baseEx => new ErrorResponse
-            {
-                ErrorKey = baseEx.ErrorKey,
-                Message = baseEx.Message,
-                Template = baseEx.Template,
-                Parameters = baseEx.Parameters,
-                // Add Code if it's BaseException<T>
-                Code = (baseEx as dynamic)?.Code?.ToString()
-            },
-            
-            ValidationException validationEx => new ErrorResponse
-            {
-                ErrorKey = "Validation.Failed",
-                Message = validationEx.Message
-            },
-            
-            _ => new ErrorResponse
-            {
-                ErrorKey = "Internal.Error",
-                Message = "An unexpected error occurred"
-            }
-        };
-        
-        context.Response.StatusCode = GetStatusCode(ex);
-        await context.Response.WriteAsJsonAsync(response);
-    });
-});
-
-private static int GetStatusCode(Exception ex) => ex switch
-{
-    WalletException { Code: WalletErrorCode.NotFound } => 404,
-    WalletException { Code: WalletErrorCode.InsufficientBalance } => 409,
-    ValidationException => 400,
-    UnauthorizedAccessException => 401,
-    _ => 500
-};
-```
-
----
-
 ## API Response Example
 
 ```json
@@ -260,8 +230,19 @@ private static int GetStatusCode(Exception ex) => ex switch
 
 Client can use:
 - `message` - Display directly (already formatted)
-- `errorKey` + `parameters` - Translate on client side
-- `template` + `parameters` - Re-format with client-side localization
+- `errorKey` + `parameters` - Translate on client side (if parameters exist)
+- `template` + `parameters` - Re-format with client-side localization (if parameters exist)
+
+**Example without parameters:**
+```json
+{
+  "errorKey": "Articles.NotExists",
+  "code": "NotExists",
+  "message": "Article does not exist",
+  "template": "Article does not exist",
+  "parameters": null
+}
+```
 
 ---
 
@@ -269,13 +250,17 @@ Client can use:
 
 ### ? DO:
 
-1. **Always use placeholders** (`{0}`, `{1}`) instead of string interpolation in templates
+1. **Use placeholders** (`{0}`, `{1}`) for dynamic values, but **parameters are optional**
    ```csharp
-   // ? GOOD
+   // ? GOOD - with parameters
    template: "Wallet {0} was not found",
    parameters: [walletId]
    
-   // ? BAD
+   // ? GOOD - without parameters
+   template: "Invalid username"
+   // No parameters needed
+   
+   // ? BAD - string interpolation
    message: $"Wallet {walletId} was not found"
    // This prevents re-formatting with translations!
    ```
@@ -309,6 +294,7 @@ Client can use:
 1. Don't use string interpolation in templates (breaks i18n)
 2. Don't mix both approaches in the same exception class
 3. Don't leave `ErrorKey` empty or use generic values like "Error"
+4. Don't force parameters when they're not needed - simple messages without placeholders are perfectly valid
 
 ---
 
