@@ -5,7 +5,7 @@ namespace Zonit.Extensions;
 /// <summary>
 /// Reprezentuje kulturê w formacie jêzykowym (np. "en-US", "pl-PL").
 /// </summary>
-public sealed class Culture : IEquatable<Culture>
+public readonly struct Culture : IEquatable<Culture>
 {
     /// <summary>
     /// Domyœlna kultura (en-US).
@@ -16,6 +16,14 @@ public sealed class Culture : IEquatable<Culture>
     /// Wartoœæ kultury w formacie jêzykowym (np. "en-US").
     /// </summary>
     public string Value { get; }
+
+    /// <summary>
+    /// Tworzy domyœln¹ kulturê (en-US).
+    /// </summary>
+    public Culture()
+    {
+        Value = "en-US";
+    }
 
     /// <summary>
     /// Tworzy now¹ kulturê na podstawie podanego kodu jêzykowego.
@@ -77,7 +85,7 @@ public sealed class Culture : IEquatable<Culture>
     /// <summary>
     /// Konwertuje Culture na string.
     /// </summary>
-    public static implicit operator string(Culture culture) => culture?.Value ?? string.Empty;
+    public static implicit operator string(Culture culture) => culture.Value ?? string.Empty;
 
     /// <summary>
     /// Konwertuje CultureInfo na Culture.
@@ -87,13 +95,11 @@ public sealed class Culture : IEquatable<Culture>
     /// <summary>
     /// Konwertuje Culture na CultureInfo.
     /// </summary>
-    public static implicit operator CultureInfo(Culture culture) => culture?.ToCultureInfo() ?? CultureInfo.InvariantCulture;
+    public static implicit operator CultureInfo(Culture culture) => culture.ToCultureInfo();
 
     /// <inheritdoc />
-    public bool Equals(Culture? other)
+    public bool Equals(Culture other)
     {
-        if (ReferenceEquals(null, other)) return false;
-        if (ReferenceEquals(this, other)) return true;
         return string.Equals(Value, other.Value, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -106,13 +112,13 @@ public sealed class Culture : IEquatable<Culture>
     /// <summary>
     /// Porównuje dwie kultury.
     /// </summary>
-    public static bool operator ==(Culture? left, Culture? right) =>
-        left is null ? right is null : left.Equals(right);
+    public static bool operator ==(Culture left, Culture right) =>
+        left.Equals(right);
 
     /// <summary>
     /// Porównuje dwie kultury.
     /// </summary>
-    public static bool operator !=(Culture? left, Culture? right) => !(left == right);
+    public static bool operator !=(Culture left, Culture right) => !(left == right);
 
     /// <inheritdoc />
     public override string ToString() => Value;

@@ -121,6 +121,43 @@ Console.WriteLine(cleanSlug.Value); // "hello-world"
 
 ---
 
+### `Url`
+Represents a valid absolute or relative URL with validation.
+
+**Features:**
+- Automatic URL validation
+- Support for absolute and relative URLs
+- Built-in URL manipulation (combine paths, query parameters)
+- Properties: Scheme, Host, Port, Path, Query, IsHttps
+
+**Usage:**
+```csharp
+var url = new Url("https://example.com/api/users");
+
+// Properties
+Console.WriteLine(url.Host);    // example.com
+Console.WriteLine(url.IsHttps); // true
+Console.WriteLine(url.Path);    // /api/users
+
+// Combine paths
+var detailUrl = url.Combine("123");
+// https://example.com/api/users/123
+
+// Query parameters
+var pagedUrl = url
+    .WithQueryParameter("page", "1")
+    .WithQueryParameter("limit", "10");
+// https://example.com/api/users?page=1&limit=10
+
+// Safe creation
+if (Url.TryCreate(userInput, out var validUrl))
+{
+    // Use validUrl
+}
+```
+
+---
+
 ## Common Features
 
 All value objects implement:

@@ -4,7 +4,7 @@ namespace Zonit.Extensions;
 /// Represents a monetary price with high precision for calculations and standard rounding for display.
 /// Uses decimal(19,8) precision internally, rounds to 2 decimal places for accounting display.
 /// </summary>
-public sealed class Price : IEquatable<Price>, IComparable<Price>
+public readonly struct Price : IEquatable<Price>, IComparable<Price>
 {
     private const int InternalPrecision = 8;
     private const int DisplayPrecision = 2;
@@ -60,8 +60,6 @@ public sealed class Price : IEquatable<Price>, IComparable<Price>
     /// </summary>
     public static Price operator +(Price left, Price right)
     {
-        ArgumentNullException.ThrowIfNull(left, nameof(left));
-        ArgumentNullException.ThrowIfNull(right, nameof(right));
         return new Price(left.Value + right.Value, allowNegative: true);
     }
 
@@ -70,8 +68,6 @@ public sealed class Price : IEquatable<Price>, IComparable<Price>
     /// </summary>
     public static Price operator -(Price left, Price right)
     {
-        ArgumentNullException.ThrowIfNull(left, nameof(left));
-        ArgumentNullException.ThrowIfNull(right, nameof(right));
         return new Price(left.Value - right.Value, allowNegative: true);
     }
 
@@ -80,7 +76,6 @@ public sealed class Price : IEquatable<Price>, IComparable<Price>
     /// </summary>
     public static Price operator *(Price price, decimal multiplier)
     {
-        ArgumentNullException.ThrowIfNull(price, nameof(price));
         return new Price(price.Value * multiplier, allowNegative: true);
     }
 
@@ -94,7 +89,6 @@ public sealed class Price : IEquatable<Price>, IComparable<Price>
     /// </summary>
     public static Price operator /(Price price, decimal divisor)
     {
-        ArgumentNullException.ThrowIfNull(price, nameof(price));
         if (divisor == 0)
         {
             throw new DivideByZeroException("Cannot divide price by zero.");
@@ -107,8 +101,6 @@ public sealed class Price : IEquatable<Price>, IComparable<Price>
     /// </summary>
     public static bool operator >(Price left, Price right)
     {
-        ArgumentNullException.ThrowIfNull(left, nameof(left));
-        ArgumentNullException.ThrowIfNull(right, nameof(right));
         return left.Value > right.Value;
     }
 
@@ -117,8 +109,6 @@ public sealed class Price : IEquatable<Price>, IComparable<Price>
     /// </summary>
     public static bool operator <(Price left, Price right)
     {
-        ArgumentNullException.ThrowIfNull(left, nameof(left));
-        ArgumentNullException.ThrowIfNull(right, nameof(right));
         return left.Value < right.Value;
     }
 
@@ -127,8 +117,6 @@ public sealed class Price : IEquatable<Price>, IComparable<Price>
     /// </summary>
     public static bool operator >=(Price left, Price right)
     {
-        ArgumentNullException.ThrowIfNull(left, nameof(left));
-        ArgumentNullException.ThrowIfNull(right, nameof(right));
         return left.Value >= right.Value;
     }
 
@@ -137,8 +125,6 @@ public sealed class Price : IEquatable<Price>, IComparable<Price>
     /// </summary>
     public static bool operator <=(Price left, Price right)
     {
-        ArgumentNullException.ThrowIfNull(left, nameof(left));
-        ArgumentNullException.ThrowIfNull(right, nameof(right));
         return left.Value <= right.Value;
     }
 
@@ -150,13 +136,11 @@ public sealed class Price : IEquatable<Price>, IComparable<Price>
     /// <summary>
     /// Converts Price to decimal (returns full precision value).
     /// </summary>
-    public static implicit operator decimal(Price price) => price?.Value ?? 0m;
+    public static implicit operator decimal(Price price) => price.Value;
 
     /// <inheritdoc />
-    public bool Equals(Price? other)
+    public bool Equals(Price other)
     {
-        if (ReferenceEquals(null, other)) return false;
-        if (ReferenceEquals(this, other)) return true;
         return Value == other.Value;
     }
 
@@ -169,19 +153,17 @@ public sealed class Price : IEquatable<Price>, IComparable<Price>
     /// <summary>
     /// Compares two prices for equality.
     /// </summary>
-    public static bool operator ==(Price? left, Price? right) =>
-        left is null ? right is null : left.Equals(right);
+    public static bool operator ==(Price left, Price right) =>
+        left.Equals(right);
 
     /// <summary>
     /// Compares two prices for inequality.
     /// </summary>
-    public static bool operator !=(Price? left, Price? right) => !(left == right);
+    public static bool operator !=(Price left, Price right) => !(left == right);
 
     /// <inheritdoc />
-    public int CompareTo(Price? other)
+    public int CompareTo(Price other)
     {
-        if (ReferenceEquals(this, other)) return 0;
-        if (ReferenceEquals(null, other)) return 1;
         return Value.CompareTo(other.Value);
     }
 
@@ -214,13 +196,13 @@ public sealed class Price : IEquatable<Price>, IComparable<Price>
     /// Tries to create a price from the specified value.
     /// </summary>
     /// <param name="value">Price value.</param>
-    /// <param name="price">Created price or null if value is invalid.</param>
+    /// <param name="price">Created price or default if value is invalid.</param>
     /// <returns>True if price was created, false otherwise.</returns>
-    public static bool TryCreate(decimal value, out Price? price)
+    public static bool TryCreate(decimal value, out Price price)
     {
         if (value < 0)
         {
-            price = null;
+            price = default;
             return false;
         }
 

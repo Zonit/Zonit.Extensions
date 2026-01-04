@@ -6,7 +6,7 @@ namespace Zonit.Extensions;
 /// <summary>
 /// Reprezentuje przyjazny dla URL slug wygenerowany z tekstu.
 /// </summary>
-public sealed partial class UrlSlug : IEquatable<UrlSlug>
+public readonly struct UrlSlug : IEquatable<UrlSlug>
 {
     /// <summary>
     /// Wartość sluga.
@@ -23,9 +23,9 @@ public sealed partial class UrlSlug : IEquatable<UrlSlug>
         ArgumentNullException.ThrowIfNull(value, nameof(value));
 
         string result = value.Trim().RemoveDiacritics();
-        result = NonAlphanumericRegex().Replace(result, "");
-        result = WhitespaceRegex().Replace(result, "-");
-        result = MultipleHyphensRegex().Replace(result, "-"); // usunięcie nadmiernych myślników
+        result = UrlSlugRegexes.NonAlphanumericRegex().Replace(result, "");
+        result = UrlSlugRegexes.WhitespaceRegex().Replace(result, "-");
+        result = UrlSlugRegexes.MultipleHyphensRegex().Replace(result, "-"); // usunięcie nadmiernych myślników
         Value = result.ToLowerInvariant().Trim('-');
     }
 
@@ -50,9 +50,9 @@ public sealed partial class UrlSlug : IEquatable<UrlSlug>
     private static string CreateSlug(string value)
     {
         string result = value.Trim().RemoveDiacritics();
-        result = NonAlphanumericRegex().Replace(result, "");
-        result = WhitespaceRegex().Replace(result, "-");
-        result = MultipleHyphensRegex().Replace(result, "-");
+        result = UrlSlugRegexes.NonAlphanumericRegex().Replace(result, "");
+        result = UrlSlugRegexes.WhitespaceRegex().Replace(result, "-");
+        result = UrlSlugRegexes.MultipleHyphensRegex().Replace(result, "-");
         return result.ToLowerInvariant().Trim('-');
     }
 
@@ -83,18 +83,16 @@ public sealed partial class UrlSlug : IEquatable<UrlSlug>
     /// <summary>
     /// Konwertuje string na obiekt UrlSlug.
     /// </summary>
-    public static implicit operator UrlSlug(string value) => new(value);
+    public static explicit operator UrlSlug(string value) => new(value);
 
     /// <summary>
     /// Konwertuje UrlSlug na string.
     /// </summary>
-    public static implicit operator string(UrlSlug slug) => slug?.Value ?? string.Empty;
+    public static implicit operator string(UrlSlug slug) => slug.Value ?? string.Empty;
 
     /// <inheritdoc />
-    public bool Equals(UrlSlug? other)
+    public bool Equals(UrlSlug other)
     {
-        if (ReferenceEquals(null, other)) return false;
-        if (ReferenceEquals(this, other)) return true;
         return string.Equals(Value, other.Value, StringComparison.Ordinal);
     }
 
@@ -104,17 +102,6 @@ public sealed partial class UrlSlug : IEquatable<UrlSlug>
     /// <inheritdoc />
     public override int GetHashCode() => Value.GetHashCode();
 
-    /// <summary>
-    /// Porównuje dwa slugi.
-    /// </summary>
-    public static bool operator ==(UrlSlug? left, UrlSlug? right) =>
-        left is null ? right is null : left.Equals(right);
-
-    /// <summary>
-    /// Porównuje dwa slugi.
-    /// </summary>
-    public static bool operator !=(UrlSlug? left, UrlSlug? right) => !(left == right);
-
     /// <inheritdoc />
     public override string ToString() => Value;
 
@@ -122,13 +109,19 @@ public sealed partial class UrlSlug : IEquatable<UrlSlug>
     /// Tworzy slug z podanego tekstu.
     /// </summary>
     public static UrlSlug Create(string value) => new(value);
+}
 
+/// <summary>
+/// Helper class containing compiled regex patterns for UrlSlug generation.
+/// </summary>
+internal static partial class UrlSlugRegexes
+{
     [GeneratedRegex("[^A-Za-z0-9 -]+", RegexOptions.Compiled)]
-    private static partial Regex NonAlphanumericRegex();
+    internal static partial Regex NonAlphanumericRegex();
 
     [GeneratedRegex(@"\s+", RegexOptions.Compiled)]
-    private static partial Regex WhitespaceRegex();
+    internal static partial Regex WhitespaceRegex();
 
     [GeneratedRegex(@"-{2,}", RegexOptions.Compiled)]
-    private static partial Regex MultipleHyphensRegex();
+    internal static partial Regex MultipleHyphensRegex();
 }

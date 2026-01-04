@@ -4,7 +4,7 @@ namespace Zonit.Extensions;
 /// Represents a title for content (articles, products, categories, etc.).
 /// Optimized for SEO with a maximum length of 60 characters.
 /// </summary>
-public sealed class Title : IEquatable<Title>
+public readonly struct Title : IEquatable<Title>
 {
     /// <summary>
     /// Maximum length for SEO optimization (Google displays ~60 characters in search results).
@@ -63,13 +63,11 @@ public sealed class Title : IEquatable<Title>
     /// <summary>
     /// Converts Title to string.
     /// </summary>
-    public static implicit operator string(Title title) => title?.Value ?? string.Empty;
+    public static implicit operator string(Title title) => title.Value ?? string.Empty;
 
     /// <inheritdoc />
-    public bool Equals(Title? other)
+    public bool Equals(Title other)
     {
-        if (ReferenceEquals(null, other)) return false;
-        if (ReferenceEquals(this, other)) return true;
         return string.Equals(Value, other.Value, StringComparison.Ordinal);
     }
 
@@ -82,13 +80,13 @@ public sealed class Title : IEquatable<Title>
     /// <summary>
     /// Compares two titles for equality.
     /// </summary>
-    public static bool operator ==(Title? left, Title? right) =>
-        left is null ? right is null : left.Equals(right);
+    public static bool operator ==(Title left, Title right) =>
+        left.Equals(right);
 
     /// <summary>
     /// Compares two titles for inequality.
     /// </summary>
-    public static bool operator !=(Title? left, Title? right) => !(left == right);
+    public static bool operator !=(Title left, Title right) => !(left == right);
 
     /// <inheritdoc />
     public override string ToString() => Value;
@@ -102,13 +100,13 @@ public sealed class Title : IEquatable<Title>
     /// Tries to create a title from the specified value.
     /// </summary>
     /// <param name="value">Title text.</param>
-    /// <param name="title">Created title or null if value is invalid.</param>
+    /// <param name="title">Created title or default if value is invalid.</param>
     /// <returns>True if title was created, false otherwise.</returns>
-    public static bool TryCreate(string? value, out Title? title)
+    public static bool TryCreate(string? value, out Title title)
     {
         if (string.IsNullOrWhiteSpace(value))
         {
-            title = null;
+            title = default;
             return false;
         }
 
@@ -116,7 +114,7 @@ public sealed class Title : IEquatable<Title>
 
         if (trimmedValue.Length < MinLength || trimmedValue.Length > MaxLength)
         {
-            title = null;
+            title = default;
             return false;
         }
 

@@ -4,7 +4,7 @@ namespace Zonit.Extensions;
 /// Represents a description for content (articles, products, categories, etc.).
 /// Optimized for SEO with a maximum length of 160 characters.
 /// </summary>
-public sealed class Description : IEquatable<Description>
+public readonly struct Description : IEquatable<Description>
 {
     /// <summary>
     /// Maximum length for SEO optimization (Google displays ~160 characters in meta descriptions).
@@ -63,13 +63,11 @@ public sealed class Description : IEquatable<Description>
     /// <summary>
     /// Converts Description to string.
     /// </summary>
-    public static implicit operator string(Description description) => description?.Value ?? string.Empty;
+    public static implicit operator string(Description description) => description.Value ?? string.Empty;
 
     /// <inheritdoc />
-    public bool Equals(Description? other)
+    public bool Equals(Description other)
     {
-        if (ReferenceEquals(null, other)) return false;
-        if (ReferenceEquals(this, other)) return true;
         return string.Equals(Value, other.Value, StringComparison.Ordinal);
     }
 
@@ -82,13 +80,13 @@ public sealed class Description : IEquatable<Description>
     /// <summary>
     /// Compares two descriptions for equality.
     /// </summary>
-    public static bool operator ==(Description? left, Description? right) =>
-        left is null ? right is null : left.Equals(right);
+    public static bool operator ==(Description left, Description right) =>
+        left.Equals(right);
 
     /// <summary>
     /// Compares two descriptions for inequality.
     /// </summary>
-    public static bool operator !=(Description? left, Description? right) => !(left == right);
+    public static bool operator !=(Description left, Description right) => !(left == right);
 
     /// <inheritdoc />
     public override string ToString() => Value;
@@ -102,13 +100,13 @@ public sealed class Description : IEquatable<Description>
     /// Tries to create a description from the specified value.
     /// </summary>
     /// <param name="value">Description text.</param>
-    /// <param name="description">Created description or null if value is invalid.</param>
+    /// <param name="description">Created description or default if value is invalid.</param>
     /// <returns>True if description was created, false otherwise.</returns>
-    public static bool TryCreate(string? value, out Description? description)
+    public static bool TryCreate(string? value, out Description description)
     {
         if (string.IsNullOrWhiteSpace(value))
         {
-            description = null;
+            description = default;
             return false;
         }
 
@@ -116,7 +114,7 @@ public sealed class Description : IEquatable<Description>
 
         if (trimmedValue.Length < MinLength || trimmedValue.Length > MaxLength)
         {
-            description = null;
+            description = default;
             return false;
         }
 
