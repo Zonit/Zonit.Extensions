@@ -1,10 +1,13 @@
+using System.ComponentModel;
 using System.Globalization;
+using Zonit.Extensions.Converters;
 
 namespace Zonit.Extensions;
 
 /// <summary>
 /// Reprezentuje kulturê w formacie jêzykowym (np. "en-US", "pl-PL").
 /// </summary>
+[TypeConverter(typeof(ValueObjectTypeConverter<Culture>))]
 public readonly struct Culture : IEquatable<Culture>
 {
     /// <summary>
@@ -132,13 +135,13 @@ public readonly struct Culture : IEquatable<Culture>
     /// Próbuje utworzyæ kulturê z podanego kodu jêzykowego.
     /// </summary>
     /// <param name="value">Kod kultury.</param>
-    /// <param name="culture">Utworzona kultura lub null jeœli wartoœæ jest nieprawid³owa.</param>
+    /// <param name="culture">Utworzona kultura lub default jeœli wartoœæ jest nieprawid³owa.</param>
     /// <returns>True jeœli kultura zosta³a utworzona, false w przeciwnym razie.</returns>
-    public static bool TryCreate(string? value, out Culture? culture)
+    public static bool TryCreate(string? value, out Culture culture)
     {
         if (string.IsNullOrWhiteSpace(value))
         {
-            culture = null;
+            culture = default;
             return false;
         }
 
@@ -149,7 +152,7 @@ public readonly struct Culture : IEquatable<Culture>
         }
         catch (CultureNotFoundException)
         {
-            culture = null;
+            culture = default;
             return false;
         }
     }

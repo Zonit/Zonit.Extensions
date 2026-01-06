@@ -1,11 +1,14 @@
 ﻿using Diacritics.Extensions;
+using System.ComponentModel;
 using System.Text.RegularExpressions;
+using Zonit.Extensions.Converters;
 
 namespace Zonit.Extensions;
 
 /// <summary>
 /// Reprezentuje przyjazny dla URL slug wygenerowany z tekstu.
 /// </summary>
+[TypeConverter(typeof(ValueObjectTypeConverter<UrlSlug>))]
 public readonly struct UrlSlug : IEquatable<UrlSlug>
 {
     /// <summary>
@@ -80,15 +83,17 @@ public readonly struct UrlSlug : IEquatable<UrlSlug>
         return uniqueSlug;
     }
 
+
     /// <summary>
     /// Konwertuje string na obiekt UrlSlug.
     /// </summary>
-    public static explicit operator UrlSlug(string value) => new(value);
+    public static implicit operator UrlSlug(string value) => new(value);
 
     /// <summary>
     /// Konwertuje UrlSlug na string.
     /// </summary>
     public static implicit operator string(UrlSlug slug) => slug.Value ?? string.Empty;
+
 
     /// <inheritdoc />
     public bool Equals(UrlSlug other)
@@ -109,6 +114,24 @@ public readonly struct UrlSlug : IEquatable<UrlSlug>
     /// Tworzy slug z podanego tekstu.
     /// </summary>
     public static UrlSlug Create(string value) => new(value);
+
+    /// <summary>
+    /// Próbuje utworzyć slug z podanego tekstu.
+    /// </summary>
+    /// <param name="value">Tekst do przekształcenia na slug.</param>
+    /// <param name="slug">Utworzony slug lub default jeśli wartość jest nieprawidłowa.</param>
+    /// <returns>True jeśli slug został utworzony, false w przeciwnym razie.</returns>
+    public static bool TryCreate(string? value, out UrlSlug slug)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            slug = default;
+            return false;
+        }
+
+        slug = new UrlSlug(value);
+        return true;
+    }
 }
 
 /// <summary>

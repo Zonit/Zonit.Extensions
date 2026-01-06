@@ -1,9 +1,13 @@
+using System.ComponentModel;
+using Zonit.Extensions.Converters;
+
 namespace Zonit.Extensions;
 
 /// <summary>
 /// Represents a description for content (articles, products, categories, etc.).
 /// Optimized for SEO with a maximum length of 160 characters.
 /// </summary>
+[TypeConverter(typeof(ValueObjectTypeConverter<Description>))]
 public readonly struct Description : IEquatable<Description>
 {
     /// <summary>

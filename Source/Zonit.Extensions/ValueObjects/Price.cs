@@ -1,8 +1,11 @@
+using System.ComponentModel;
+
 namespace Zonit.Extensions;
 
 /// <summary>
 /// Represents a monetary price with high precision for calculations and standard rounding for display.
 /// Uses decimal(19,8) precision internally, rounds to 2 decimal places for accounting display.
+/// In Blazor, use InputNumber which binds directly to decimal - no string conversion needed.
 /// </summary>
 public readonly struct Price : IEquatable<Price>, IComparable<Price>
 {

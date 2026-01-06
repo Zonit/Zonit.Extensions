@@ -1,8 +1,12 @@
+using System.ComponentModel;
+using Zonit.Extensions.Converters;
+
 namespace Zonit.Extensions;
 
 /// <summary>
 /// Reprezentuje prawid³owy adres URL.
 /// </summary>
+[TypeConverter(typeof(ValueObjectTypeConverter<Url>))]
 public readonly struct Url : IEquatable<Url>
 {
     /// <summary>
@@ -146,7 +150,7 @@ public readonly struct Url : IEquatable<Url>
     /// <summary>
     /// Konwertuje string na obiekt Url.
     /// </summary>
-    public static explicit operator Url(string value) => new(value);
+    public static implicit operator Url(string value) => new(value);
 
     /// <summary>
     /// Konwertuje Url na string.

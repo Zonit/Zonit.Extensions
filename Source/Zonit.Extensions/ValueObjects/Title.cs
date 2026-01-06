@@ -1,9 +1,13 @@
+using System.ComponentModel;
+using Zonit.Extensions.Converters;
+
 namespace Zonit.Extensions;
 
 /// <summary>
 /// Represents a title for content (articles, products, categories, etc.).
 /// Optimized for SEO with a maximum length of 60 characters.
 /// </summary>
+[TypeConverter(typeof(ValueObjectTypeConverter<Title>))]
 public readonly struct Title : IEquatable<Title>
 {
     /// <summary>

@@ -2,6 +2,65 @@
 
 A collection of immutable value objects for common domain concepts with built-in validation and SEO optimization.
 
+## ? Automatic Validation (No Attributes Required!)
+
+All value objects now have **automatic model binding validation** through `TypeConverter` integration. This means:
+
+- ? **No `[StringLength]` attributes needed** in your models
+- ? **Validation happens automatically** during model binding
+- ? **User-friendly error messages** in `ModelState`
+- ? **Single source of truth** - validation rules in value object only
+
+### Example Usage in Blazor
+
+```csharp
+public class ArticleEditModel
+{
+    [Required]
+    public Title Title { get; set; }
+    
+    [Required]
+    public Description Description { get; set; }
+    
+    [Required]
+    public UrlSlug Slug { get; set; }
+}
+```
+
+**That's it!** Length validation is automatic based on `MinLength` and `MaxLength` constants.
+
+See [Converters/README.md](Converters/README.md) for details.
+
+---
+
+## ?? String Conversion (implicit operators)
+
+Most string-based value objects support **implicit conversion** from `string` for convenience:
+
+```csharp
+// ? Works with implicit operators (string-based VOs)
+Title title = "Hello World";
+Description desc = "A description";
+UrlSlug slug = "my-article";
+Url url = "https://example.com";
+Culture culture = "en-US";
+```
+
+**Price is different** - it's `decimal`-based with strong typing:
+
+```csharp
+// ? Price uses decimal (not string)
+Price price = 19.99m;
+
+// Blazor InputNumber binds directly to decimal:
+// <InputNumber @bind-Value="model.Price" />
+```
+
+This design ensures:
+- String-based VOs are convenient (implicit from string)
+- Price maintains type safety (no accidental string parsing)
+- Blazor forms work naturally with appropriate input types
+
 ---
 
 ## Available Value Objects
@@ -36,11 +95,14 @@ Represents a monetary price with high precision for calculations and standard ro
 - Display precision: 2 decimal places (accounting format)
 - Arithmetic operators: `+`, `-`, `*`, `/`
 - Comparison operators: `<`, `>`, `<=`, `>=`
+- **Type-safe**: Always use `decimal`
+- **No TypeConverter needed**: Blazor `InputNumber` binds directly to `decimal`
 
 **Usage:**
 ```csharp
-var price = new Price(19.99m);
-var tax = new Price(3.80m);
+// ? In code - use decimal with 'm' suffix
+Price price = 19.99m;
+Price tax = 3.80m;
 
 var total = price + tax; // 23.79
 var discounted = price * 0.9m; // 17.991 (internally), 17.99 (display)
@@ -48,6 +110,14 @@ var discounted = price * 0.9m; // 17.991 (internally), 17.99 (display)
 Console.WriteLine(price.Value);        // 19.99000000
 Console.WriteLine(price.DisplayValue); // 19.99
 ```
+
+**Blazor Forms:**
+```html
+<!-- ? InputNumber binds directly to decimal - no string conversion! -->
+<InputNumber @bind-Value="model.Price" />
+```
+
+Price is strongly typed and doesn't need string parsing like other value objects.
 
 ---
 
