@@ -1,10 +1,13 @@
-﻿using System.Text;
+﻿using System.Diagnostics.CodeAnalysis;
+using System.Reflection;
+using System.Text;
 using System.Xml;
 using System.Xml.Serialization;
 
 namespace Zonit.Extensions.Xml;
 
-public class XmlConvertible
+[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)]
+public abstract class XmlConvertible
 {
     protected XmlConvertible() { }
 
@@ -26,14 +29,14 @@ public class XmlConvertible
         using var xmlWriter = XmlWriter.Create(stringWriter, new XmlWriterSettings 
         { 
             Indent = true,
-            Encoding = Encoding.UTF8
+            Encoding = Encoding.UTF8,
+            OmitXmlDeclaration = false
         });
 
-        var serializer = new XmlSerializer(GetType());
-        var ns = new XmlSerializerNamespaces();
-        ns.Add(string.Empty, string.Empty); // Remove default namespaces
+        xmlWriter.WriteStartDocument();
+        SerializeToXml(xmlWriter);
+        xmlWriter.WriteEndDocument();
         
-        serializer.Serialize(xmlWriter, this, ns);
         return stringWriter.ToString();
     }
 
@@ -45,18 +48,15 @@ public class XmlConvertible
     {
         try
         {
-            var serializer = new XmlSerializer(GetType());
             using var reader = new StringReader(xml);
-
-            if (serializer.Deserialize(reader) is not XmlConvertible deserialized)
-                throw new InvalidOperationException("Failed to deserialize XML into model.");
-
-            CopyProperties(deserialized);
+            using var xmlReader = XmlReader.Create(reader);
+            
+            // Move to the root element
+            xmlReader.MoveToContent();
+            
+            DeserializeFromXml(xmlReader);
         }
-        catch (Exception ex) when (
-            ex is InvalidOperationException || 
-            ex is InvalidCastException || 
-            ex is XmlException)
+        catch (Exception ex) when (ex is XmlException)
         {
             throw new XmlSerializationException($"Error deserializing XML: {ex.Message}", ex);
         }
@@ -73,32 +73,130 @@ public class XmlConvertible
         if (string.IsNullOrEmpty(xml))
             throw new ArgumentException("XML string cannot be null or empty.", nameof(xml));
             
-        try
-        {
-            var serializer = new XmlSerializer(typeof(T));
-            using var reader = new StringReader(xml);
-            
-            return serializer.Deserialize(reader) as T 
-                ?? throw new InvalidOperationException("Failed to deserialize XML into model.");
-        }
-        catch (Exception ex) when (
-            ex is InvalidOperationException || 
-            ex is InvalidCastException || 
-            ex is XmlException)
-        {
-            throw new XmlSerializationException($"Error deserializing XML: {ex.Message}", ex);
-        }
+        var instance = new T();
+        instance.DeserializeFromXml(xml);
+        return instance;
     }
 
-    private void CopyProperties(XmlConvertible source)
+    /// <summary>
+    /// Override this method to implement custom XML serialization
+    /// </summary>
+    /// <param name="writer">XmlWriter to write to</param>
+    protected virtual void SerializeToXml(XmlWriter writer)
     {
-        var properties = GetType().GetProperties()
-            .Where(p => p.CanWrite && p.CanRead);
+        var type = GetType();
+        var rootElementName = GetRootElementName(type);
+        
+        writer.WriteStartElement(rootElementName);
+        
+        var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.CanRead && p.CanWrite);
             
         foreach (var prop in properties)
         {
-            var sourceValue = prop.GetValue(source);
-            prop.SetValue(this, sourceValue);
+            var value = prop.GetValue(this);
+            if (value != null)
+            {
+                var elementName = GetElementName(prop);
+                writer.WriteElementString(elementName, value.ToString());
+            }
+        }
+        
+        writer.WriteEndElement();
+    }
+
+    /// <summary>
+    /// Override this method to implement custom XML deserialization
+    /// </summary>
+    /// <param name="reader">XmlReader to read from</param>
+    protected virtual void DeserializeFromXml(XmlReader reader)
+    {
+        var type = GetType();
+        var rootElementName = GetRootElementName(type);
+        
+        // Build a dictionary of XML element names to properties
+        var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.CanRead && p.CanWrite)
+            .ToDictionary(p => GetElementName(p), p => p, StringComparer.OrdinalIgnoreCase);
+
+        // Read the root element
+        if (reader.NodeType == XmlNodeType.Element)
+        {
+            // Skip the root element name check to be more flexible
+            reader.Read(); // Move into the element
+        }
+
+        while (reader.NodeType != XmlNodeType.EndElement && reader.NodeType != XmlNodeType.None)
+        {
+            if (reader.NodeType == XmlNodeType.Element)
+            {
+                var elementName = reader.Name;
+                
+                if (properties.TryGetValue(elementName, out var prop))
+                {
+                    var value = reader.ReadElementContentAsString();
+                    SetPropertyValue(prop, value);
+                }
+                else
+                {
+                    reader.Skip();
+                }
+            }
+            else
+            {
+                reader.Read();
+            }
+        }
+    }
+
+    private static string GetRootElementName([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.PublicFields)] Type type)
+    {
+        var xmlRootAttr = type.GetCustomAttribute<XmlRootAttribute>();
+        return xmlRootAttr?.ElementName ?? type.Name;
+    }
+
+    private static string GetElementName(PropertyInfo property)
+    {
+        var xmlElementAttr = property.GetCustomAttribute<XmlElementAttribute>();
+        return xmlElementAttr?.ElementName ?? property.Name;
+    }
+
+    private void SetPropertyValue(PropertyInfo property, string value)
+    {
+        try
+        {
+            var propertyType = property.PropertyType;
+            var underlyingType = Nullable.GetUnderlyingType(propertyType) ?? propertyType;
+
+            if (string.IsNullOrEmpty(value))
+            {
+                if (propertyType.IsValueType && Nullable.GetUnderlyingType(propertyType) == null)
+                    return; // Don't set non-nullable value types to null
+                    
+                property.SetValue(this, null);
+                return;
+            }
+
+            object? convertedValue = underlyingType.Name switch
+            {
+                nameof(String) => value,
+                nameof(Int32) => int.Parse(value),
+                nameof(Int64) => long.Parse(value),
+                nameof(Decimal) => decimal.Parse(value),
+                nameof(Double) => double.Parse(value),
+                nameof(Single) => float.Parse(value),
+                nameof(Boolean) => bool.Parse(value),
+                nameof(DateTime) => DateTime.Parse(value),
+                nameof(Guid) => Guid.Parse(value),
+                _ => Convert.ChangeType(value, underlyingType)
+            };
+
+            property.SetValue(this, convertedValue);
+        }
+        catch (Exception ex)
+        {
+            throw new XmlSerializationException(
+                $"Failed to set property '{property.Name}' with value '{value}': {ex.Message}", ex);
         }
     }
 }
