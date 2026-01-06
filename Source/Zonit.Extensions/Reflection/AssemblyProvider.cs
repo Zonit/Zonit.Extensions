@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 
 namespace Zonit.Extensions.Reflection;
@@ -14,7 +15,9 @@ public static class AssemblyProvider
     /// <typeparam name="T">Base type or interface to search for.</typeparam>
     /// <param name="includeMicrosoftAssemblies">Specifies whether to include Microsoft assemblies (default is false).</param>
     /// <returns>A collection of unique assemblies.</returns>
-    public static IEnumerable<Assembly> GetAssemblies<T>(bool includeMicrosoftAssemblies = false)
+    [RequiresUnreferencedCode("This method scans assemblies for types at runtime. Types not explicitly referenced may be trimmed.")]
+    [RequiresDynamicCode("This method uses Type.IsAssignableFrom which may require dynamic code generation.")]
+    public static IEnumerable<Assembly> GetAssemblies<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>(bool includeMicrosoftAssemblies = false)
     {
         return AppDomain.CurrentDomain.GetAssemblies()
             .Where(a => includeMicrosoftAssemblies || !IsMicrosoftAssembly(a))
@@ -30,7 +33,9 @@ public static class AssemblyProvider
     /// <typeparam name="T">Base type or interface to search for.</typeparam>
     /// <param name="includeMicrosoftAssemblies">Specifies whether to include Microsoft assemblies (default is false).</param>
     /// <returns>A collection of types.</returns>
-    public static IEnumerable<Type> GetTypes<T>(bool includeMicrosoftAssemblies = false)
+    [RequiresUnreferencedCode("This method scans assemblies for types at runtime. Types not explicitly referenced may be trimmed.")]
+    [RequiresDynamicCode("This method uses Type.IsAssignableFrom which may require dynamic code generation.")]
+    public static IEnumerable<Type> GetTypes<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>(bool includeMicrosoftAssemblies = false)
     {
         return AppDomain.CurrentDomain.GetAssemblies()
             .Where(a => includeMicrosoftAssemblies || !IsMicrosoftAssembly(a))
@@ -49,6 +54,8 @@ public static class AssemblyProvider
     /// <summary>
     /// Safely retrieves types from the given assembly, handling potential exceptions.
     /// </summary>
+    [RequiresUnreferencedCode("Assembly.GetTypes() retrieves all types which may be trimmed.")]
+    [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Caller is already annotated with RequiresUnreferencedCode.")]
     private static IEnumerable<Type> GetLoadableTypes(Assembly assembly)
     {
         if (assembly == null)

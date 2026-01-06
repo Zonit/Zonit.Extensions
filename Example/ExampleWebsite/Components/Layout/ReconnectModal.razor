@@ -1,4 +1,4 @@
-﻿<script type="module" src="@Assets["Components/Layout/ReconnectModal.razor.js"]"></script>
+﻿<script type="module" src="@GetAssetUrl("Components/Layout/ReconnectModal.razor.js")"></script>
 
 <dialog id="components-reconnect-modal" data-nosnippet>
     <div class="components-reconnect-container">
@@ -20,3 +20,14 @@
         </button>
     </div>
 </dialog>
+
+@code {
+    private string GetAssetUrl(string path)
+    {
+#if NET9_0_OR_GREATER
+        return Assets[path];
+#else
+        return path;
+#endif
+    }
+}

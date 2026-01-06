@@ -149,7 +149,7 @@ public abstract class XmlConvertible
         }
     }
 
-    private static string GetRootElementName([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.PublicFields)] Type type)
+    private static string GetRootElementName([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] Type type)
     {
         var xmlRootAttr = type.GetCustomAttribute<XmlRootAttribute>();
         return xmlRootAttr?.ElementName ?? type.Name;

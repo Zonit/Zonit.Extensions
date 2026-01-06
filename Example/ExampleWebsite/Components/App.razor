@@ -5,10 +5,12 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <base href="/" />
-    <link rel="stylesheet" href="@Assets["lib/bootstrap/dist/css/bootstrap.min.css"]" />
-    <link rel="stylesheet" href="@Assets["app.css"]" />
-    <link rel="stylesheet" href="@Assets["ExampleWebsite.styles.css"]" />
+    <link rel="stylesheet" href="@GetAssetUrl("lib/bootstrap/dist/css/bootstrap.min.css")" />
+    <link rel="stylesheet" href="@GetAssetUrl("app.css")" />
+    <link rel="stylesheet" href="@GetAssetUrl("ExampleWebsite.styles.css")" />
+#if NET9_0_OR_GREATER
     <ImportMap />
+#endif
     <link rel="icon" type="image/png" href="favicon.png" />
     <HeadOutlet />
 </head>
@@ -16,7 +18,18 @@
 <body>
     <Routes />
     <ReconnectModal />
-    <script src="@Assets["_framework/blazor.web.js"]"></script>
+    <script src="@GetAssetUrl("_framework/blazor.web.js")"></script>
 </body>
 
 </html>
+
+@code {
+    private string GetAssetUrl(string path)
+    {
+#if NET9_0_OR_GREATER
+        return Assets[path];
+#else
+        return path;
+#endif
+    }
+}

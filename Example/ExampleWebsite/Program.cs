@@ -13,9 +13,6 @@ namespace ExampleWebsite
             builder.Services.AddRazorComponents()
                 .AddInteractiveServerComponents();
 
-            //builder.Services.AddCultures
-            builder.Services.AddCulturesExtension();
-
             var app = builder.Build();
 
             // Configure the HTTP request pipeline.
@@ -29,9 +26,12 @@ namespace ExampleWebsite
             app.UseHttpsRedirection();
 
             app.UseAntiforgery();
-            app.UseCulturesExtension();
 
+#if NET9_0_OR_GREATER
             app.MapStaticAssets();
+#else
+            app.UseStaticFiles();
+#endif
             app.MapRazorComponents<App>()
                 .AddInteractiveServerRenderMode();
 
