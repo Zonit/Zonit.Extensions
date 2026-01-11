@@ -8,38 +8,53 @@ namespace Zonit.Extensions;
 
 /// <summary>
 /// Represents a culture in language format (e.g., "en-US", "pl-PL").
-/// Note: default(Culture) has Value = null. Use Culture.Default for "en-US".
 /// </summary>
+/// <remarks>
+/// This is a DDD value object designed for:
+/// <list type="bullet">
+///   <item>Entity Framework Core (value object mapping)</item>
+///   <item>Blazor form validation (via TypeConverter)</item>
+///   <item>JSON serialization (via JsonConverter)</item>
+///   <item>Model binding in ASP.NET Core</item>
+/// </list>
+/// Note: <c>default(Culture).Value</c> returns empty string (not null).
+/// Use <see cref="Default"/> for a valid "en-US" culture.
+/// </remarks>
 [TypeConverter(typeof(ValueObjectTypeConverter<Culture>))]
 [JsonConverter(typeof(CultureJsonConverter))]
 public readonly struct Culture : IEquatable<Culture>, IComparable<Culture>, IParsable<Culture>
 {
     /// <summary>
     /// Default culture (en-US). Use this when you need a valid default culture.
-    /// Note: default(Culture) is different - it has Value = null.
     /// </summary>
     public static readonly Culture Default = new("en-US");
 
     /// <summary>
-    /// Empty culture (default value for optional scenarios). Same as default(Culture).
+    /// Empty culture instance. Equivalent to default(Culture).
     /// </summary>
     public static readonly Culture Empty = default;
 
-    /// <summary>
-    /// The culture value in language format (e.g., "en-US").
-    /// </summary>
-    public string Value { get; }
+    private readonly string? _value;
 
     /// <summary>
-    /// Indicates whether the culture has a value.
+    /// The culture value in language format (e.g., "en-US"). Never null - returns empty string for default/Empty.
     /// </summary>
-    public bool HasValue => !string.IsNullOrWhiteSpace(Value);
+    /// <remarks>
+    /// This ensures that <c>default(Culture).Value</c> returns <see cref="string.Empty"/> instead of null,
+    /// making it safe to use in EF Core and other scenarios without null checks.
+    /// </remarks>
+    public string Value => _value ?? string.Empty;
+
+    /// <summary>
+    /// Indicates whether the culture has a meaningful value (not empty or whitespace).
+    /// </summary>
+    public bool HasValue => !string.IsNullOrWhiteSpace(_value);
 
     /// <summary>
     /// Gets the value or returns "en-US" if empty.
     /// Use this when you need a guaranteed valid culture code.
     /// </summary>
-    public string ValueOrDefault => HasValue ? Value : "en-US";
+    public string ValueOrDefault => HasValue ? _value! : "en-US";
 
     /// <summary>
     /// Creates a new culture based on the specified language code.
@@ -54,7 +69,7 @@ public readonly struct Culture : IEquatable<Culture>, IComparable<Culture>, IPar
         try
         {
             var cultureInfo = new CultureInfo(value);
-            Value = cultureInfo.Name;
+            _value = cultureInfo.Name;
         }
         catch (CultureNotFoundException ex)
         {
@@ -70,7 +85,7 @@ public readonly struct Culture : IEquatable<Culture>, IComparable<Culture>, IPar
     public Culture(CultureInfo cultureInfo)
     {
         ArgumentNullException.ThrowIfNull(cultureInfo, nameof(cultureInfo));
-        Value = cultureInfo.Name;
+        _value = cultureInfo.Name;
     }
 
     /// <summary>
@@ -100,9 +115,9 @@ public readonly struct Culture : IEquatable<Culture>, IComparable<Culture>, IPar
     public string? EnglishName => ToCultureInfo()?.EnglishName;
 
     /// <summary>
-    /// Converts Culture to string.
+    /// Converts Culture to string. Returns empty string for <see cref="Empty"/>.
     /// </summary>
-    public static implicit operator string(Culture culture) => culture.Value ?? string.Empty;
+    public static implicit operator string(Culture culture) => culture.Value;
 
     /// <summary>
     /// Converts string to Culture. Returns Empty for null/whitespace or invalid culture codes.
@@ -137,7 +152,7 @@ public readonly struct Culture : IEquatable<Culture>, IComparable<Culture>, IPar
     public override bool Equals(object? obj) => obj is Culture other && Equals(other);
 
     /// <inheritdoc />
-    public override int GetHashCode() => StringComparer.OrdinalIgnoreCase.GetHashCode(Value ?? string.Empty);
+    public override int GetHashCode() => StringComparer.OrdinalIgnoreCase.GetHashCode(Value);
 
     /// <summary>
     /// Compares two cultures for equality.
@@ -174,7 +189,7 @@ public readonly struct Culture : IEquatable<Culture>, IComparable<Culture>, IPar
     public static bool operator >=(Culture left, Culture right) => left.CompareTo(right) >= 0;
 
     /// <inheritdoc />
-    public override string ToString() => Value ?? string.Empty;
+    public override string ToString() => Value;
 
     /// <summary>
     /// Creates a culture from the specified language code.
@@ -191,7 +206,7 @@ public readonly struct Culture : IEquatable<Culture>, IComparable<Culture>, IPar
     {
         if (string.IsNullOrWhiteSpace(value))
         {
-            culture = default;
+            culture = Empty;
             return false;
         }
 
@@ -202,7 +217,7 @@ public readonly struct Culture : IEquatable<Culture>, IComparable<Culture>, IPar
         }
         catch (CultureNotFoundException)
         {
-            culture = default;
+            culture = Empty;
             return false;
         }
     }

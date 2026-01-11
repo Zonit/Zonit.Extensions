@@ -8,24 +8,39 @@ namespace Zonit.Extensions;
 /// <summary>
 /// Represents a valid URL address.
 /// </summary>
+/// <remarks>
+/// This is a DDD value object designed for:
+/// <list type="bullet">
+///   <item>Entity Framework Core (value object mapping)</item>
+///   <item>Blazor form validation (via TypeConverter)</item>
+///   <item>JSON serialization (via JsonConverter)</item>
+///   <item>Model binding in ASP.NET Core</item>
+/// </list>
+/// </remarks>
 [TypeConverter(typeof(ValueObjectTypeConverter<Url>))]
 [JsonConverter(typeof(UrlJsonConverter))]
 public readonly struct Url : IEquatable<Url>, IComparable<Url>, IParsable<Url>
 {
     /// <summary>
-    /// Empty URL (default value for optional scenarios).
+    /// Empty URL instance. Equivalent to default(Url).
     /// </summary>
     public static readonly Url Empty = default;
 
-    /// <summary>
-    /// The URL value.
-    /// </summary>
-    public string Value { get; }
+    private readonly string? _value;
 
     /// <summary>
-    /// Indicates whether the URL has a value.
+    /// The URL value. Never null - returns empty string for default/Empty.
     /// </summary>
-    public bool HasValue => !string.IsNullOrWhiteSpace(Value);
+    /// <remarks>
+    /// This ensures that <c>default(Url).Value</c> returns <see cref="string.Empty"/> instead of null,
+    /// making it safe to use in EF Core and other scenarios without null checks.
+    /// </remarks>
+    public string Value => _value ?? string.Empty;
+
+    /// <summary>
+    /// Indicates whether the URL has a meaningful value (not empty or whitespace).
+    /// </summary>
+    public bool HasValue => !string.IsNullOrWhiteSpace(_value);
 
     /// <summary>
     /// Gets the Uri object representing this URL.
@@ -84,7 +99,7 @@ public readonly struct Url : IEquatable<Url>, IComparable<Url>, IParsable<Url>
             throw new UriFormatException($"'{trimmedValue}' is not a valid absolute URL.");
         }
 
-        Value = uri.AbsoluteUri;
+        _value = uri.AbsoluteUri;
     }
 
     /// <summary>
@@ -106,7 +121,7 @@ public readonly struct Url : IEquatable<Url>, IComparable<Url>, IParsable<Url>
             throw new UriFormatException($"'{trimmedValue}' is not a valid URL.");
         }
 
-        Value = uri.IsAbsoluteUri ? uri.AbsoluteUri : uri.OriginalString;
+        _value = uri.IsAbsoluteUri ? uri.AbsoluteUri : uri.OriginalString;
     }
 
     /// <summary>
@@ -117,7 +132,7 @@ public readonly struct Url : IEquatable<Url>, IComparable<Url>, IParsable<Url>
     public Url(Uri uri)
     {
         ArgumentNullException.ThrowIfNull(uri, nameof(uri));
-        Value = uri.IsAbsoluteUri ? uri.AbsoluteUri : uri.OriginalString;
+        _value = uri.IsAbsoluteUri ? uri.AbsoluteUri : uri.OriginalString;
     }
 
     /// <summary>
@@ -173,9 +188,9 @@ public readonly struct Url : IEquatable<Url>, IComparable<Url>, IParsable<Url>
     }
 
     /// <summary>
-    /// Converts Url to string.
+    /// Converts Url to string. Returns empty string for <see cref="Empty"/>.
     /// </summary>
-    public static implicit operator string(Url url) => url.Value ?? string.Empty;
+    public static implicit operator string(Url url) => url.Value;
 
     /// <summary>
     /// Converts string to Url. Returns Empty for null/whitespace or invalid URLs.
@@ -210,7 +225,7 @@ public readonly struct Url : IEquatable<Url>, IComparable<Url>, IParsable<Url>
     public override bool Equals(object? obj) => obj is Url other && Equals(other);
 
     /// <inheritdoc />
-    public override int GetHashCode() => StringComparer.OrdinalIgnoreCase.GetHashCode(Value ?? string.Empty);
+    public override int GetHashCode() => StringComparer.OrdinalIgnoreCase.GetHashCode(Value);
 
     /// <summary>
     /// Compares two URLs for equality.
@@ -246,7 +261,7 @@ public readonly struct Url : IEquatable<Url>, IComparable<Url>, IParsable<Url>
     public static bool operator >=(Url left, Url right) => left.CompareTo(right) >= 0;
 
     /// <inheritdoc />
-    public override string ToString() => Value ?? string.Empty;
+    public override string ToString() => Value;
 
     /// <summary>
     /// Creates a URL from the specified address.
@@ -268,7 +283,7 @@ public readonly struct Url : IEquatable<Url>, IComparable<Url>, IParsable<Url>
     {
         if (string.IsNullOrWhiteSpace(value))
         {
-            url = default;
+            url = Empty;
             return false;
         }
 
@@ -279,7 +294,7 @@ public readonly struct Url : IEquatable<Url>, IComparable<Url>, IParsable<Url>
         }
         catch (UriFormatException)
         {
-            url = default;
+            url = Empty;
             return false;
         }
     }
@@ -295,7 +310,7 @@ public readonly struct Url : IEquatable<Url>, IComparable<Url>, IParsable<Url>
     {
         if (string.IsNullOrWhiteSpace(value))
         {
-            url = default;
+            url = Empty;
             return false;
         }
 
@@ -306,7 +321,7 @@ public readonly struct Url : IEquatable<Url>, IComparable<Url>, IParsable<Url>
         }
         catch (UriFormatException)
         {
-            url = default;
+            url = Empty;
             return false;
         }
     }

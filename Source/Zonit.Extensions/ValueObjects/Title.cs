@@ -1,95 +1,112 @@
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.Text.Json.Serialization;
 using Zonit.Extensions.Converters;
+using Zonit.Extensions.Text;
 
 namespace Zonit.Extensions;
 
 /// <summary>
 /// Represents a title for content (articles, products, categories, etc.).
-/// Optimized for SEO with a maximum length of 60 characters.
+/// Maximum length of 60 characters (based on typical display constraints).
 /// </summary>
+/// <remarks>
+/// This is a DDD value object designed for:
+/// <list type="bullet">
+///   <item>Entity Framework Core (value object mapping)</item>
+///   <item>Blazor form validation (via TypeConverter)</item>
+///   <item>JSON serialization (via JsonConverter)</item>
+///   <item>Model binding in ASP.NET Core</item>
+/// </list>
+/// </remarks>
 [TypeConverter(typeof(ValueObjectTypeConverter<Title>))]
 [JsonConverter(typeof(TitleJsonConverter))]
 public readonly struct Title : IEquatable<Title>, IComparable<Title>, IParsable<Title>
 {
     /// <summary>
-    /// Maximum length for SEO optimization (Google displays ~60 characters in search results).
+    /// Maximum allowed length for a title.
     /// </summary>
     public const int MaxLength = 60;
 
     /// <summary>
-    /// Minimum length for a valid title.
+    /// Minimum required length for a valid title.
     /// </summary>
     public const int MinLength = 1;
 
     /// <summary>
-    /// Empty title (default value for optional scenarios).
+    /// Empty title instance. Equivalent to default(Title).
     /// </summary>
     public static readonly Title Empty = default;
 
-    /// <summary>
-    /// The title value.
-    /// </summary>
-    public string Value { get; }
+    private readonly string? _value;
 
     /// <summary>
-    /// Indicates whether the title has a value.
+    /// The title value. Never null - returns empty string for default/Empty.
     /// </summary>
-    public bool HasValue => !string.IsNullOrWhiteSpace(Value);
+    /// <remarks>
+    /// This ensures that <c>default(Title).Value</c> returns <see cref="string.Empty"/> instead of null,
+    /// making it safe to use in EF Core and other scenarios without null checks.
+    /// </remarks>
+    public string Value => _value ?? string.Empty;
 
     /// <summary>
-    /// Gets the length of the title.
+    /// Indicates whether the title has a meaningful value (not empty or whitespace).
     /// </summary>
-    public int Length => Value?.Length ?? 0;
+    public bool HasValue => !string.IsNullOrWhiteSpace(_value);
 
     /// <summary>
-    /// Indicates whether the title is optimized for SEO (not exceeding recommended length).
+    /// Gets the length of the title in text elements (graphemes), correctly handling Unicode.
     /// </summary>
-    public bool IsOptimized => Length <= MaxLength;
+    public int Length => string.IsNullOrEmpty(_value) ? 0 : new StringInfo(_value).LengthInTextElements;
 
     /// <summary>
     /// Creates a new title with the specified value.
     /// </summary>
-    /// <param name="value">Title text.</param>
-    /// <exception cref="ArgumentException">Thrown when value is null, empty, or exceeds maximum length.</exception>
+    /// <param name="value">Title text. Will be trimmed and have whitespace normalized.</param>
+    /// <exception cref="ArgumentException">
+    /// Thrown when value is null, empty, whitespace only, or exceeds <see cref="MaxLength"/> characters.
+    /// </exception>
     public Title(string value)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(value, nameof(value));
 
-        var trimmedValue = value.Trim();
+        var normalizedValue = Normalize(value);
 
-        if (trimmedValue.Length < MinLength)
-        {
+        var graphemeLength = new StringInfo(normalizedValue).LengthInTextElements;
+
+        if (graphemeLength < MinLength)
             throw new ArgumentException($"Title must be at least {MinLength} character long.", nameof(value));
-        }
 
-        if (trimmedValue.Length > MaxLength)
-        {
-            throw new ArgumentException($"Title cannot exceed {MaxLength} characters for SEO optimization.", nameof(value));
-        }
+        if (graphemeLength > MaxLength)
+            throw new ArgumentException($"Title cannot exceed {MaxLength} characters. Current length: {graphemeLength}.", nameof(value));
 
-        Value = trimmedValue;
+        _value = normalizedValue;
     }
 
     /// <summary>
-    /// Converts Title to string.
+    /// Normalizes the input string: trims and collapses multiple whitespace characters into single spaces.
     /// </summary>
-    public static implicit operator string(Title title) => title.Value ?? string.Empty;
+    private static string Normalize(string value)
+        => value.Trim().NormalizeWhitespace();
 
     /// <summary>
-    /// Converts string to Title. Returns Empty for null/whitespace, truncates if too long.
+    /// Converts Title to string. Returns empty string for <see cref="Empty"/>.
     /// </summary>
+    public static implicit operator string(Title title) => title.Value;
+
+    /// <summary>
+    /// Converts string to Title.
+    /// </summary>
+    /// <param name="value">String value to convert.</param>
+    /// <returns><see cref="Empty"/> for null/whitespace, otherwise a new Title instance.</returns>
+    /// <exception cref="ArgumentException">Thrown when value exceeds <see cref="MaxLength"/> characters.</exception>
     public static implicit operator Title(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
             return Empty;
 
-        var trimmed = value.Trim();
-        if (trimmed.Length > MaxLength)
-            return Truncate(trimmed);
-
-        return new Title(trimmed);
+        return new Title(value);
     }
 
     /// <inheritdoc />
@@ -102,7 +119,7 @@ public readonly struct Title : IEquatable<Title>, IComparable<Title>, IParsable<
     public override bool Equals(object? obj) => obj is Title other && Equals(other);
 
     /// <inheritdoc />
-    public override int GetHashCode() => Value?.GetHashCode() ?? 0;
+    public override int GetHashCode() => Value.GetHashCode(StringComparison.Ordinal);
 
     /// <summary>
     /// Compares two titles for equality.
@@ -139,65 +156,41 @@ public readonly struct Title : IEquatable<Title>, IComparable<Title>, IParsable<
     public static bool operator >=(Title left, Title right) => left.CompareTo(right) >= 0;
 
     /// <inheritdoc />
-    public override string ToString() => Value ?? string.Empty;
+    public override string ToString() => Value;
 
     /// <summary>
-    /// Creates a title from the specified value.
+    /// Creates a new title from the specified value.
     /// </summary>
+    /// <param name="value">Title text.</param>
+    /// <returns>A new Title instance.</returns>
+    /// <exception cref="ArgumentException">Thrown when value is invalid.</exception>
     public static Title Create(string value) => new(value);
 
     /// <summary>
-    /// Tries to create a title from the specified value.
+    /// Tries to create a title from the specified value without throwing exceptions.
     /// </summary>
     /// <param name="value">Title text.</param>
-    /// <param name="title">Created title or default if value is invalid.</param>
-    /// <returns>True if title was created, false otherwise.</returns>
+    /// <param name="title">Created title or <see cref="Empty"/> if value is invalid.</param>
+    /// <returns>True if title was created successfully, false otherwise.</returns>
     public static bool TryCreate(string? value, out Title title)
     {
         if (string.IsNullOrWhiteSpace(value))
         {
-            title = default;
+            title = Empty;
             return false;
         }
 
-        var trimmedValue = value.Trim();
+        var normalizedValue = Normalize(value);
+        var graphemeLength = new StringInfo(normalizedValue).LengthInTextElements;
 
-        if (trimmedValue.Length < MinLength || trimmedValue.Length > MaxLength)
+        if (graphemeLength < MinLength || graphemeLength > MaxLength)
         {
-            title = default;
+            title = Empty;
             return false;
         }
 
-        title = new Title(trimmedValue);
+        title = new Title(normalizedValue);
         return true;
-    }
-
-    /// <summary>
-    /// Truncates the title to the maximum SEO length if necessary.
-    /// </summary>
-    /// <param name="value">Title text to truncate.</param>
-    /// <param name="addEllipsis">Whether to add "..." at the end if truncated.</param>
-    /// <returns>Truncated title.</returns>
-    public static Title Truncate(string value, bool addEllipsis = true)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(value, nameof(value));
-
-        var trimmedValue = value.Trim();
-
-        if (trimmedValue.Length <= MaxLength)
-        {
-            return new Title(trimmedValue);
-        }
-
-        var truncatedLength = addEllipsis ? MaxLength - 3 : MaxLength;
-        var truncated = trimmedValue[..truncatedLength];
-
-        if (addEllipsis)
-        {
-            truncated += "...";
-        }
-
-        return new Title(truncated);
     }
 
     /// <summary>
@@ -212,7 +205,7 @@ public readonly struct Title : IEquatable<Title>, IComparable<Title>, IParsable<
         if (TryParse(s, provider, out var result))
             return result;
 
-        throw new FormatException($"Cannot parse '{s}' as Title.");
+        throw new FormatException($"Cannot parse '{s}' as Title. Must be between {MinLength} and {MaxLength} characters.");
     }
 
     /// <summary>
@@ -220,7 +213,7 @@ public readonly struct Title : IEquatable<Title>, IComparable<Title>, IParsable<
     /// </summary>
     /// <param name="s">The string to parse.</param>
     /// <param name="provider">Format provider (not used).</param>
-    /// <param name="result">Parsed Title or default if parsing fails.</param>
+    /// <param name="result">Parsed Title or <see cref="Empty"/> if parsing fails.</param>
     /// <returns>True if parsing succeeded, false otherwise.</returns>
     public static bool TryParse([NotNullWhen(true)] string? s, IFormatProvider? provider, out Title result)
         => TryCreate(s, out result);

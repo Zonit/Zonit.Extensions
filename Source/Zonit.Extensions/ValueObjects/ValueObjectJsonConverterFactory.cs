@@ -5,7 +5,7 @@ namespace Zonit.Extensions;
 
 /// <summary>
 /// JSON converter factory for value objects.
-/// Automatically handles serialization/deserialization of Title, Description, Url, UrlSlug, Culture, Price.
+/// Automatically handles serialization/deserialization of Title, Description, Content, Url, UrlSlug, Culture, Price.
 /// </summary>
 public sealed class ValueObjectJsonConverterFactory : JsonConverterFactory
 {
@@ -14,6 +14,7 @@ public sealed class ValueObjectJsonConverterFactory : JsonConverterFactory
     {
         return typeToConvert == typeof(Title) ||
                typeToConvert == typeof(Description) ||
+               typeToConvert == typeof(Content) ||
                typeToConvert == typeof(Url) ||
                typeToConvert == typeof(UrlSlug) ||
                typeToConvert == typeof(Culture) ||
@@ -27,6 +28,8 @@ public sealed class ValueObjectJsonConverterFactory : JsonConverterFactory
             return new TitleJsonConverter();
         if (typeToConvert == typeof(Description))
             return new DescriptionJsonConverter();
+        if (typeToConvert == typeof(Content))
+            return new ContentJsonConverter();
         if (typeToConvert == typeof(Url))
             return new UrlJsonConverter();
         if (typeToConvert == typeof(UrlSlug))
@@ -55,7 +58,7 @@ public sealed class TitleJsonConverter : JsonConverter<Title>
     /// <inheritdoc />
     public override void Write(Utf8JsonWriter writer, Title value, JsonSerializerOptions options)
     {
-        writer.WriteStringValue(value.Value ?? string.Empty);
+        writer.WriteStringValue(value.Value);
     }
 }
 
@@ -74,7 +77,7 @@ public sealed class DescriptionJsonConverter : JsonConverter<Description>
     /// <inheritdoc />
     public override void Write(Utf8JsonWriter writer, Description value, JsonSerializerOptions options)
     {
-        writer.WriteStringValue(value.Value ?? string.Empty);
+        writer.WriteStringValue(value.Value);
     }
 }
 
@@ -93,7 +96,7 @@ public sealed class UrlJsonConverter : JsonConverter<Url>
     /// <inheritdoc />
     public override void Write(Utf8JsonWriter writer, Url value, JsonSerializerOptions options)
     {
-        writer.WriteStringValue(value.Value ?? string.Empty);
+        writer.WriteStringValue(value.Value);
     }
 }
 
@@ -112,7 +115,7 @@ public sealed class UrlSlugJsonConverter : JsonConverter<UrlSlug>
     /// <inheritdoc />
     public override void Write(Utf8JsonWriter writer, UrlSlug value, JsonSerializerOptions options)
     {
-        writer.WriteStringValue(value.Value ?? string.Empty);
+        writer.WriteStringValue(value.Value);
     }
 }
 
@@ -131,6 +134,25 @@ public sealed class CultureJsonConverter : JsonConverter<Culture>
     /// <inheritdoc />
     public override void Write(Utf8JsonWriter writer, Culture value, JsonSerializerOptions options)
     {
-        writer.WriteStringValue(value.Value ?? string.Empty);
+        writer.WriteStringValue(value.Value);
+    }
+}
+
+/// <summary>
+/// JSON converter for Content value object.
+/// </summary>
+public sealed class ContentJsonConverter : JsonConverter<Content>
+{
+    /// <inheritdoc />
+    public override Content Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        var value = reader.GetString();
+        return Content.TryCreate(value, out var content) ? content : Content.Empty;
+    }
+
+    /// <inheritdoc />
+    public override void Write(Utf8JsonWriter writer, Content value, JsonSerializerOptions options)
+    {
+        writer.WriteStringValue(value.Value);
     }
 }

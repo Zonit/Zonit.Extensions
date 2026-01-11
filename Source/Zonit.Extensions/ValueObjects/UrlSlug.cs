@@ -10,24 +10,39 @@ namespace Zonit.Extensions;
 /// <summary>
 /// Represents a URL-friendly slug generated from text.
 /// </summary>
+/// <remarks>
+/// This is a DDD value object designed for:
+/// <list type="bullet">
+///   <item>Entity Framework Core (value object mapping)</item>
+///   <item>Blazor form validation (via TypeConverter)</item>
+///   <item>JSON serialization (via JsonConverter)</item>
+///   <item>Model binding in ASP.NET Core</item>
+/// </list>
+/// </remarks>
 [TypeConverter(typeof(ValueObjectTypeConverter<UrlSlug>))]
 [JsonConverter(typeof(UrlSlugJsonConverter))]
 public readonly struct UrlSlug : IEquatable<UrlSlug>, IComparable<UrlSlug>, IParsable<UrlSlug>
 {
     /// <summary>
-    /// Empty UrlSlug (default value for optional scenarios).
+    /// Empty UrlSlug instance. Equivalent to default(UrlSlug).
     /// </summary>
     public static readonly UrlSlug Empty = default;
 
-    /// <summary>
-    /// The slug value.
-    /// </summary>
-    public string Value { get; }
+    private readonly string? _value;
 
     /// <summary>
-    /// Indicates whether the slug has a value.
+    /// The slug value. Never null - returns empty string for default/Empty.
     /// </summary>
-    public bool HasValue => !string.IsNullOrWhiteSpace(Value);
+    /// <remarks>
+    /// This ensures that <c>default(UrlSlug).Value</c> returns <see cref="string.Empty"/> instead of null,
+    /// making it safe to use in EF Core and other scenarios without null checks.
+    /// </remarks>
+    public string Value => _value ?? string.Empty;
+
+    /// <summary>
+    /// Indicates whether the slug has a meaningful value (not empty or whitespace).
+    /// </summary>
+    public bool HasValue => !string.IsNullOrWhiteSpace(_value);
 
     /// <summary>
     /// Creates a new slug based on the specified text.
@@ -42,7 +57,7 @@ public readonly struct UrlSlug : IEquatable<UrlSlug>, IComparable<UrlSlug>, IPar
         result = UrlSlugRegexes.NonAlphanumericRegex().Replace(result, "");
         result = UrlSlugRegexes.WhitespaceRegex().Replace(result, "-");
         result = UrlSlugRegexes.MultipleHyphensRegex().Replace(result, "-"); // Remove excessive hyphens
-        Value = result.ToLowerInvariant().Trim('-');
+        _value = result.ToLowerInvariant().Trim('-');
     }
 
     /// <summary>
@@ -57,7 +72,7 @@ public readonly struct UrlSlug : IEquatable<UrlSlug>, IComparable<UrlSlug>, IPar
         ArgumentNullException.ThrowIfNull(getExistingUrls, nameof(getExistingUrls));
 
         string baseSlug = CreateSlug(value);
-        Value = EnsureUniqueSlug(baseSlug, getExistingUrls);
+        _value = EnsureUniqueSlug(baseSlug, getExistingUrls);
     }
 
     /// <summary>
@@ -97,9 +112,9 @@ public readonly struct UrlSlug : IEquatable<UrlSlug>, IComparable<UrlSlug>, IPar
     }
 
     /// <summary>
-    /// Converts UrlSlug to string.
+    /// Converts UrlSlug to string. Returns empty string for <see cref="Empty"/>.
     /// </summary>
-    public static implicit operator string(UrlSlug slug) => slug.Value ?? string.Empty;
+    public static implicit operator string(UrlSlug slug) => slug.Value;
 
     /// <summary>
     /// Converts string to UrlSlug. Returns Empty for null/whitespace.
@@ -122,7 +137,7 @@ public readonly struct UrlSlug : IEquatable<UrlSlug>, IComparable<UrlSlug>, IPar
     public override bool Equals(object? obj) => obj is UrlSlug other && Equals(other);
 
     /// <inheritdoc />
-    public override int GetHashCode() => Value?.GetHashCode() ?? 0;
+    public override int GetHashCode() => Value.GetHashCode(StringComparison.Ordinal);
 
     /// <summary>
     /// Compares two slugs for equality.
@@ -158,7 +173,7 @@ public readonly struct UrlSlug : IEquatable<UrlSlug>, IComparable<UrlSlug>, IPar
     public static bool operator >=(UrlSlug left, UrlSlug right) => left.CompareTo(right) >= 0;
 
     /// <inheritdoc />
-    public override string ToString() => Value ?? string.Empty;
+    public override string ToString() => Value;
 
     /// <summary>
     /// Creates a slug from the specified text.
@@ -175,7 +190,7 @@ public readonly struct UrlSlug : IEquatable<UrlSlug>, IComparable<UrlSlug>, IPar
     {
         if (string.IsNullOrWhiteSpace(value))
         {
-            slug = default;
+            slug = Empty;
             return false;
         }
 
