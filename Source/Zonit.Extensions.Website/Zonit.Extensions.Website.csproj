@@ -1,7 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
-  </PropertyGroup>
+<PropertyGroup>
+  <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    
+  <!-- Package Metadata -->
+  <Description>ASP.NET Core and Blazor web extensions providing base components (PageBase, PageEditBase, PageViewBase), navigation services, breadcrumbs management, toast notifications, cookie handling, and data protection utilities for building modern web applications.</Description>
+  <Summary>ASP.NET Core and Blazor extensions for navigation, toasts, cookies, and components</Summary>
+  <PackageTags>Zonit;Extensions;Blazor;AspNetCore;Navigation;Breadcrumbs;Toasts;Cookies;Components;Web</PackageTags>
+</PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>

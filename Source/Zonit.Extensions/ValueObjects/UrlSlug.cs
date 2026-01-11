@@ -1,26 +1,39 @@
 ﻿using Diacritics.Extensions;
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Zonit.Extensions.Converters;
 
 namespace Zonit.Extensions;
 
 /// <summary>
-/// Reprezentuje przyjazny dla URL slug wygenerowany z tekstu.
+/// Represents a URL-friendly slug generated from text.
 /// </summary>
 [TypeConverter(typeof(ValueObjectTypeConverter<UrlSlug>))]
-public readonly struct UrlSlug : IEquatable<UrlSlug>
+[JsonConverter(typeof(UrlSlugJsonConverter))]
+public readonly struct UrlSlug : IEquatable<UrlSlug>, IComparable<UrlSlug>, IParsable<UrlSlug>
 {
     /// <summary>
-    /// Wartość sluga.
+    /// Empty UrlSlug (default value for optional scenarios).
+    /// </summary>
+    public static readonly UrlSlug Empty = default;
+
+    /// <summary>
+    /// The slug value.
     /// </summary>
     public string Value { get; }
 
     /// <summary>
-    /// Tworzy nowy slug na podstawie podanego tekstu.
+    /// Indicates whether the slug has a value.
     /// </summary>
-    /// <param name="value">Tekst do przekształcenia na slug.</param>
-    /// <exception cref="ArgumentNullException">Rzucany gdy <paramref name="value"/> jest null.</exception>
+    public bool HasValue => !string.IsNullOrWhiteSpace(Value);
+
+    /// <summary>
+    /// Creates a new slug based on the specified text.
+    /// </summary>
+    /// <param name="value">Text to transform into a slug.</param>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="value"/> is null.</exception>
     public UrlSlug(string value)
     {
         ArgumentNullException.ThrowIfNull(value, nameof(value));
@@ -28,16 +41,16 @@ public readonly struct UrlSlug : IEquatable<UrlSlug>
         string result = value.Trim().RemoveDiacritics();
         result = UrlSlugRegexes.NonAlphanumericRegex().Replace(result, "");
         result = UrlSlugRegexes.WhitespaceRegex().Replace(result, "-");
-        result = UrlSlugRegexes.MultipleHyphensRegex().Replace(result, "-"); // usunięcie nadmiernych myślników
+        result = UrlSlugRegexes.MultipleHyphensRegex().Replace(result, "-"); // Remove excessive hyphens
         Value = result.ToLowerInvariant().Trim('-');
     }
 
     /// <summary>
-    /// Tworzy nowy unikalny slug na podstawie podanego tekstu, uwzględniając istniejące slugi.
+    /// Creates a new unique slug based on the specified text, considering existing slugs.
     /// </summary>
-    /// <param name="value">Tekst do przekształcenia na slug.</param>
-    /// <param name="getExistingUrls">Funkcja zwracająca listę istniejących slugów.</param>
-    /// <exception cref="ArgumentNullException">Rzucany gdy <paramref name="value"/> lub <paramref name="getExistingUrls"/> jest null.</exception>
+    /// <param name="value">Text to transform into a slug.</param>
+    /// <param name="getExistingUrls">Function returning a list of existing slugs.</param>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="value"/> or <paramref name="getExistingUrls"/> is null.</exception>
     public UrlSlug(string value, Func<string, List<string>> getExistingUrls)
     {
         ArgumentNullException.ThrowIfNull(value, nameof(value));
@@ -48,7 +61,7 @@ public readonly struct UrlSlug : IEquatable<UrlSlug>
     }
 
     /// <summary>
-    /// Tworzy podstawowy slug z tekstu.
+    /// Creates a basic slug from text.
     /// </summary>
     private static string CreateSlug(string value)
     {
@@ -60,7 +73,7 @@ public readonly struct UrlSlug : IEquatable<UrlSlug>
     }
 
     /// <summary>
-    /// Zapewnia unikalność sluga w kontekście istniejących slugów.
+    /// Ensures uniqueness of the slug in the context of existing slugs.
     /// </summary>
     private static string EnsureUniqueSlug(string baseSlug, Func<string, List<string>> getExistingUrls)
     {
@@ -83,17 +96,21 @@ public readonly struct UrlSlug : IEquatable<UrlSlug>
         return uniqueSlug;
     }
 
-
     /// <summary>
-    /// Konwertuje string na obiekt UrlSlug.
-    /// </summary>
-    public static implicit operator UrlSlug(string value) => new(value);
-
-    /// <summary>
-    /// Konwertuje UrlSlug na string.
+    /// Converts UrlSlug to string.
     /// </summary>
     public static implicit operator string(UrlSlug slug) => slug.Value ?? string.Empty;
 
+    /// <summary>
+    /// Converts string to UrlSlug. Returns Empty for null/whitespace.
+    /// </summary>
+    public static implicit operator UrlSlug(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return Empty;
+
+        return new UrlSlug(value);
+    }
 
     /// <inheritdoc />
     public bool Equals(UrlSlug other)
@@ -105,22 +122,55 @@ public readonly struct UrlSlug : IEquatable<UrlSlug>
     public override bool Equals(object? obj) => obj is UrlSlug other && Equals(other);
 
     /// <inheritdoc />
-    public override int GetHashCode() => Value.GetHashCode();
-
-    /// <inheritdoc />
-    public override string ToString() => Value;
+    public override int GetHashCode() => Value?.GetHashCode() ?? 0;
 
     /// <summary>
-    /// Tworzy slug z podanego tekstu.
+    /// Compares two slugs for equality.
+    /// </summary>
+    public static bool operator ==(UrlSlug left, UrlSlug right) => left.Equals(right);
+
+    /// <summary>
+    /// Compares two slugs for inequality.
+    /// </summary>
+    public static bool operator !=(UrlSlug left, UrlSlug right) => !(left == right);
+
+    /// <inheritdoc />
+    public int CompareTo(UrlSlug other) => string.Compare(Value, other.Value, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Compares two slugs for less than.
+    /// </summary>
+    public static bool operator <(UrlSlug left, UrlSlug right) => left.CompareTo(right) < 0;
+
+    /// <summary>
+    /// Compares two slugs for less than or equal.
+    /// </summary>
+    public static bool operator <=(UrlSlug left, UrlSlug right) => left.CompareTo(right) <= 0;
+
+    /// <summary>
+    /// Compares two slugs for greater than.
+    /// </summary>
+    public static bool operator >(UrlSlug left, UrlSlug right) => left.CompareTo(right) > 0;
+
+    /// <summary>
+    /// Compares two slugs for greater than or equal.
+    /// </summary>
+    public static bool operator >=(UrlSlug left, UrlSlug right) => left.CompareTo(right) >= 0;
+
+    /// <inheritdoc />
+    public override string ToString() => Value ?? string.Empty;
+
+    /// <summary>
+    /// Creates a slug from the specified text.
     /// </summary>
     public static UrlSlug Create(string value) => new(value);
 
     /// <summary>
-    /// Próbuje utworzyć slug z podanego tekstu.
+    /// Tries to create a slug from the specified text.
     /// </summary>
-    /// <param name="value">Tekst do przekształcenia na slug.</param>
-    /// <param name="slug">Utworzony slug lub default jeśli wartość jest nieprawidłowa.</param>
-    /// <returns>True jeśli slug został utworzony, false w przeciwnym razie.</returns>
+    /// <param name="value">Text to transform into a slug.</param>
+    /// <param name="slug">Created slug or default if value is invalid.</param>
+    /// <returns>True if slug was created, false otherwise.</returns>
     public static bool TryCreate(string? value, out UrlSlug slug)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -132,6 +182,31 @@ public readonly struct UrlSlug : IEquatable<UrlSlug>
         slug = new UrlSlug(value);
         return true;
     }
+
+    /// <summary>
+    /// Parses a string to a UrlSlug.
+    /// </summary>
+    /// <param name="s">The string to parse.</param>
+    /// <param name="provider">Format provider (not used).</param>
+    /// <returns>Parsed UrlSlug.</returns>
+    /// <exception cref="FormatException">Thrown when parsing fails.</exception>
+    public static UrlSlug Parse(string s, IFormatProvider? provider)
+    {
+        if (TryParse(s, provider, out var result))
+            return result;
+
+        throw new FormatException($"Cannot parse '{s}' as UrlSlug.");
+    }
+
+    /// <summary>
+    /// Tries to parse a string to a UrlSlug.
+    /// </summary>
+    /// <param name="s">The string to parse.</param>
+    /// <param name="provider">Format provider (not used).</param>
+    /// <param name="result">Parsed UrlSlug or default if parsing fails.</param>
+    /// <returns>True if parsing succeeded, false otherwise.</returns>
+    public static bool TryParse([NotNullWhen(true)] string? s, IFormatProvider? provider, out UrlSlug result)
+        => TryCreate(s, out result);
 }
 
 /// <summary>

@@ -1,5 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    
+    <!-- Package Metadata -->
+    <Description>Abstractions for Zonit.Extensions.Website library. Provides interfaces and models for navigation providers, breadcrumbs, toasts, cookies, and area definitions (Dashboard, Management, Manager, Diagnostic) for building modular web applications.</Description>
+    <Summary>Abstractions and interfaces for Zonit.Extensions.Website</Summary>
+    <PackageTags>Zonit;Extensions;Website;Abstractions;Navigation;Breadcrumbs;Toasts;Cookies;Areas;Interfaces</PackageTags>
   </PropertyGroup>
 </Project>

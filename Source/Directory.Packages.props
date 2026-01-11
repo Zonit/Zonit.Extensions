@@ -1,37 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
 <Project>
+  <!-- Central Package Management for Zonit.Extensions -->
   <PropertyGroup>
-    <EnableCentralPackageManagement>true</EnableCentralPackageManagement>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <AssemblyVersion>0.1.54</AssemblyVersion>
-    <FileVersion>$(AssemblyVersion)</FileVersion>
-    <Version>$(AssemblyVersion)</Version>
-    <Authors>Zonit</Authors>
-    <Title>Zonit.Extensions</Title>
-    <PackageOutputPath>$(SolutionDir)Packages</PackageOutputPath>
-    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
-    <PackageProjectUrl>https://github.com/Zonit</PackageProjectUrl>
-    <RepositoryType>git</RepositoryType>
-    <RepositoryUrl>https://github.com/Zonit/Zonit.Extensions</RepositoryUrl>
-    <PackageReadmeFile>Readme.md</PackageReadmeFile>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <Description>
-    </Description>
-    <Summary>
-    </Summary>
-    <PackageTags>Zonit</PackageTags>
-    <!-- Debugging symbol settings -->
-    <IncludeSymbols>true</IncludeSymbols>
-    <IncludeSource>true</IncludeSource>
-    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
-    <PublishRepositoryUrl>true</PublishRepositoryUrl>
-    <EmbedUntrackedSources>true</EmbedUntrackedSources>
-    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+    
+    <!-- Version -->
+    <Version>0.2.0</Version>
+    <AssemblyVersion>$(Version)</AssemblyVersion>
+    <FileVersion>$(Version)</FileVersion>
+    
+    <!-- Package Output -->
+    <PackageOutputPath>$(MSBuildThisFileDirectory)..\Packages</PackageOutputPath>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
   </PropertyGroup>
+  
+  <!-- Package files (icon and README) -->
   <ItemGroup>
-    <None Include="..\..\Readme.md" Pack="true" PackagePath="" Visible="false" />
+    <None Include="$(MSBuildThisFileDirectory)..\Asset\icon.png" Pack="true" PackagePath="" Visible="false" />
+    <None Include="$(MSBuildThisFileDirectory)..\Readme.md" Pack="true" PackagePath="" Visible="false" />
   </ItemGroup>
+  
+  <!-- Common Dependencies -->
   <ItemGroup>
     <PackageVersion Include="Diacritics" Version="4.0.17" />
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
@@ -40,10 +29,16 @@
     <PackageVersion Include="Zonit.Extensions.Identity.Abstractions" Version="0.1.50" />
     <PackageVersion Include="Zonit.Extensions.Projects.Abstractions" Version="0.1.50" />
   </ItemGroup>
+  
+  <!-- .NET 8.0 Dependencies -->
   <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
   </ItemGroup>
+  
+  <!-- .NET 9.0 Dependencies -->
   <ItemGroup Condition="'$(TargetFramework)' == 'net9.0'">
   </ItemGroup>
+  
+  <!-- .NET 10.0 Dependencies -->
   <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
   </ItemGroup>
 </Project>

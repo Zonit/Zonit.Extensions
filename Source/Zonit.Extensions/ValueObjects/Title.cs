@@ -1,4 +1,6 @@
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
+using System.Text.Json.Serialization;
 using Zonit.Extensions.Converters;
 
 namespace Zonit.Extensions;
@@ -8,7 +10,8 @@ namespace Zonit.Extensions;
 /// Optimized for SEO with a maximum length of 60 characters.
 /// </summary>
 [TypeConverter(typeof(ValueObjectTypeConverter<Title>))]
-public readonly struct Title : IEquatable<Title>
+[JsonConverter(typeof(TitleJsonConverter))]
+public readonly struct Title : IEquatable<Title>, IComparable<Title>, IParsable<Title>
 {
     /// <summary>
     /// Maximum length for SEO optimization (Google displays ~60 characters in search results).
@@ -21,14 +24,24 @@ public readonly struct Title : IEquatable<Title>
     public const int MinLength = 1;
 
     /// <summary>
+    /// Empty title (default value for optional scenarios).
+    /// </summary>
+    public static readonly Title Empty = default;
+
+    /// <summary>
     /// The title value.
     /// </summary>
     public string Value { get; }
 
     /// <summary>
+    /// Indicates whether the title has a value.
+    /// </summary>
+    public bool HasValue => !string.IsNullOrWhiteSpace(Value);
+
+    /// <summary>
     /// Gets the length of the title.
     /// </summary>
-    public int Length => Value.Length;
+    public int Length => Value?.Length ?? 0;
 
     /// <summary>
     /// Indicates whether the title is optimized for SEO (not exceeding recommended length).
@@ -60,14 +73,24 @@ public readonly struct Title : IEquatable<Title>
     }
 
     /// <summary>
-    /// Converts string to Title.
-    /// </summary>
-    public static implicit operator Title(string value) => new(value);
-
-    /// <summary>
     /// Converts Title to string.
     /// </summary>
     public static implicit operator string(Title title) => title.Value ?? string.Empty;
+
+    /// <summary>
+    /// Converts string to Title. Returns Empty for null/whitespace, truncates if too long.
+    /// </summary>
+    public static implicit operator Title(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return Empty;
+
+        var trimmed = value.Trim();
+        if (trimmed.Length > MaxLength)
+            return Truncate(trimmed);
+
+        return new Title(trimmed);
+    }
 
     /// <inheritdoc />
     public bool Equals(Title other)
@@ -79,7 +102,7 @@ public readonly struct Title : IEquatable<Title>
     public override bool Equals(object? obj) => obj is Title other && Equals(other);
 
     /// <inheritdoc />
-    public override int GetHashCode() => Value.GetHashCode();
+    public override int GetHashCode() => Value?.GetHashCode() ?? 0;
 
     /// <summary>
     /// Compares two titles for equality.
@@ -93,7 +116,30 @@ public readonly struct Title : IEquatable<Title>
     public static bool operator !=(Title left, Title right) => !(left == right);
 
     /// <inheritdoc />
-    public override string ToString() => Value;
+    public int CompareTo(Title other) => string.Compare(Value, other.Value, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Compares two titles for less than.
+    /// </summary>
+    public static bool operator <(Title left, Title right) => left.CompareTo(right) < 0;
+
+    /// <summary>
+    /// Compares two titles for less than or equal.
+    /// </summary>
+    public static bool operator <=(Title left, Title right) => left.CompareTo(right) <= 0;
+
+    /// <summary>
+    /// Compares two titles for greater than.
+    /// </summary>
+    public static bool operator >(Title left, Title right) => left.CompareTo(right) > 0;
+
+    /// <summary>
+    /// Compares two titles for greater than or equal.
+    /// </summary>
+    public static bool operator >=(Title left, Title right) => left.CompareTo(right) >= 0;
+
+    /// <inheritdoc />
+    public override string ToString() => Value ?? string.Empty;
 
     /// <summary>
     /// Creates a title from the specified value.
@@ -153,4 +199,29 @@ public readonly struct Title : IEquatable<Title>
 
         return new Title(truncated);
     }
+
+    /// <summary>
+    /// Parses a string to a Title.
+    /// </summary>
+    /// <param name="s">The string to parse.</param>
+    /// <param name="provider">Format provider (not used).</param>
+    /// <returns>Parsed Title.</returns>
+    /// <exception cref="FormatException">Thrown when parsing fails.</exception>
+    public static Title Parse(string s, IFormatProvider? provider)
+    {
+        if (TryParse(s, provider, out var result))
+            return result;
+
+        throw new FormatException($"Cannot parse '{s}' as Title.");
+    }
+
+    /// <summary>
+    /// Tries to parse a string to a Title.
+    /// </summary>
+    /// <param name="s">The string to parse.</param>
+    /// <param name="provider">Format provider (not used).</param>
+    /// <param name="result">Parsed Title or default if parsing fails.</param>
+    /// <returns>True if parsing succeeded, false otherwise.</returns>
+    public static bool TryParse([NotNullWhen(true)] string? s, IFormatProvider? provider, out Title result)
+        => TryCreate(s, out result);
 }

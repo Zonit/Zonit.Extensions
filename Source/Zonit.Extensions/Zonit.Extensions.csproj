@@ -1,7 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
-  </PropertyGroup>
+<PropertyGroup>
+  <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    
+  <!-- Package Metadata -->
+  <Description>Core extensions library providing immutable value objects (Title, Description, UrlSlug, Url, Culture, Price), text analysis utilities, XML converters, and reflection helpers for .NET applications. Features SEO-optimized value objects with automatic validation, JSON/TypeConverter support, and modern C# patterns (IParsable, IComparable).</Description>
+  <Summary>Core extensions with value objects, text utilities, and reflection helpers for .NET</Summary>
+  <PackageTags>Zonit;Extensions;ValueObjects;SEO;DDD;Domain;Title;Description;Url;Slug;Culture;Price;TextAnalysis;Reflection</PackageTags>
+</PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Diacritics" />
     <PackageReference Include="Microsoft.SourceLink.GitHub">

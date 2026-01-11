@@ -1,6 +1,39 @@
 <Project>
+  <!-- Common NuGet Package Metadata for all Zonit.Extensions packages -->
   <PropertyGroup>
-    <!-- Mark all projects in Zonit.Extensions as AOT-compatible -->
-    <IsAotCompatible>true</IsAotCompatible>
+    <Authors>Zonit</Authors>
+    <Company>Zonit</Company>
+    <Product>Zonit.Extensions</Product>
+    <Copyright>Copyright (c) Zonit</Copyright>
+    
+    <!-- Repository and Project URLs -->
+    <PackageProjectUrl>https://github.com/Zonit/Zonit.Extensions</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Zonit/Zonit.Extensions</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    
+    <!-- License -->
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    
+    <!-- Package Assets -->
+    <PackageIcon>icon.png</PackageIcon>
+    <PackageReadmeFile>Readme.md</PackageReadmeFile>
+    <PackageReleaseNotes>See https://github.com/Zonit/Zonit.Extensions/releases</PackageReleaseNotes>
+    
+    <!-- Build settings -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    
+    <!-- AOT and Trimming support (not for Source Generators) -->
+    <IsTrimmable Condition="'$(IsRoslynComponent)' != 'true'">true</IsTrimmable>
+    <IsAotCompatible Condition="'$(IsRoslynComponent)' != 'true'">true</IsAotCompatible>
+  </PropertyGroup>
+  
+  <!-- Language settings - only for non-SourceGenerator projects -->
+  <PropertyGroup Condition="'$(IsRoslynComponent)' != 'true'">
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
   </PropertyGroup>
 </Project>

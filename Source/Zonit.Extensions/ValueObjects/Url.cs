@@ -1,65 +1,78 @@
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
+using System.Text.Json.Serialization;
 using Zonit.Extensions.Converters;
 
 namespace Zonit.Extensions;
 
 /// <summary>
-/// Reprezentuje prawid³owy adres URL.
+/// Represents a valid URL address.
 /// </summary>
 [TypeConverter(typeof(ValueObjectTypeConverter<Url>))]
-public readonly struct Url : IEquatable<Url>
+[JsonConverter(typeof(UrlJsonConverter))]
+public readonly struct Url : IEquatable<Url>, IComparable<Url>, IParsable<Url>
 {
     /// <summary>
-    /// Wartoœæ URL.
+    /// Empty URL (default value for optional scenarios).
+    /// </summary>
+    public static readonly Url Empty = default;
+
+    /// <summary>
+    /// The URL value.
     /// </summary>
     public string Value { get; }
 
     /// <summary>
-    /// Pobiera obiekt Uri reprezentuj¹cy ten URL.
+    /// Indicates whether the URL has a value.
     /// </summary>
-    public Uri Uri => new(Value);
+    public bool HasValue => !string.IsNullOrWhiteSpace(Value);
 
     /// <summary>
-    /// Pobiera schemat URL (http, https, ftp, etc.).
+    /// Gets the Uri object representing this URL.
     /// </summary>
-    public string Scheme => Uri.Scheme;
+    public Uri? Uri => HasValue ? new Uri(Value) : null;
 
     /// <summary>
-    /// Pobiera host URL.
+    /// Gets the URL scheme (http, https, ftp, etc.).
     /// </summary>
-    public string Host => Uri.Host;
+    public string? Scheme => Uri?.Scheme;
 
     /// <summary>
-    /// Pobiera port URL.
+    /// Gets the URL host.
     /// </summary>
-    public int Port => Uri.Port;
+    public string? Host => Uri?.Host;
 
     /// <summary>
-    /// Pobiera œcie¿kê URL.
+    /// Gets the URL port.
     /// </summary>
-    public string Path => Uri.AbsolutePath;
+    public int Port => Uri?.Port ?? 0;
 
     /// <summary>
-    /// Pobiera query string URL.
+    /// Gets the URL path.
     /// </summary>
-    public string Query => Uri.Query;
+    public string? Path => Uri?.AbsolutePath;
 
     /// <summary>
-    /// Sprawdza czy URL u¿ywa HTTPS.
+    /// Gets the URL query string.
     /// </summary>
-    public bool IsHttps => Uri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase);
+    public string? Query => Uri?.Query;
 
     /// <summary>
-    /// Sprawdza czy URL jest bezwzglêdny (absolute).
+    /// Checks if the URL uses HTTPS.
     /// </summary>
-    public bool IsAbsolute => Uri.IsAbsoluteUri;
+    public bool IsHttps => Uri?.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase) ?? false;
 
     /// <summary>
-    /// Tworzy nowy URL na podstawie podanego adresu.
+    /// Checks if the URL is absolute.
     /// </summary>
-    /// <param name="value">Adres URL.</param>
-    /// <exception cref="ArgumentNullException">Rzucany gdy <paramref name="value"/> jest null.</exception>
-    /// <exception cref="UriFormatException">Rzucany gdy <paramref name="value"/> nie jest prawid³owym URL.</exception>
+    public bool IsAbsolute => Uri?.IsAbsoluteUri ?? false;
+
+    /// <summary>
+    /// Creates a new URL based on the specified address.
+    /// </summary>
+    /// <param name="value">URL address.</param>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="value"/> is null.</exception>
+    /// <exception cref="UriFormatException">Thrown when <paramref name="value"/> is not a valid URL.</exception>
     public Url(string value)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(value, nameof(value));
@@ -75,12 +88,12 @@ public readonly struct Url : IEquatable<Url>
     }
 
     /// <summary>
-    /// Tworzy nowy URL z opcj¹ akceptacji wzglêdnych adresów.
+    /// Creates a new URL with option to accept relative addresses.
     /// </summary>
-    /// <param name="value">Adres URL.</param>
-    /// <param name="allowRelative">Czy akceptowaæ wzglêdne URL.</param>
-    /// <exception cref="ArgumentNullException">Rzucany gdy <paramref name="value"/> jest null.</exception>
-    /// <exception cref="UriFormatException">Rzucany gdy <paramref name="value"/> nie jest prawid³owym URL.</exception>
+    /// <param name="value">URL address.</param>
+    /// <param name="allowRelative">Whether to accept relative URLs.</param>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="value"/> is null.</exception>
+    /// <exception cref="UriFormatException">Thrown when <paramref name="value"/> is not a valid URL.</exception>
     public Url(string value, bool allowRelative)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(value, nameof(value));
@@ -97,10 +110,10 @@ public readonly struct Url : IEquatable<Url>
     }
 
     /// <summary>
-    /// Tworzy URL z obiektu Uri.
+    /// Creates a URL from a Uri object.
     /// </summary>
-    /// <param name="uri">Obiekt Uri.</param>
-    /// <exception cref="ArgumentNullException">Rzucany gdy <paramref name="uri"/> jest null.</exception>
+    /// <param name="uri">Uri object.</param>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="uri"/> is null.</exception>
     public Url(Uri uri)
     {
         ArgumentNullException.ThrowIfNull(uri, nameof(uri));
@@ -108,24 +121,32 @@ public readonly struct Url : IEquatable<Url>
     }
 
     /// <summary>
-    /// £¹czy aktualny URL z relatywn¹ œcie¿k¹.
+    /// Combines the current URL with a relative path.
     /// </summary>
-    /// <param name="relativePath">Relatywna œcie¿ka do po³¹czenia.</param>
-    /// <returns>Nowy URL bêd¹cy po³¹czeniem.</returns>
+    /// <param name="relativePath">Relative path to combine.</param>
+    /// <returns>New URL that is the combination.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when the URL has no value.</exception>
     public Url Combine(string relativePath)
     {
+        if (Uri is null)
+            throw new InvalidOperationException("Cannot combine paths on an empty URL.");
+        
         var combinedUri = new Uri(Uri, relativePath);
         return new Url(combinedUri);
     }
 
     /// <summary>
-    /// Dodaje lub aktualizuje parametr query string.
+    /// Adds or updates a query string parameter.
     /// </summary>
-    /// <param name="key">Klucz parametru.</param>
-    /// <param name="value">Wartoœæ parametru.</param>
-    /// <returns>Nowy URL z dodanym parametrem.</returns>
+    /// <param name="key">Parameter key.</param>
+    /// <param name="value">Parameter value.</param>
+    /// <returns>New URL with the added parameter.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when the URL has no value.</exception>
     public Url WithQueryParameter(string key, string value)
     {
+        if (Uri is null)
+            throw new InvalidOperationException("Cannot add query parameter to an empty URL.");
+        
         var builder = new UriBuilder(Uri);
         var query = System.Web.HttpUtility.ParseQueryString(builder.Query);
         query[key] = value;
@@ -134,12 +155,16 @@ public readonly struct Url : IEquatable<Url>
     }
 
     /// <summary>
-    /// Usuwa parametr z query string.
+    /// Removes a parameter from the query string.
     /// </summary>
-    /// <param name="key">Klucz parametru do usuniêcia.</param>
-    /// <returns>Nowy URL bez parametru.</returns>
+    /// <param name="key">Parameter key to remove.</param>
+    /// <returns>New URL without the parameter.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when the URL has no value.</exception>
     public Url WithoutQueryParameter(string key)
     {
+        if (Uri is null)
+            throw new InvalidOperationException("Cannot remove query parameter from an empty URL.");
+        
         var builder = new UriBuilder(Uri);
         var query = System.Web.HttpUtility.ParseQueryString(builder.Query);
         query.Remove(key);
@@ -148,24 +173,32 @@ public readonly struct Url : IEquatable<Url>
     }
 
     /// <summary>
-    /// Konwertuje string na obiekt Url.
-    /// </summary>
-    public static implicit operator Url(string value) => new(value);
-
-    /// <summary>
-    /// Konwertuje Url na string.
+    /// Converts Url to string.
     /// </summary>
     public static implicit operator string(Url url) => url.Value ?? string.Empty;
 
     /// <summary>
-    /// Konwertuje Uri na Url.
+    /// Converts string to Url. Returns Empty for null/whitespace or invalid URLs.
+    /// </summary>
+    public static implicit operator Url(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return Empty;
+
+        return TryCreate(value, out var url) ? url : Empty;
+    }
+
+    /// <summary>
+    /// Converts Uri to Url.
     /// </summary>
     public static implicit operator Url(Uri uri) => new(uri);
 
     /// <summary>
-    /// Konwertuje Url na Uri.
+    /// Converts Url to Uri.
     /// </summary>
-    public static implicit operator Uri(Url url) => url.Uri;
+    /// <exception cref="InvalidOperationException">Thrown when the URL has no value.</exception>
+    public static implicit operator Uri(Url url) => 
+        url.Uri ?? throw new InvalidOperationException("Cannot convert empty Url to Uri.");
 
     /// <inheritdoc />
     public bool Equals(Url other)
@@ -180,34 +213,57 @@ public readonly struct Url : IEquatable<Url>
     public override int GetHashCode() => StringComparer.OrdinalIgnoreCase.GetHashCode(Value ?? string.Empty);
 
     /// <summary>
-    /// Porównuje dwa URL.
+    /// Compares two URLs for equality.
     /// </summary>
     public static bool operator ==(Url left, Url right) => left.Equals(right);
 
     /// <summary>
-    /// Porównuje dwa URL.
+    /// Compares two URLs for inequality.
     /// </summary>
     public static bool operator !=(Url left, Url right) => !left.Equals(right);
 
     /// <inheritdoc />
-    public override string ToString() => Value;
+    public int CompareTo(Url other) => string.Compare(Value, other.Value, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Tworzy URL z podanego adresu.
+    /// Compares two URLs for less than.
+    /// </summary>
+    public static bool operator <(Url left, Url right) => left.CompareTo(right) < 0;
+
+    /// <summary>
+    /// Compares two URLs for less than or equal.
+    /// </summary>
+    public static bool operator <=(Url left, Url right) => left.CompareTo(right) <= 0;
+
+    /// <summary>
+    /// Compares two URLs for greater than.
+    /// </summary>
+    public static bool operator >(Url left, Url right) => left.CompareTo(right) > 0;
+
+    /// <summary>
+    /// Compares two URLs for greater than or equal.
+    /// </summary>
+    public static bool operator >=(Url left, Url right) => left.CompareTo(right) >= 0;
+
+    /// <inheritdoc />
+    public override string ToString() => Value ?? string.Empty;
+
+    /// <summary>
+    /// Creates a URL from the specified address.
     /// </summary>
     public static Url Create(string value) => new(value);
 
     /// <summary>
-    /// Tworzy URL z podanego adresu z opcj¹ akceptacji wzglêdnych adresów.
+    /// Creates a URL from the specified address with option to accept relative addresses.
     /// </summary>
     public static Url Create(string value, bool allowRelative) => new(value, allowRelative);
 
     /// <summary>
-    /// Próbuje utworzyæ URL z podanego adresu.
+    /// Tries to create a URL from the specified address.
     /// </summary>
-    /// <param name="value">Adres URL.</param>
-    /// <param name="url">Utworzony URL lub default jeœli wartoœæ jest nieprawid³owa.</param>
-    /// <returns>True jeœli URL zosta³ utworzony, false w przeciwnym razie.</returns>
+    /// <param name="value">URL address.</param>
+    /// <param name="url">Created URL or default if value is invalid.</param>
+    /// <returns>True if URL was created, false otherwise.</returns>
     public static bool TryCreate(string? value, out Url url)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -229,12 +285,12 @@ public readonly struct Url : IEquatable<Url>
     }
 
     /// <summary>
-    /// Próbuje utworzyæ URL z podanego adresu z opcj¹ akceptacji wzglêdnych adresów.
+    /// Tries to create a URL from the specified address with option to accept relative addresses.
     /// </summary>
-    /// <param name="value">Adres URL.</param>
-    /// <param name="allowRelative">Czy akceptowaæ wzglêdne URL.</param>
-    /// <param name="url">Utworzony URL lub default jeœli wartoœæ jest nieprawid³owa.</param>
-    /// <returns>True jeœli URL zosta³ utworzony, false w przeciwnym razie.</returns>
+    /// <param name="value">URL address.</param>
+    /// <param name="allowRelative">Whether to accept relative URLs.</param>
+    /// <param name="url">Created URL or default if value is invalid.</param>
+    /// <returns>True if URL was created, false otherwise.</returns>
     public static bool TryCreate(string? value, bool allowRelative, out Url url)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -254,4 +310,29 @@ public readonly struct Url : IEquatable<Url>
             return false;
         }
     }
+
+    /// <summary>
+    /// Parses a string to a Url.
+    /// </summary>
+    /// <param name="s">The string to parse.</param>
+    /// <param name="provider">Format provider (not used).</param>
+    /// <returns>Parsed Url.</returns>
+    /// <exception cref="FormatException">Thrown when parsing fails.</exception>
+    public static Url Parse(string s, IFormatProvider? provider)
+    {
+        if (TryParse(s, provider, out var result))
+            return result;
+
+        throw new FormatException($"Cannot parse '{s}' as Url.");
+    }
+
+    /// <summary>
+    /// Tries to parse a string to a Url.
+    /// </summary>
+    /// <param name="s">The string to parse.</param>
+    /// <param name="provider">Format provider (not used).</param>
+    /// <param name="result">Parsed Url or default if parsing fails.</param>
+    /// <returns>True if parsing succeeded, false otherwise.</returns>
+    public static bool TryParse([NotNullWhen(true)] string? s, IFormatProvider? provider, out Url result)
+        => TryCreate(s, out result);
 }

@@ -1,6 +1,80 @@
 # Value Objects
 
-A collection of immutable value objects for common domain concepts with built-in validation and SEO optimization.
+A collection of immutable value objects for common domain concepts with built-in validation, SEO optimization, and modern C# features.
+
+## ?? Key Features
+
+| Feature | Description |
+|---------|-------------|
+| ? **Safe implicit `string ? ValueObject`** | Auto truncate/empty for invalid values |
+| ? **`IComparable<T>`** | Sorting and comparison (`<`, `>`, `<=`, `>=`) |
+| ? **`IParsable<T>`** | Modern parsing (.NET 7+) |
+| ? **`JsonConverter`** | Native System.Text.Json serialization |
+| ? **`TypeConverter`** | ASP.NET model binding |
+| ? **`Empty` property** | Safe default value |
+| ? **`HasValue` property** | Check if has value |
+| ? **Null-safe operations** | `GetHashCode()`, `ToString()`, `Length` |
+
+## ?? Safe Implicit Conversion
+
+All string-based value objects support **safe implicit conversion** from `string`:
+
+```csharp
+// ? Works - creates Title
+Title title = "My Title";
+
+// ? Works - returns Title.Empty (no exception!)
+Title emptyTitle = "";
+Title nullTitle = null;
+
+// ? Works - auto truncates to 60 chars with "..."
+Title longTitle = "Very long title that exceeds the maximum length for SEO...";
+```
+
+**Behavior:**
+- `null` or whitespace ? returns `ValueObject.Empty`
+- Too long text (Title, Description) ? auto truncate with "..."
+- Invalid URL/Culture ? returns `ValueObject.Empty`
+
+## ?? Sorting & Comparison (`IComparable<T>`)
+
+```csharp
+var titles = new List<Title> { "Zebra", "Apple", "Mango" };
+titles.Sort(); // Apple, Mango, Zebra
+
+if (title1 < title2) { ... }
+if (title1 >= title2) { ... }
+```
+
+## ?? Modern Parsing (`IParsable<T>`)
+
+```csharp
+// Parse - throws FormatException for invalid values
+Title title = Title.Parse("My Title", null);
+
+// TryParse - safe parsing
+if (Title.TryParse(input, null, out var title)) { ... }
+
+// Works with generic constraints
+T ParseValue<T>(string input) where T : IParsable<T>
+    => T.Parse(input, null);
+```
+
+## ?? JSON Serialization
+
+```csharp
+// Automatic serialization/deserialization
+var product = new Product { Title = "My Product" };
+var json = JsonSerializer.Serialize(product);
+// {"Title":"My Product"}
+
+// Global configuration (optional):
+services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.Converters.Add(new ValueObjectJsonConverterFactory());
+    });
+```
 
 ## ? Automatic Validation (No Attributes Required!)
 
@@ -70,16 +144,25 @@ Represents a culture in language format (e.g., "en-US", "pl-PL").
 
 **Features:**
 - Validates culture code using `CultureInfo`
-- Default culture: `en-US`
+- Default culture: `en-US` (use `Culture.Default`)
+- `ValueOrDefault` property returns "en-US" if empty
+- `ToCultureInfoOrDefault()` returns CultureInfo for "en-US" if empty
 - Automatic conversion from/to string
+
+**Important:** `default(Culture)` has `Value = null`. Use `Culture.Default` for "en-US".
 
 **Usage:**
 ```csharp
 var culture = new Culture("en-US");
 var polish = new Culture("pl-PL");
 
-// Default culture
-var defaultCulture = Culture.Default; // en-US
+// Default culture (en-US)
+var defaultCulture = Culture.Default;
+
+// Safe default value when empty
+Culture empty = Culture.Empty;
+string code = empty.ValueOrDefault; // "en-US"
+CultureInfo info = empty.ToCultureInfoOrDefault(); // en-US CultureInfo
 
 // String conversion
 string code = culture; // Implicit conversion to string
@@ -94,6 +177,8 @@ Represents a monetary price with high precision for calculations and standard ro
 - Internal precision: 8 decimal places (decimal(19,8))
 - Display precision: 2 decimal places (accounting format)
 - Arithmetic operators: `+`, `-`, `*`, `/`
+- `IParsable<Price>` for modern parsing
+- `JsonConverter` for automatic JSON serialization
 - Comparison operators: `<`, `>`, `<=`, `>=`
 - **Type-safe**: Always use `decimal`
 - **No TypeConverter needed**: Blazor `InputNumber` binds directly to `decimal`

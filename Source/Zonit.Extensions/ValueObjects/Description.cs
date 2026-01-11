@@ -1,4 +1,6 @@
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
+using System.Text.Json.Serialization;
 using Zonit.Extensions.Converters;
 
 namespace Zonit.Extensions;
@@ -8,7 +10,8 @@ namespace Zonit.Extensions;
 /// Optimized for SEO with a maximum length of 160 characters.
 /// </summary>
 [TypeConverter(typeof(ValueObjectTypeConverter<Description>))]
-public readonly struct Description : IEquatable<Description>
+[JsonConverter(typeof(DescriptionJsonConverter))]
+public readonly struct Description : IEquatable<Description>, IComparable<Description>, IParsable<Description>
 {
     /// <summary>
     /// Maximum length for SEO optimization (Google displays ~160 characters in meta descriptions).
@@ -21,14 +24,24 @@ public readonly struct Description : IEquatable<Description>
     public const int MinLength = 1;
 
     /// <summary>
+    /// Empty description (default value for optional scenarios).
+    /// </summary>
+    public static readonly Description Empty = default;
+
+    /// <summary>
     /// The description value.
     /// </summary>
     public string Value { get; }
 
     /// <summary>
+    /// Indicates whether the description has a value.
+    /// </summary>
+    public bool HasValue => !string.IsNullOrWhiteSpace(Value);
+
+    /// <summary>
     /// Gets the length of the description.
     /// </summary>
-    public int Length => Value.Length;
+    public int Length => Value?.Length ?? 0;
 
     /// <summary>
     /// Indicates whether the description is optimized for SEO (not exceeding recommended length).
@@ -60,14 +73,24 @@ public readonly struct Description : IEquatable<Description>
     }
 
     /// <summary>
-    /// Converts string to Description.
-    /// </summary>
-    public static implicit operator Description(string value) => new(value);
-
-    /// <summary>
     /// Converts Description to string.
     /// </summary>
     public static implicit operator string(Description description) => description.Value ?? string.Empty;
+
+    /// <summary>
+    /// Converts string to Description. Returns Empty for null/whitespace, truncates if too long.
+    /// </summary>
+    public static implicit operator Description(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return Empty;
+
+        var trimmed = value.Trim();
+        if (trimmed.Length > MaxLength)
+            return Truncate(trimmed);
+
+        return new Description(trimmed);
+    }
 
     /// <inheritdoc />
     public bool Equals(Description other)
@@ -79,7 +102,7 @@ public readonly struct Description : IEquatable<Description>
     public override bool Equals(object? obj) => obj is Description other && Equals(other);
 
     /// <inheritdoc />
-    public override int GetHashCode() => Value.GetHashCode();
+    public override int GetHashCode() => Value?.GetHashCode() ?? 0;
 
     /// <summary>
     /// Compares two descriptions for equality.
@@ -93,7 +116,30 @@ public readonly struct Description : IEquatable<Description>
     public static bool operator !=(Description left, Description right) => !(left == right);
 
     /// <inheritdoc />
-    public override string ToString() => Value;
+    public int CompareTo(Description other) => string.Compare(Value, other.Value, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Compares two descriptions for less than.
+    /// </summary>
+    public static bool operator <(Description left, Description right) => left.CompareTo(right) < 0;
+
+    /// <summary>
+    /// Compares two descriptions for less than or equal.
+    /// </summary>
+    public static bool operator <=(Description left, Description right) => left.CompareTo(right) <= 0;
+
+    /// <summary>
+    /// Compares two descriptions for greater than.
+    /// </summary>
+    public static bool operator >(Description left, Description right) => left.CompareTo(right) > 0;
+
+    /// <summary>
+    /// Compares two descriptions for greater than or equal.
+    /// </summary>
+    public static bool operator >=(Description left, Description right) => left.CompareTo(right) >= 0;
+
+    /// <inheritdoc />
+    public override string ToString() => Value ?? string.Empty;
 
     /// <summary>
     /// Creates a description from the specified value.
@@ -153,4 +199,29 @@ public readonly struct Description : IEquatable<Description>
 
         return new Description(truncated);
     }
+
+    /// <summary>
+    /// Parses a string to a Description.
+    /// </summary>
+    /// <param name="s">The string to parse.</param>
+    /// <param name="provider">Format provider (not used).</param>
+    /// <returns>Parsed Description.</returns>
+    /// <exception cref="FormatException">Thrown when parsing fails.</exception>
+    public static Description Parse(string s, IFormatProvider? provider)
+    {
+        if (TryParse(s, provider, out var result))
+            return result;
+
+        throw new FormatException($"Cannot parse '{s}' as Description.");
+    }
+
+    /// <summary>
+    /// Tries to parse a string to a Description.
+    /// </summary>
+    /// <param name="s">The string to parse.</param>
+    /// <param name="provider">Format provider (not used).</param>
+    /// <param name="result">Parsed Description or default if parsing fails.</param>
+    /// <returns>True if parsing succeeded, false otherwise.</returns>
+    public static bool TryParse([NotNullWhen(true)] string? s, IFormatProvider? provider, out Description result)
+        => TryCreate(s, out result);
 }

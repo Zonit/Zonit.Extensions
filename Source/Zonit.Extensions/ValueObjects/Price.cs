@@ -1,4 +1,7 @@
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Zonit.Extensions;
 
@@ -7,7 +10,8 @@ namespace Zonit.Extensions;
 /// Uses decimal(19,8) precision internally, rounds to 2 decimal places for accounting display.
 /// In Blazor, use InputNumber which binds directly to decimal - no string conversion needed.
 /// </summary>
-public readonly struct Price : IEquatable<Price>, IComparable<Price>
+[JsonConverter(typeof(PriceJsonConverter))]
+public readonly struct Price : IEquatable<Price>, IComparable<Price>, IParsable<Price>
 {
     private const int InternalPrecision = 8;
     private const int DisplayPrecision = 2;
@@ -247,5 +251,75 @@ public readonly struct Price : IEquatable<Price>, IComparable<Price>
     public Price Negate()
     {
         return new Price(-Value, allowNegative: true);
+    }
+
+    /// <summary>
+    /// Parses a string to a Price.
+    /// </summary>
+    /// <param name="s">The string to parse.</param>
+    /// <param name="provider">Format provider for parsing.</param>
+    /// <returns>Parsed Price.</returns>
+    /// <exception cref="FormatException">Thrown when parsing fails.</exception>
+    public static Price Parse(string s, IFormatProvider? provider)
+    {
+        if (TryParse(s, provider, out var result))
+            return result;
+
+        throw new FormatException($"Cannot parse '{s}' as Price.");
+    }
+
+    /// <summary>
+    /// Tries to parse a string to a Price.
+    /// </summary>
+    /// <param name="s">The string to parse.</param>
+    /// <param name="provider">Format provider for parsing.</param>
+    /// <param name="result">Parsed Price or default if parsing fails.</param>
+    /// <returns>True if parsing succeeded, false otherwise.</returns>
+    public static bool TryParse([NotNullWhen(true)] string? s, IFormatProvider? provider, out Price result)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+        {
+            result = default;
+            return false;
+        }
+
+        if (decimal.TryParse(s, provider, out var decimalValue) && decimalValue >= 0)
+        {
+            result = new Price(decimalValue);
+            return true;
+        }
+
+        result = default;
+        return false;
+    }
+}
+
+/// <summary>
+/// JSON converter for Price value object.
+/// </summary>
+public sealed class PriceJsonConverter : JsonConverter<Price>
+{
+    /// <inheritdoc />
+    public override Price Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.Number)
+        {
+            var value = reader.GetDecimal();
+            return Price.TryCreate(value, out var price) ? price : Price.Zero;
+        }
+
+        if (reader.TokenType == JsonTokenType.String)
+        {
+            var stringValue = reader.GetString();
+            return Price.TryParse(stringValue, null, out var price) ? price : Price.Zero;
+        }
+
+        return Price.Zero;
+    }
+
+    /// <inheritdoc />
+    public override void Write(Utf8JsonWriter writer, Price value, JsonSerializerOptions options)
+    {
+        writer.WriteNumberValue(value.Value);
     }
 }
