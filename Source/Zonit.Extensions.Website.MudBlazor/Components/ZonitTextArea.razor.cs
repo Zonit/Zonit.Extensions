@@ -1,4 +1,4 @@
-namespace Zonit.Extensions.Website.MudBlazor.Components;
+namespace Zonit.Extensions.MudBlazor;
 
 /// <summary>
 /// Multiline text input with automatic Value Object converter support.

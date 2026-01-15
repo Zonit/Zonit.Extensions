@@ -1,7 +1,6 @@
-using System.Globalization;
 using MudBlazor;
 
-namespace Zonit.Extensions.Website.MudBlazor.Components;
+namespace Zonit.Extensions.MudBlazor;
 
 /// <summary>
 /// MudTextField with automatic Value Object converter support.

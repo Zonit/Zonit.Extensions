@@ -79,7 +79,7 @@ dotnet add package Zonit.Extensions.Website.MudBlazor
 
 **Usage (type is inferred from @bind-Value):**
 ```razor
-@using Zonit.Extensions.Website.MudBlazor.Components
+@using Zonit.Extensions.MudBlazor
 
 <ZonitTextField @bind-Value="Model.Title" Label="Title" />
 <ZonitTextField @bind-Value="Model.Description" Label="Description" />

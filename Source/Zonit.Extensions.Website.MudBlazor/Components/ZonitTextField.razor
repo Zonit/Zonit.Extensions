@@ -1,11 +1,11 @@
-@namespace Zonit.Extensions.Website.MudBlazor.Components
+@namespace Zonit.Extensions.MudBlazor
 @typeparam T
-@inherits MudBlazor.MudTextField<T>
+@inherits global::MudBlazor.MudTextField<T>
 
 @* 
-    This component automatically detects Zonit Value Objects (Title, Description, etc.)
-    and applies the appropriate converter without requiring explicit Converter parameter.
+    ZonitTextField - MudTextField with automatic Value Object converter.
+    Type is inferred from @bind-Value, no need to specify T.
     
     Usage:
-    <ZonitTextField T="Title" @bind-Value="model.Title" Label="Title" />
+    <ZonitTextField @bind-Value="Model.Title" Label="Title" />
 *@
