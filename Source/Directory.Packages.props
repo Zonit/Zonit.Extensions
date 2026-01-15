@@ -24,6 +24,7 @@
   <ItemGroup>
     <PackageVersion Include="Diacritics" Version="4.0.17" />
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+    <PackageVersion Include="MudBlazor" Version="8.5.1" />
     <PackageVersion Include="Zonit.Extensions.Cultures.Abstractions" Version="0.1.50" />
     <PackageVersion Include="Zonit.Extensions.Organizations.Abstractions" Version="0.1.51" />
     <PackageVersion Include="Zonit.Extensions.Identity.Abstractions" Version="0.1.50" />

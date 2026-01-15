@@ -58,6 +58,41 @@ dotnet add package Zonit.Extensions.Website
 
 ---
 
+### MudBlazor Integration
+
+#### Zonit.Extensions.Website.MudBlazor - MudBlazor converters for Value Objects
+
+[![NuGet](https://img.shields.io/nuget/v/Zonit.Extensions.Website.MudBlazor.svg)](https://www.nuget.org/packages/Zonit.Extensions.Website.MudBlazor/)
+[![NuGet Downloads](https://img.shields.io/nuget/dt/Zonit.Extensions.Website.MudBlazor.svg)](https://www.nuget.org/packages/Zonit.Extensions.Website.MudBlazor/)
+
+```bash
+dotnet add package Zonit.Extensions.Website.MudBlazor
+```
+
+**What's included:**
+- Automatic MudBlazor converters for Value Objects (Title, Description, UrlSlug, Content, Url, Culture)
+- Built-in exception handling with automatic error message extraction
+- Generic `ValueObjectConverter<T>` for custom Value Objects
+
+**Usage:**
+```razor
+@using Zonit.Extensions.Website.MudBlazor.Converters
+
+<MudTextField T="Title" @bind-Value="model.Title" 
+              Converter="ValueObjectConverters.Title" 
+              Label="Title" />
+
+<MudTextField T="Description" @bind-Value="model.Description" 
+              Converter="ValueObjectConverters.Description" 
+              Label="Description" />
+              
+<MudTextField T="UrlSlug" @bind-Value="model.Slug" 
+              Converter="ValueObjectConverters.UrlSlug" 
+              Label="URL Slug" />
+```
+
+---
+
 ## Cookie handling with support for Blazor
 
 ### Installation:
