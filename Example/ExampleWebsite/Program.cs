@@ -1,4 +1,5 @@
 using ExampleWebsite.Components;
+using MudBlazor.Services;
 using Zonit.Extensions;
 
 namespace ExampleWebsite
@@ -10,6 +11,7 @@ namespace ExampleWebsite
             var builder = WebApplication.CreateBuilder(args);
 
             // Add services to the container.
+            builder.Services.AddMudServices();
             builder.Services.AddRazorComponents()
                 .AddInteractiveServerComponents();
 

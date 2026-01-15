@@ -5,7 +5,7 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     
     <!-- Version -->
-    <Version>0.2.4</Version>
+    <Version>0.2.6</Version>
     <AssemblyVersion>$(Version)</AssemblyVersion>
     <FileVersion>$(Version)</FileVersion>
     
@@ -24,7 +24,7 @@
   <ItemGroup>
     <PackageVersion Include="Diacritics" Version="4.0.17" />
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
-    <PackageVersion Include="MudBlazor" Version="8.5.1" />
+    <PackageVersion Include="MudBlazor" Version="9.0.0-preview.2" />
     <PackageVersion Include="Zonit.Extensions.Cultures.Abstractions" Version="0.1.50" />
     <PackageVersion Include="Zonit.Extensions.Organizations.Abstractions" Version="0.1.51" />
     <PackageVersion Include="Zonit.Extensions.Identity.Abstractions" Version="0.1.50" />

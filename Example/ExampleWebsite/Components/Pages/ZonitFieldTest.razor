@@ -1,0 +1,71 @@
+@page "/zonit-field-test"
+@rendermode InteractiveServer
+
+<PageTitle>ZonitTextField Test</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
+    <MudPaper Class="pa-4">
+        <MudText Typo="Typo.h4" Class="mb-4">ZonitTextField Test</MudText>
+
+        <MudForm @ref="_form">
+            <MudStack Spacing="4">
+                
+                <ZonitTextField @bind-Value="_model.Title" 
+                                Label="Title (1-60 chars)" 
+                                Variant="Variant.Outlined" 
+                                Immediate="true" />
+
+                <ZonitTextField @bind-Value="_model.Title" 
+                                Label="Title with Counter=0 (auto-detect)" 
+                                Variant="Variant.Outlined" 
+                                Counter="0"
+                                Immediate="true" />
+
+                <ZonitTextField @bind-Value="_model.Title" 
+                                Label="Title with Copyable" 
+                                Variant="Variant.Outlined" 
+                                Copyable
+                                Immediate="true" />
+
+                <ZonitTextField @bind-Value="_model.Description" 
+                                Label="Description (1-160 chars)" 
+                                Variant="Variant.Outlined"
+                                Immediate="true" />
+
+                <ZonitTextField @bind-Value="_model.UrlSlug" 
+                                Label="URL Slug" 
+                                Variant="Variant.Outlined"
+                                Immediate="true" />
+
+                <ZonitTextArea @bind-Value="_model.Content" 
+                               Label="Content" 
+                               Variant="Variant.Outlined"
+                               Lines="5"
+                               Immediate="true" />
+
+            </MudStack>
+        </MudForm>
+
+        <MudDivider Class="my-4" />
+
+        <MudText Typo="Typo.h6">Current Values:</MudText>
+        <MudText><strong>Title:</strong> @(_model.Title?.Value ?? "(empty)")</MudText>
+        <MudText><strong>Description:</strong> @(_model.Description?.Value ?? "(empty)")</MudText>
+        <MudText><strong>UrlSlug:</strong> @(_model.UrlSlug?.Value ?? "(empty)")</MudText>
+        <MudText><strong>Content:</strong> @(_model.Content?.Value ?? "(empty)")</MudText>
+
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private MudForm? _form;
+    private TestModel _model = new();
+
+    public class TestModel
+    {
+        public Title? Title { get; set; } = Zonit.Extensions.Title.Empty;
+        public Description? Description { get; set; } = Zonit.Extensions.Description.Empty;
+        public UrlSlug? UrlSlug { get; set; } = Zonit.Extensions.UrlSlug.Empty;
+        public Content? Content { get; set; } = Zonit.Extensions.Content.Empty;
+    }
+}

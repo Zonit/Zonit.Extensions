@@ -15,7 +15,7 @@ namespace Zonit.Extensions.MudBlazor;
 /// &lt;ZonitTextArea @bind-Value="Model.Content" Label="Content" Lines="10" /&gt;
 /// </code>
 /// </example>
-public partial class ZonitTextArea<T> : ZonitTextField<T>
+public class ZonitTextArea<T> : ZonitTextField<T>
 {
     /// <summary>
     /// Initializes the component with default Lines value for multiline input.

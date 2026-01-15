@@ -8,6 +8,8 @@
     <link rel="stylesheet" href="@GetAssetUrl("lib/bootstrap/dist/css/bootstrap.min.css")" />
     <link rel="stylesheet" href="@GetAssetUrl("app.css")" />
     <link rel="stylesheet" href="@GetAssetUrl("ExampleWebsite.styles.css")" />
+    <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap" rel="stylesheet" />
+    <link href="_content/MudBlazor/MudBlazor.min.css" rel="stylesheet" />
 #if NET9_0_OR_GREATER
     <ImportMap />
 #endif
@@ -16,9 +18,14 @@
 </head>
 
 <body>
+    <MudThemeProvider />
+    <MudPopoverProvider />
+    <MudDialogProvider />
+    <MudSnackbarProvider />
     <Routes />
     <ReconnectModal />
     <script src="@GetAssetUrl("_framework/blazor.web.js")"></script>
+    <script src="_content/MudBlazor/MudBlazor.min.js"></script>
 </body>
 
 </html>
