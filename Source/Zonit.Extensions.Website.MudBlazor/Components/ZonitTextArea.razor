@@ -1,0 +1,12 @@
+@namespace Zonit.Extensions.Website.MudBlazor.Components
+@typeparam T
+@inherits ZonitTextField<T>
+
+@* 
+    ZonitTextArea - A multiline text input for Value Objects.
+    Inherits from ZonitTextField with Lines parameter pre-configured.
+    
+    Usage:
+    <ZonitTextArea T="Description" @bind-Value="model.Description" Label="Description" />
+    <ZonitTextArea T="Content" @bind-Value="model.Content" Label="Content" Lines="10" />
+*@

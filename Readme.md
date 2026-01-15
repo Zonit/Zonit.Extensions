@@ -70,26 +70,26 @@ dotnet add package Zonit.Extensions.Website.MudBlazor
 ```
 
 **What's included:**
-- Automatic MudBlazor converters for Value Objects (Title, Description, UrlSlug, Content, Url, Culture)
-- Built-in exception handling with automatic error message extraction
-- Generic `ValueObjectConverter<T>` for custom Value Objects
+- `ZonitTextField<T>` - MudTextField with automatic Value Object converter
+- `ZonitTextArea<T>` - Multiline version for longer content
+- Built-in exception handling with automatic error messages
+- AOT and Trimming compatible (type inference at compile time)
 
-**Usage:**
+**Supported Value Objects:** Title, Description, UrlSlug, Content, Url, Culture
+
+**Usage (type is inferred from @bind-Value):**
 ```razor
-@using Zonit.Extensions.Website.MudBlazor.Converters
+@using Zonit.Extensions.Website.MudBlazor.Components
 
-<MudTextField T="Title" @bind-Value="model.Title" 
-              Converter="ValueObjectConverters.Title" 
-              Label="Title" />
+<ZonitTextField @bind-Value="Model.Title" Label="Title" />
+<ZonitTextField @bind-Value="Model.Description" Label="Description" />
+<ZonitTextField @bind-Value="Model.Slug" Label="URL Slug" />
 
-<MudTextField T="Description" @bind-Value="model.Description" 
-              Converter="ValueObjectConverters.Description" 
-              Label="Description" />
-              
-<MudTextField T="UrlSlug" @bind-Value="model.Slug" 
-              Converter="ValueObjectConverters.UrlSlug" 
-              Label="URL Slug" />
+@* For multiline content *@
+<ZonitTextArea @bind-Value="Model.Content" Label="Content" />
 ```
+
+No need to specify `T="Title"` - the compiler infers the type automatically!
 
 ---
 
