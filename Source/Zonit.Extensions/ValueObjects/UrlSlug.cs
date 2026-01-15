@@ -21,7 +21,7 @@ namespace Zonit.Extensions;
 /// </remarks>
 [TypeConverter(typeof(ValueObjectTypeConverter<UrlSlug>))]
 [JsonConverter(typeof(UrlSlugJsonConverter))]
-public readonly struct UrlSlug : IEquatable<UrlSlug>, IComparable<UrlSlug>, IParsable<UrlSlug>
+public readonly struct UrlSlug : IEquatable<UrlSlug>, IComparable<UrlSlug>, IParsable<UrlSlug>, ISpanParsable<UrlSlug>
 {
     /// <summary>
     /// Empty UrlSlug instance. Equivalent to default(UrlSlug).
@@ -222,6 +222,31 @@ public readonly struct UrlSlug : IEquatable<UrlSlug>, IComparable<UrlSlug>, IPar
     /// <returns>True if parsing succeeded, false otherwise.</returns>
     public static bool TryParse([NotNullWhen(true)] string? s, IFormatProvider? provider, out UrlSlug result)
         => TryCreate(s, out result);
+
+    /// <summary>
+    /// Parses a span of characters to a UrlSlug.
+    /// </summary>
+    /// <param name="s">The span of characters to parse.</param>
+    /// <param name="provider">Format provider (not used).</param>
+    /// <returns>Parsed UrlSlug.</returns>
+    /// <exception cref="FormatException">Thrown when parsing fails.</exception>
+    public static UrlSlug Parse(ReadOnlySpan<char> s, IFormatProvider? provider)
+    {
+        if (TryParse(s, provider, out var result))
+            return result;
+
+        throw new FormatException("Cannot parse as UrlSlug.");
+    }
+
+    /// <summary>
+    /// Tries to parse a span of characters to a UrlSlug.
+    /// </summary>
+    /// <param name="s">The span of characters to parse.</param>
+    /// <param name="provider">Format provider (not used).</param>
+    /// <param name="result">Parsed UrlSlug or <see cref="Empty"/> if parsing fails.</param>
+    /// <returns>True if parsing succeeded, false otherwise.</returns>
+    public static bool TryParse(ReadOnlySpan<char> s, IFormatProvider? provider, out UrlSlug result)
+        => TryCreate(s.ToString(), out result);
 }
 
 /// <summary>

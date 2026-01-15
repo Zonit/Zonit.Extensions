@@ -22,7 +22,7 @@ namespace Zonit.Extensions;
 /// </remarks>
 [TypeConverter(typeof(ValueObjectTypeConverter<Culture>))]
 [JsonConverter(typeof(CultureJsonConverter))]
-public readonly struct Culture : IEquatable<Culture>, IComparable<Culture>, IParsable<Culture>
+public readonly struct Culture : IEquatable<Culture>, IComparable<Culture>, IParsable<Culture>, ISpanParsable<Culture>
 {
     /// <summary>
     /// Default culture (en-US). Use this when you need a valid default culture.
@@ -246,4 +246,29 @@ public readonly struct Culture : IEquatable<Culture>, IComparable<Culture>, IPar
     /// <returns>True if parsing succeeded, false otherwise.</returns>
     public static bool TryParse([NotNullWhen(true)] string? s, IFormatProvider? provider, out Culture result)
         => TryCreate(s, out result);
+
+    /// <summary>
+    /// Parses a span of characters to a Culture.
+    /// </summary>
+    /// <param name="s">The span of characters to parse.</param>
+    /// <param name="provider">Format provider (not used).</param>
+    /// <returns>Parsed Culture.</returns>
+    /// <exception cref="FormatException">Thrown when parsing fails.</exception>
+    public static Culture Parse(ReadOnlySpan<char> s, IFormatProvider? provider)
+    {
+        if (TryParse(s, provider, out var result))
+            return result;
+
+        throw new FormatException("Cannot parse as Culture.");
+    }
+
+    /// <summary>
+    /// Tries to parse a span of characters to a Culture.
+    /// </summary>
+    /// <param name="s">The span of characters to parse.</param>
+    /// <param name="provider">Format provider (not used).</param>
+    /// <param name="result">Parsed Culture or <see cref="Empty"/> if parsing fails.</param>
+    /// <returns>True if parsing succeeded, false otherwise.</returns>
+    public static bool TryParse(ReadOnlySpan<char> s, IFormatProvider? provider, out Culture result)
+        => TryCreate(s.ToString(), out result);
 }

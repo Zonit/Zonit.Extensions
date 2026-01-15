@@ -22,7 +22,7 @@ namespace Zonit.Extensions;
 /// </remarks>
 [TypeConverter(typeof(ValueObjectTypeConverter<Description>))]
 [JsonConverter(typeof(DescriptionJsonConverter))]
-public readonly struct Description : IEquatable<Description>, IComparable<Description>, IParsable<Description>
+public readonly struct Description : IEquatable<Description>, IComparable<Description>, IParsable<Description>, ISpanParsable<Description>
 {
     /// <summary>
     /// Maximum allowed length for a description.
@@ -217,4 +217,29 @@ public readonly struct Description : IEquatable<Description>, IComparable<Descri
     /// <returns>True if parsing succeeded, false otherwise.</returns>
     public static bool TryParse([NotNullWhen(true)] string? s, IFormatProvider? provider, out Description result)
         => TryCreate(s, out result);
+
+    /// <summary>
+    /// Parses a span of characters to a Description.
+    /// </summary>
+    /// <param name="s">The span of characters to parse.</param>
+    /// <param name="provider">Format provider (not used).</param>
+    /// <returns>Parsed Description.</returns>
+    /// <exception cref="FormatException">Thrown when parsing fails.</exception>
+    public static Description Parse(ReadOnlySpan<char> s, IFormatProvider? provider)
+    {
+        if (TryParse(s, provider, out var result))
+            return result;
+
+        throw new FormatException($"Cannot parse as Description. Must be between {MinLength} and {MaxLength} characters.");
+    }
+
+    /// <summary>
+    /// Tries to parse a span of characters to a Description.
+    /// </summary>
+    /// <param name="s">The span of characters to parse.</param>
+    /// <param name="provider">Format provider (not used).</param>
+    /// <param name="result">Parsed Description or <see cref="Empty"/> if parsing fails.</param>
+    /// <returns>True if parsing succeeded, false otherwise.</returns>
+    public static bool TryParse(ReadOnlySpan<char> s, IFormatProvider? provider, out Description result)
+        => TryCreate(s.ToString(), out result);
 }

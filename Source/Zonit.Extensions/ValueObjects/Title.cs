@@ -22,7 +22,7 @@ namespace Zonit.Extensions;
 /// </remarks>
 [TypeConverter(typeof(ValueObjectTypeConverter<Title>))]
 [JsonConverter(typeof(TitleJsonConverter))]
-public readonly struct Title : IEquatable<Title>, IComparable<Title>, IParsable<Title>
+public readonly struct Title : IEquatable<Title>, IComparable<Title>, IParsable<Title>, ISpanParsable<Title>
 {
     /// <summary>
     /// Maximum allowed length for a title.
@@ -217,4 +217,29 @@ public readonly struct Title : IEquatable<Title>, IComparable<Title>, IParsable<
     /// <returns>True if parsing succeeded, false otherwise.</returns>
     public static bool TryParse([NotNullWhen(true)] string? s, IFormatProvider? provider, out Title result)
         => TryCreate(s, out result);
+
+    /// <summary>
+    /// Parses a span of characters to a Title.
+    /// </summary>
+    /// <param name="s">The span of characters to parse.</param>
+    /// <param name="provider">Format provider (not used).</param>
+    /// <returns>Parsed Title.</returns>
+    /// <exception cref="FormatException">Thrown when parsing fails.</exception>
+    public static Title Parse(ReadOnlySpan<char> s, IFormatProvider? provider)
+    {
+        if (TryParse(s, provider, out var result))
+            return result;
+
+        throw new FormatException($"Cannot parse as Title. Must be between {MinLength} and {MaxLength} characters.");
+    }
+
+    /// <summary>
+    /// Tries to parse a span of characters to a Title.
+    /// </summary>
+    /// <param name="s">The span of characters to parse.</param>
+    /// <param name="provider">Format provider (not used).</param>
+    /// <param name="result">Parsed Title or <see cref="Empty"/> if parsing fails.</param>
+    /// <returns>True if parsing succeeded, false otherwise.</returns>
+    public static bool TryParse(ReadOnlySpan<char> s, IFormatProvider? provider, out Title result)
+        => TryCreate(s.ToString(), out result);
 }

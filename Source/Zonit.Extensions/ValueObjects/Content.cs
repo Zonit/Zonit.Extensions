@@ -21,7 +21,7 @@ namespace Zonit.Extensions;
 /// </remarks>
 [TypeConverter(typeof(ValueObjectTypeConverter<Content>))]
 [JsonConverter(typeof(ContentJsonConverter))]
-public readonly struct Content : IEquatable<Content>, IComparable<Content>, IParsable<Content>
+public readonly struct Content : IEquatable<Content>, IComparable<Content>, IParsable<Content>, ISpanParsable<Content>
 {
     /// <summary>
     /// Empty content instance. Equivalent to default(Content).
@@ -177,4 +177,29 @@ public readonly struct Content : IEquatable<Content>, IComparable<Content>, IPar
     /// <returns>True if parsing succeeded, false otherwise.</returns>
     public static bool TryParse([NotNullWhen(true)] string? s, IFormatProvider? provider, out Content result)
         => TryCreate(s, out result);
+
+    /// <summary>
+    /// Parses a span of characters to Content.
+    /// </summary>
+    /// <param name="s">The span of characters to parse.</param>
+    /// <param name="provider">Format provider (not used).</param>
+    /// <returns>Parsed Content.</returns>
+    /// <exception cref="FormatException">Thrown when parsing fails.</exception>
+    public static Content Parse(ReadOnlySpan<char> s, IFormatProvider? provider)
+    {
+        if (TryParse(s, provider, out var result))
+            return result;
+
+        throw new FormatException("Cannot parse as Content.");
+    }
+
+    /// <summary>
+    /// Tries to parse a span of characters to Content.
+    /// </summary>
+    /// <param name="s">The span of characters to parse.</param>
+    /// <param name="provider">Format provider (not used).</param>
+    /// <param name="result">Parsed Content or <see cref="Empty"/> if parsing fails.</param>
+    /// <returns>True if parsing succeeded, false otherwise.</returns>
+    public static bool TryParse(ReadOnlySpan<char> s, IFormatProvider? provider, out Content result)
+        => TryCreate(s.ToString(), out result);
 }
