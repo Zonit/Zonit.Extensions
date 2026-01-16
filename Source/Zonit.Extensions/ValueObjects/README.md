@@ -120,19 +120,21 @@ Url url = "https://example.com";
 Culture culture = "en-US";
 ```
 
-**Price is different** - it's `decimal`-based with strong typing:
+**Price and Money are different** - they're `decimal`-based with strong typing:
 
 ```csharp
-// ? Price uses decimal (not string)
-Price price = 19.99m;
+// ‚úÖ Price and Money use decimal (not string)
+Price price = 19.99m;  // Non-negative only
+Money balance = -50m;  // Allows negative
 
 // Blazor InputNumber binds directly to decimal:
 // <InputNumber @bind-Value="model.Price" />
+// <InputNumber @bind-Value="model.Balance" />
 ```
 
 This design ensures:
 - String-based VOs are convenient (implicit from string)
-- Price maintains type safety (no accidental string parsing)
+- Price and Money maintain type safety (no accidental string parsing)
 - Blazor forms work naturally with appropriate input types
 
 ---
@@ -172,10 +174,12 @@ string code = culture; // Implicit conversion to string
 
 ### `Price`
 Represents a monetary price with high precision for calculations and standard rounding for display.
+**Use for product prices, unit costs - values that should never be negative.**
 
 **Features:**
 - Internal precision: 8 decimal places (decimal(19,8))
 - Display precision: 2 decimal places (accounting format)
+- **Non-negative by default** - throws exception for negative values
 - Arithmetic operators: `+`, `-`, `*`, `/`
 - `IParsable<Price>` for modern parsing
 - `JsonConverter` for automatic JSON serialization
@@ -185,7 +189,7 @@ Represents a monetary price with high precision for calculations and standard ro
 
 **Usage:**
 ```csharp
-// ? In code - use decimal with 'm' suffix
+// ‚úÖ In code - use decimal with 'm' suffix
 Price price = 19.99m;
 Price tax = 3.80m;
 
@@ -194,15 +198,64 @@ var discounted = price * 0.9m; // 17.991 (internally), 17.99 (display)
 
 Console.WriteLine(price.Value);        // 19.99000000
 Console.WriteLine(price.DisplayValue); // 19.99
+
+// ‚ùå Negative values throw exception
+var invalid = new Price(-10m); // Throws ArgumentOutOfRangeException
 ```
 
 **Blazor Forms:**
 ```html
-<!-- ? InputNumber binds directly to decimal - no string conversion! -->
+<!-- ‚úÖ InputNumber binds directly to decimal - no string conversion! -->
 <InputNumber @bind-Value="model.Price" />
 ```
 
 Price is strongly typed and doesn't need string parsing like other value objects.
+
+---
+
+### `Money`
+Represents a monetary amount that can be positive or negative.
+**Use for balances, transactions, adjustments, refunds - values that may go negative.**
+
+**Features:**
+- Internal precision: 8 decimal places (decimal(19,8))
+- Display precision: 2 decimal places (accounting format)
+- **Allows negative values** - for debits, refunds, adjustments
+- Arithmetic operators: `+`, `-`, `*`, `/`
+- Unary minus operator: `-money`
+- `IParsable<Money>` for modern parsing
+- `JsonConverter` for automatic JSON serialization
+- Comparison operators: `<`, `>`, `<=`, `>=`
+- Helper properties: `IsNegative`, `IsPositive`, `IsZero`
+- Conversion to/from `Price`
+
+**Usage:**
+```csharp
+// ‚úÖ Allows negative values
+Money balance = 100m;
+Money debit = -50m;  // Negative is OK
+
+var newBalance = balance + debit; // 50
+
+Console.WriteLine(debit.IsNegative); // true
+Console.WriteLine(debit.Abs());      // 50.00
+
+// Convert between Money and Price
+Money amount = new Price(19.99m);  // Implicit conversion Price ‚Üí Money
+Price price = amount.ToPrice();    // Explicit conversion Money ‚Üí Price (throws if negative)
+
+// Safe conversion
+if (amount.TryToPrice(out var safePrice))
+{
+    // Use safePrice
+}
+```
+
+**When to use Price vs Money:**
+| Type | Use Case | Negative Values |
+|------|----------|-----------------|
+| `Price` | Product prices, unit costs | ‚ùå Not allowed |
+| `Money` | Balances, transactions, adjustments | ‚úÖ Allowed |
 
 ---
 
@@ -254,7 +307,7 @@ var tooLong = new Description(new string('A', 161)); // ? Throws ArgumentExcepti
 Represents a URL-friendly slug generated from text.
 
 **Features:**
-- Removes diacritics (π ? a, Í ? e, etc.)
+- Removes diacritics (ÔøΩ ? a, ÔøΩ ? e, etc.)
 - Converts to lowercase
 - Replaces spaces with hyphens
 - Removes special characters
@@ -266,7 +319,7 @@ var slug = new UrlSlug("Best Practices for .NET Development");
 Console.WriteLine(slug.Value); // "best-practices-for-net-development"
 
 // Polish characters
-var polishSlug = new UrlSlug("ØÛ≥Ê gÍúlπ jaüÒ");
+var polishSlug = new UrlSlug("ÔøΩÔøΩÔøΩ gÔøΩlÔøΩ jaÔøΩÔøΩ");
 Console.WriteLine(polishSlug.Value); // "zolc-gesla-jazn"
 
 // Special characters removed
