@@ -59,19 +59,27 @@ public partial class ZonitTextField<T> : MudTextField<T>
             Converter = converter;
         }
         
-        // Auto-detect MaxLength from Value Object's const field
-        // Set MaxLength + 1 so user can exceed limit by 1 char and see the validation error
-        var maxLengthField = targetType.GetField("MaxLength", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
-        if (maxLengthField is not null && maxLengthField.FieldType == typeof(int))
+        // Auto-detect MaxLength from known Value Object types (AOT-friendly, no reflection)
+        _detectedMaxLength = GetMaxLengthForType(targetType);
+        if (_detectedMaxLength.HasValue)
         {
-            var maxLength = (int?)maxLengthField.GetValue(null);
-            if (maxLength.HasValue)
-            {
-                _detectedMaxLength = maxLength.Value;
-                // Allow 1 extra char so Value Object throws exception and user sees the error
-                MaxLength = maxLength.Value + 1;
-            }
+            // Allow 1 extra char so Value Object throws exception and user sees the error
+            MaxLength = _detectedMaxLength.Value + 1;
         }
+    }
+    
+    /// <summary>
+    /// Returns MaxLength for known Value Object types. AOT/trimming compatible.
+    /// </summary>
+    private static int? GetMaxLengthForType(Type type)
+    {
+        if (type == typeof(Title))
+            return Title.MaxLength;
+        if (type == typeof(Description))
+            return Description.MaxLength;
+        
+        // Other VOs don't have MaxLength constraints
+        return null;
     }
     
     protected override void OnParametersSet()
@@ -89,7 +97,7 @@ public partial class ZonitTextField<T> : MudTextField<T>
         {
             Adornment = Adornment.End;
             AdornmentIcon = _isCopied ? Icons.Material.Filled.Check : Icons.Material.Filled.ContentCopy;
-            AdornmentColor = _isCopied ? MudBlazor.Color.Success : MudBlazor.Color.Default;
+            AdornmentColor = _isCopied ? global::MudBlazor.Color.Success : global::MudBlazor.Color.Default;
             AdornmentAriaLabel = _isCopied ? "Copied!" : "Copy to clipboard";
             OnAdornmentClick = EventCallback.Factory.Create<MouseEventArgs>(this, CopyToClipboardAsync);
         }
@@ -105,7 +113,7 @@ public partial class ZonitTextField<T> : MudTextField<T>
             // Show "Copied!" feedback
             _isCopied = true;
             AdornmentIcon = Icons.Material.Filled.Check;
-            AdornmentColor = MudBlazor.Color.Success;
+            AdornmentColor = global::MudBlazor.Color.Success;
             AdornmentAriaLabel = "Copied!";
             StateHasChanged();
             
@@ -117,7 +125,7 @@ public partial class ZonitTextField<T> : MudTextField<T>
                 await Task.Delay(2000, _copyResetCts.Token);
                 _isCopied = false;
                 AdornmentIcon = Icons.Material.Filled.ContentCopy;
-                AdornmentColor = MudBlazor.Color.Default;
+                AdornmentColor = global::MudBlazor.Color.Default;
                 AdornmentAriaLabel = "Copy to clipboard";
                 StateHasChanged();
             }

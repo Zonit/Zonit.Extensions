@@ -27,7 +27,7 @@ public class ZonitTextArea<T> : ZonitTextField<T>
         {
             Lines = 3;
         }
-        
+
         base.OnInitialized();
     }
 }
