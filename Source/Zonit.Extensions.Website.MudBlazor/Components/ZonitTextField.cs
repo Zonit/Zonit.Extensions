@@ -89,7 +89,7 @@ public partial class ZonitTextField<T> : MudTextField<T>
         {
             Adornment = Adornment.End;
             AdornmentIcon = _isCopied ? Icons.Material.Filled.Check : Icons.Material.Filled.ContentCopy;
-            AdornmentColor = _isCopied ? Color.Success : Color.Default;
+            AdornmentColor = _isCopied ? MudBlazor.Color.Success : MudBlazor.Color.Default;
             AdornmentAriaLabel = _isCopied ? "Copied!" : "Copy to clipboard";
             OnAdornmentClick = EventCallback.Factory.Create<MouseEventArgs>(this, CopyToClipboardAsync);
         }
@@ -105,7 +105,7 @@ public partial class ZonitTextField<T> : MudTextField<T>
             // Show "Copied!" feedback
             _isCopied = true;
             AdornmentIcon = Icons.Material.Filled.Check;
-            AdornmentColor = Color.Success;
+            AdornmentColor = MudBlazor.Color.Success;
             AdornmentAriaLabel = "Copied!";
             StateHasChanged();
             
@@ -117,7 +117,7 @@ public partial class ZonitTextField<T> : MudTextField<T>
                 await Task.Delay(2000, _copyResetCts.Token);
                 _isCopied = false;
                 AdornmentIcon = Icons.Material.Filled.ContentCopy;
-                AdornmentColor = Color.Default;
+                AdornmentColor = MudBlazor.Color.Default;
                 AdornmentAriaLabel = "Copy to clipboard";
                 StateHasChanged();
             }
