@@ -41,16 +41,13 @@ public readonly partial struct Asset
     }
 
     /// <summary>
-    /// Detects file signature (magic bytes) from the file content.
-    /// This verifies what the file actually is, not what the extension claims.
+    /// Detects file signature (magic bytes) from raw byte data.
+    /// Static helper used in constructor.
     /// </summary>
-    /// <returns>Detected file signature type.</returns>
-    public SignatureType DetectSignature()
+    private static SignatureType DetectSignatureFromData(byte[] data)
     {
-        if (!HasValue || Size < 4)
+        if (data is null || data.Length < 4)
             return SignatureType.Unknown;
-
-        var data = Data;
 
         // JPEG: FF D8 FF
         if (data.Length >= 3 && data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF)
@@ -134,16 +131,15 @@ public readonly partial struct Asset
             return SignatureType.Avi;
 
         // MOV: various ftyp variants or moov/mdat atoms
-        // Simplified check - if ftyp contains 'qt' it's likely MOV
         if (data.Length >= 12 && data[4] == 0x66 && data[5] == 0x74 && data[6] == 0x79 && data[7] == 0x70 &&
             data[8] == 0x71 && data[9] == 0x74) // 'qt'
             return SignatureType.Mov;
 
-        // XML: <?xml or <
+        // XML: <?xml
         if (data.Length >= 5 && data[0] == 0x3C && data[1] == 0x3F && data[2] == 0x78 && data[3] == 0x6D && data[4] == 0x6C)
             return SignatureType.Xml;
 
-        // HTML: <!DOCTYPE html or <html (simplified)
+        // HTML: <!DOCTYPE or <html
         if (data.Length >= 15 && data[0] == 0x3C && data[1] == 0x21 && data[2] == 0x44 && data[3] == 0x4F &&
             data[4] == 0x43 && data[5] == 0x54 && data[6] == 0x59 && data[7] == 0x50 && data[8] == 0x45)
             return SignatureType.Html;
@@ -155,9 +151,10 @@ public readonly partial struct Asset
     }
 
     /// <summary>
-    /// Gets the expected MIME type based on the detected signature.
+    /// Gets MIME type from signature type.
+    /// Static helper used in constructor.
     /// </summary>
-    public MimeType GetSignatureMimeType() => DetectSignature() switch
+    private static MimeType GetMimeTypeFromSignature(SignatureType signature) => signature switch
     {
         SignatureType.Jpeg => MimeType.ImageJpeg,
         SignatureType.Png => MimeType.ImagePng,
@@ -183,44 +180,54 @@ public readonly partial struct Asset
         _ => MimeType.OctetStream
     };
 
+    #region Signature Validation (backward compatibility)
+
     /// <summary>
-    /// Validates that the file signature matches the claimed MIME type.
-    /// Useful for security - detecting renamed files.
+    /// Detects file signature. Alias for <see cref="Signature"/> property.
     /// </summary>
-    /// <returns>True if signature matches MIME type or signature is unknown.</returns>
+    [Obsolete("Use Signature property instead.")]
+    public SignatureType DetectSignature() => Signature;
+
+    /// <summary>
+    /// Gets MIME type from signature. Alias for <see cref="MediaType"/> property.
+    /// </summary>
+    [Obsolete("Use MediaType property instead.")]
+    public MimeType GetSignatureMimeType() => GetMimeTypeFromSignature(Signature);
+
+    /// <summary>
+    /// Gets actual MIME type. Alias for <see cref="MediaType"/> property.
+    /// </summary>
+    [Obsolete("Use MediaType property instead.")]
+    public MimeType GetActualMimeType() => MediaType;
+
+    /// <summary>
+    /// Gets data URL with actual MIME type. Alias for <see cref="DataUrl"/> property.
+    /// </summary>
+    [Obsolete("Use DataUrl property instead.")]
+    public string ToActualDataUrl() => DataUrl;
+
+    /// <summary>
+    /// Validates that the file signature was detected successfully.
+    /// </summary>
+    /// <returns>True if signature was detected (not Unknown).</returns>
     public bool IsSignatureValid()
     {
-        var signature = DetectSignature();
-
-        // If we can't detect signature, assume valid (text files, etc.)
-        if (signature == SignatureType.Unknown)
-            return true;
-
-        // Get expected MIME type from signature
-        var signatureMime = GetSignatureMimeType();
-
-        // Special case: ZIP can be DOCX, XLSX, PPTX, etc.
-        if (signature == SignatureType.Zip)
-        {
-            var ext = OriginalName.ExtensionWithoutDot.ToLowerInvariant();
-            return ext is "zip" or "docx" or "xlsx" or "pptx" or "odt" or "ods" or "odp" or "jar" or "apk";
-        }
-
-        // Compare primary types (image, audio, video, etc.)
-        return signatureMime.Type == ContentType.Type;
+        // MediaType is now always from signature (or fallback), so signature is always "valid"
+        // This method now just checks if we could detect the signature
+        return Signature != SignatureType.Unknown;
     }
 
     /// <summary>
-    /// Gets a warning message if signature doesn't match MIME type.
+    /// Gets a warning message if signature could not be detected.
     /// </summary>
+    [Obsolete("MediaType is now always validated from signature. Use IsSignatureValid() to check if signature was detected.")]
     public string? GetSignatureMismatchWarning()
     {
-        if (IsSignatureValid())
-            return null;
+        if (Signature == SignatureType.Unknown)
+            return $"Could not detect file signature. Using fallback MIME type: '{MediaType.Value}'.";
 
-        var signature = DetectSignature();
-        var signatureMime = GetSignatureMimeType();
-
-        return $"File claims to be '{ContentType.Value}' but signature indicates '{signatureMime.Value}' ({signature}).";
+        return null;
     }
+
+    #endregion
 }

@@ -7,11 +7,11 @@ Complete examples for using the `Asset` value object.
 - [Creating Assets](#creating-assets)
 - [FileSize VO](#filesize-vo)
 - [Properties & Metadata](#properties--metadata)
+- [Signature-Based MIME Detection](#signature-based-mime-detection)
 - [Implicit Conversions](#implicit-conversions)
 - [Nested Types](#nested-types)
-- [File Signature Detection](#file-signature-detection)
 - [Validation](#validation)
-- [Entity Framework Core](#entity-framework-core)
+- [Binary Storage (EF Core / Disk)](#binary-storage-ef-core--disk)
 - [Blazor File Upload](#blazor-file-upload)
 - [API Controller](#api-controller)
 
@@ -32,10 +32,11 @@ Asset asset = new Asset(bytes, "report.pdf");       // With explicit name
 Console.WriteLine(asset.Id);             // "7a3b9c4d-1234-5678-90ab-cdef12345678"
 Console.WriteLine(asset.OriginalName);   // "report.pdf"
 Console.WriteLine(asset.UniqueName);     // "7a3b9c4d-1234-5678-90ab-cdef12345678.pdf"
-Console.WriteLine(asset.ContentType);    // "application/pdf"
+Console.WriteLine(asset.MediaType);      // "application/pdf" (detected from signature!)
+Console.WriteLine(asset.Signature);      // SignatureType.Pdf
 Console.WriteLine(asset.Extension);      // ".pdf"
-Console.WriteLine(asset.Size);            // "1.5 MB" (FileSize VO)
-Console.WriteLine(asset.Size.Megabytes);  // 1.5
+Console.WriteLine(asset.Size);           // "1.5 MB" (FileSize VO)
+Console.WriteLine(asset.Size.Megabytes); // 1.5
 Console.WriteLine(asset.CreatedAt);      // 2026-01-21 12:34:56 UTC
 Console.WriteLine(asset.Hash);           // SHA256 base64
 Console.WriteLine(asset.Md5);            // MD5 base64
@@ -211,11 +212,14 @@ Console.WriteLine(asset.OriginalName.NameWithoutExtension);  // "report"
 Console.WriteLine(asset.OriginalName.Extension);             // ".pdf"
 Console.WriteLine(asset.OriginalName.ExtensionWithoutDot);   // "pdf"
 
-// MIME type
-Console.WriteLine(asset.ContentType.Value);     // "application/pdf"
-Console.WriteLine(asset.ContentType.Type);      // "application"
-Console.WriteLine(asset.ContentType.Subtype);   // "pdf"
-Console.WriteLine(asset.ContentType.Extension); // ".pdf"
+// MIME type (detected from binary signature!)
+Console.WriteLine(asset.MediaType.Value);     // "application/pdf"
+Console.WriteLine(asset.MediaType.Type);      // "application"
+Console.WriteLine(asset.MediaType.Subtype);   // "pdf"
+Console.WriteLine(asset.MediaType.Extension); // ".pdf"
+
+// Signature (magic bytes detection)
+Console.WriteLine(asset.Signature);           // SignatureType.Pdf
 
 // Size (FileSize VO)
 Console.WriteLine(asset.Size);           // "1.5 MB"
@@ -225,15 +229,79 @@ Console.WriteLine(asset.Size.Kilobytes); // 1536
 // Timestamps
 Console.WriteLine(asset.CreatedAt);  // DateTime UTC
 
-// Hashes (lazy computed)
+// Hashes (computed once at creation)
 Console.WriteLine(asset.Hash);   // SHA256 base64
 Console.WriteLine(asset.Sha256); // SHA256 base64 (alias)
 Console.WriteLine(asset.Md5);    // MD5 base64
 
-// Type checks
+// Type checks (based on MediaType)
 Console.WriteLine(asset.IsImage);     // false
 Console.WriteLine(asset.IsDocument);  // true
 Console.WriteLine(asset.Category);    // AssetCategory.Document
+
+// Data formats (computed on demand - not stored)
+Console.WriteLine(asset.Base64);      // Base64 encoded data
+Console.WriteLine(asset.DataUrl);     // data:application/pdf;base64,...
+```
+
+---
+
+## Signature-Based MIME Detection
+
+**MediaType is ALWAYS detected from binary signature (magic bytes)**, not from file extension. This prevents extension spoofing and ensures correct handling by external APIs.
+
+```csharp
+// Example: WebP file uploaded with wrong .jpg extension
+byte[] webpBytes = File.ReadAllBytes("image.webp");
+Asset asset = new Asset(webpBytes, "fake.jpg");
+
+// MediaType is detected from signature, NOT from extension
+Console.WriteLine(asset.Signature);    // SignatureType.WebP
+Console.WriteLine(asset.MediaType);    // "image/webp" (correct!)
+Console.WriteLine(asset.OriginalName); // "fake.jpg" (preserved)
+Console.WriteLine(asset.Extension);    // ".webp" (from MediaType!)
+Console.WriteLine(asset.UniqueName);   // "{guid}.webp" (correct extension)
+
+// This prevents API errors like:
+// "Image does not match the provided media type image/jpeg"
+// because we always send the TRUE media type from signature
+```
+
+### Supported Signatures
+
+```csharp
+public enum SignatureType
+{
+    Unknown,
+    
+    // Images
+    Jpeg, Png, Gif, WebP, Bmp, Tiff, Ico,
+    
+    // Documents
+    Pdf, Zip, Rar, SevenZip, Gzip,
+    
+    // Audio/Video
+    Mp3, Mp4, WebM, Ogg, Wav, Avi, Mov,
+    
+    // Other
+    Xml, Html
+}
+```
+
+### Signature Validation
+
+```csharp
+Asset asset = new Asset(bytes, "file.pdf");
+
+// Check if signature was detected
+if (asset.IsSignatureValid())
+{
+    Console.WriteLine($"Detected: {asset.Signature}");
+}
+else
+{
+    Console.WriteLine("Could not detect file type from magic bytes");
+}
 ```
 
 ---
@@ -390,25 +458,6 @@ Asset.MimeType.ApplicationZip  // application/zip
 
 ---
 
-## File Signature Detection
-
-```csharp
-Asset asset = new Asset(bytes, "file.jpg");
-
-// Detect actual file type from magic bytes
-var signature = asset.DetectSignature();
-Console.WriteLine(signature);  // SignatureType.Jpeg
-
-// Verify claimed type matches actual
-if (!asset.IsSignatureValid())
-{
-    var warning = asset.GetSignatureMismatchWarning();
-    // "File claims to be 'image/jpeg' but signature indicates 'application/pdf'"
-}
-```
-
----
-
 ## Validation
 
 ```csharp
@@ -419,7 +468,7 @@ var docOptions = AssetValidationOptions.Documents();     // max 50 MB, doc types
 // Custom validation
 var options = new AssetValidationOptions
 {
-    MaxSizeBytes = 5 * 1024 * 1024,  // 5 MB
+    MaxSize = FileSize.FromMegabytes(5),  // 5 MB
     AllowedExtensions = new[] { "jpg", "png" },
     ValidateSignature = true
 };
@@ -442,39 +491,82 @@ if (!asset.IsAllowedType(Asset.MimeType.ImageJpeg, Asset.MimeType.ImagePng))
 
 ---
 
-## Entity Framework Core
+## Binary Storage (EF Core / Disk)
 
-### Entity
+Asset uses a **compact binary format (V4)** for maximum performance when storing in databases or on disk.
+
+### Storage Format V4 (Binary)
+
+```
+[1 byte]   Version (4)
+[16 bytes] Id (GUID)
+[1 byte]   Signature (enum)
+[8 bytes]  CreatedAt (UTC ticks)
+[2 bytes]  MimeType length
+[N bytes]  MimeType (UTF-8)
+[2 bytes]  OriginalName length  
+[N bytes]  OriginalName (UTF-8)
+[44 bytes] Sha256 (Base64 fixed)
+[24 bytes] Md5 (Base64 fixed)
+[remaining] File data
+```
+
+**Header overhead: ~100-150 bytes** (vs ~300 bytes in legacy JSON format)
+
+### Usage
+
+```csharp
+// Serialize to storage bytes
+Asset asset = new Asset(bytes, "document.pdf");
+byte[] storageBytes = asset.ToStorageBytes();
+
+// Store in database (EF Core byte[] column)
+entity.Attachment = asset.ToStorageBytes();
+await dbContext.SaveChangesAsync();
+
+// Deserialize from storage
+byte[] loaded = entity.Attachment;
+Asset restored = Asset.FromStorageBytes(loaded);
+
+// All metadata is preserved
+Console.WriteLine(restored.Id);           // Same GUID
+Console.WriteLine(restored.MediaType);    // Same MIME type
+Console.WriteLine(restored.Signature);    // Same signature
+Console.WriteLine(restored.Sha256);       // Same hash
+```
+
+### Entity Configuration
 
 ```csharp
 public class Document
 {
     public Guid Id { get; set; }
     public string Title { get; set; }
-    public Asset Attachment { get; set; }  // Stored as byte[] with metadata header
+    public byte[] Attachment { get; set; }  // Store as byte[]
 }
-```
 
-### DbContext Configuration
-
-```csharp
-// Using Zonit.Extensions.Databases.SqlServer
-protected override void OnModelCreating(ModelBuilder modelBuilder)
+// In your service
+public async Task SaveDocumentAsync(Document doc, Asset attachment)
 {
-    modelBuilder.UseZonitDatabasesConverters();
+    doc.Attachment = attachment.ToStorageBytes();
+    await dbContext.SaveChangesAsync();
+}
+
+public Asset GetAttachment(Document doc)
+{
+    return Asset.FromStorageBytes(doc.Attachment);
 }
 ```
 
-### Storage Format
+### Backward Compatibility
 
-Asset is stored as binary with embedded header:
-```
-[4 bytes: header length][UTF-8 JSON header][file data]
-```
+`FromStorageBytes` automatically detects format version:
+- **V4**: Binary format (new, fastest)
+- **V3**: JSON with Signature
+- **V2**: JSON without Signature  
+- **V1**: Legacy JSON
 
-Header contains: Id, Name, MimeType, CreatedAt, Hash, Md5
-
-This allows full restoration of Asset with all metadata from a single column.
+All old data is readable - no migration needed.
 
 ---
 
@@ -490,11 +582,12 @@ This allows full restoration of Asset with all metadata from a single column.
 {
     <p>File: @asset.OriginalName</p>
     <p>Size: @asset.Size</p>
-    <p>Type: @asset.ContentType</p>
+    <p>Type: @asset.MediaType (detected from signature)</p>
+    <p>Signature: @asset.Signature</p>
     
     @if (asset.IsImage)
     {
-        <img src="@asset.ToDataUrl()" style="max-width: 300px" />
+        <img src="@asset.DataUrl" style="max-width: 300px" />
     }
 }
 
@@ -508,8 +601,12 @@ This allows full restoration of Asset with all metadata from a single column.
         // Read file (max 10 MB)
         await using var stream = file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
         
-        // Create Asset from stream
+        // Create Asset from stream - MIME type detected from signature!
         asset = new Asset(stream, file.Name);
+        
+        // MediaType is from signature, not from extension
+        // Prevents "file.jpg" that is actually WebP from causing issues
+        Console.WriteLine($"Claimed: {file.ContentType}, Actual: {asset.MediaType}");
         
         // Validate
         if (asset.Size > FileSize.FromMegabytes(5))
@@ -535,7 +632,7 @@ public class FilesController : ControllerBase
         if (file.Length == 0)
             return BadRequest("No file");
 
-        // Create Asset from upload
+        // Create Asset from upload - MIME type detected from signature!
         await using var stream = file.OpenReadStream();
         Asset asset = new Asset(stream, file.FileName);
 
@@ -543,16 +640,18 @@ public class FilesController : ControllerBase
         if (asset.Size > FileSize.FromMegabytes(50))
             return BadRequest($"File too large: {asset.Size}");
 
-        if (!asset.IsSignatureValid())
-            return BadRequest(asset.GetSignatureMismatchWarning());
+        // MediaType is from signature, safe for external APIs (Anthropic, OpenAI, etc.)
+        Console.WriteLine($"Claimed: {file.ContentType}, Actual: {asset.MediaType}");
 
-        // Save using unique name
+        // Save using unique name (with correct extension from MediaType)
         var path = Path.Combine("uploads", asset.UniqueName);
         await File.WriteAllBytesAsync(path, asset.Data);
 
         return Ok(new { 
             Id = asset.Id,
             Name = asset.OriginalName.Value,
+            MediaType = asset.MediaType.Value,
+            Signature = asset.Signature.ToString(),
             Size = asset.Size.ToString(),
             Hash = asset.Hash
         });
@@ -567,8 +666,42 @@ public class FilesController : ControllerBase
         if (!asset.HasValue)
             return NotFound();
 
-        // Return with correct MIME type and filename
-        return File(asset.Data, asset.ContentType.Value, asset.OriginalName.Value);
+        // Return with correct MIME type (from signature) and filename
+        return File(asset.Data, asset.MediaType.Value, asset.OriginalName.Value);
     }
 }
+```
+
+---
+
+## JSON Serialization
+
+Asset serializes to JSON with full metadata:
+
+```json
+{
+  "id": "7a3b9c4d-1234-5678-90ab-cdef12345678",
+  "originalName": "document.pdf",
+  "uniqueName": "7a3b9c4d-1234-5678-90ab-cdef12345678.pdf",
+  "mimeType": "application/pdf",
+  "signature": "Pdf",
+  "extension": ".pdf",
+  "sizeBytes": 1572864,
+  "size": "1.50 MB",
+  "createdAt": "2026-01-21T12:34:56.0000000Z",
+  "sha256": "abc123...",
+  "md5": "def456...",
+  "category": "Document",
+  "data": "JVBERi0xLjQKJ..."
+}
+```
+
+### Deserializing
+
+```csharp
+// Simple Base64 string
+Asset asset = JsonSerializer.Deserialize<Asset>("\"JVBERi0xLjQK...\"");
+
+// Full object format
+Asset asset = JsonSerializer.Deserialize<Asset>(jsonString);
 ```

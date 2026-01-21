@@ -34,7 +34,7 @@ dotnet add package Zonit.Extensions
 
 ### Asset Value Object - File Handling
 
-The `Asset` struct is a complete file container with embedded metadata:
+The `Asset` struct is a complete file container with embedded metadata. **MIME type is always detected from binary signature (magic bytes)** - never trust file extension alone.
 
 ```csharp
 using Zonit.Extensions;
@@ -51,12 +51,19 @@ Asset asset = data;
 Console.WriteLine(asset.Id);           // GUID - unique identifier
 Console.WriteLine(asset.OriginalName); // "document.pdf"
 Console.WriteLine(asset.UniqueName);   // "7a3b9c4d-1234-5678-90ab-cdef12345678.pdf"
-Console.WriteLine(asset.ContentType);  // "application/pdf"
-Console.WriteLine(asset.Size);           // "1.5 MB" (FileSize VO)
+Console.WriteLine(asset.MediaType);    // "application/pdf" (detected from signature!)
+Console.WriteLine(asset.Signature);    // SignatureType.Pdf
+Console.WriteLine(asset.Size);         // "1.5 MB" (FileSize VO)
 Console.WriteLine(asset.Size.Megabytes); // 1.5
 Console.WriteLine(asset.CreatedAt);    // 2026-01-21 12:34:56 UTC
 Console.WriteLine(asset.Hash);         // SHA256 base64
 Console.WriteLine(asset.Md5);          // MD5 base64
+
+// Signature-based MIME detection (prevents extension spoofing)
+// file.jpg that is actually WebP -> MediaType = "image/webp"
+var uploaded = new Asset(bytes, "fake.jpg");
+Console.WriteLine(uploaded.Signature);  // SignatureType.WebP
+Console.WriteLine(uploaded.MediaType);  // "image/webp" (correct!)
 
 // Implicit conversion back to Stream
 Stream stream = asset;

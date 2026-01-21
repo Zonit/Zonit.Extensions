@@ -67,8 +67,6 @@ public readonly partial struct Asset : IEquatable<Asset>
     public static readonly Asset Empty = default;
 
     private readonly byte[]? _data;
-    private readonly string? _sha256;
-    private readonly string? _md5;
 
     #region Core Properties
 
@@ -89,14 +87,20 @@ public readonly partial struct Asset : IEquatable<Asset>
     public string UniqueName => HasValue ? $"{Id}{Extension}" : string.Empty;
 
     /// <summary>
-    /// MIME type of the file.
+    /// MIME type detected from binary signature (magic bytes).
+    /// This is the true, validated file type. Computed once at creation.
     /// </summary>
-    public MimeType ContentType { get; }
+    public MimeType MediaType { get; }
 
     /// <summary>
-    /// File extension with dot (e.g., ".pdf"). Derived from ContentType.
+    /// File signature detected from magic bytes. Computed once at creation.
     /// </summary>
-    public string Extension => ContentType.Extension;
+    public SignatureType Signature { get; }
+
+    /// <summary>
+    /// File extension with dot (e.g., ".pdf"). Derived from MediaType.
+    /// </summary>
+    public string Extension => MediaType.Extension;
 
     /// <summary>
     /// File size as FileSize VO (with KB/MB/GB conversion).
@@ -110,15 +114,15 @@ public readonly partial struct Asset : IEquatable<Asset>
 
     /// <summary>
     /// SHA256 hash of the file data (Base64 encoded).
-    /// Lazy computed on first access. Use for integrity verification.
+    /// Computed once at creation. Use for integrity verification.
     /// </summary>
-    public string Sha256 => _sha256 ?? (HasValue ? ComputeSha256() : string.Empty);
+    public string Sha256 { get; }
 
     /// <summary>
     /// MD5 hash of the file data (Base64 encoded).
-    /// Lazy computed on first access. Use for legacy systems, ETags.
+    /// Computed once at creation. Use for legacy systems, ETags.
     /// </summary>
-    public string Md5 => _md5 ?? (HasValue ? ComputeMd5() : string.Empty);
+    public string Md5 { get; }
 
     /// <summary>
     /// SHA256 hash alias for backward compatibility.
@@ -135,34 +139,46 @@ public readonly partial struct Asset : IEquatable<Asset>
     /// </summary>
     public bool HasValue => _data is { Length: > 0 };
 
+    /// <summary>
+    /// Base64 encoded file content. Computed on demand (not stored).
+    /// Fast operation, uses a bit of CPU but saves memory.
+    /// </summary>
+    public string Base64 => _data is { Length: > 0 } ? Convert.ToBase64String(_data) : string.Empty;
+
+    /// <summary>
+    /// Data URL with MIME type (data:mime;base64,xxx).
+    /// Ready for use in HTML, APIs, etc. Computed on demand (not stored).
+    /// </summary>
+    public string DataUrl => _data is { Length: > 0 } ? $"data:{MediaType.Value};base64,{Base64}" : string.Empty;
+
     #endregion
 
     #region File Type Properties
 
     /// <summary>Checks if this is an image file.</summary>
-    public bool IsImage => ContentType.IsImage;
+    public bool IsImage => MediaType.IsImage;
 
     /// <summary>Checks if this is a video file.</summary>
-    public bool IsVideo => ContentType.IsVideo;
+    public bool IsVideo => MediaType.IsVideo;
 
     /// <summary>Checks if this is an audio file.</summary>
-    public bool IsAudio => ContentType.IsAudio;
+    public bool IsAudio => MediaType.IsAudio;
 
     /// <summary>Checks if this is a document (PDF, DOC, etc.).</summary>
-    public bool IsDocument => ContentType.IsDocument;
+    public bool IsDocument => MediaType.IsDocument;
 
     /// <summary>Checks if this is a text file.</summary>
-    public bool IsText => ContentType.IsText;
+    public bool IsText => MediaType.IsText;
 
     /// <summary>Gets the file category based on MIME type.</summary>
-    public AssetCategory Category => ContentType.Type switch
+    public AssetCategory Category => MediaType.Type switch
     {
         "image" => AssetCategory.Image,
         "video" => AssetCategory.Video,
         "audio" => AssetCategory.Audio,
         "text" => AssetCategory.Text,
-        _ when ContentType.IsDocument => AssetCategory.Document,
-        _ when ContentType.IsArchive => AssetCategory.Archive,
+        _ when MediaType.IsDocument => AssetCategory.Document,
+        _ when MediaType.IsArchive => AssetCategory.Archive,
         _ => AssetCategory.Other
     };
 
@@ -203,14 +219,6 @@ public readonly partial struct Asset : IEquatable<Asset>
     }
 
     /// <summary>
-    /// Creates Asset with explicit MIME type string.
-    /// </summary>
-    public Asset(byte[] data, string? name, string mimeType)
-        : this(data, name, new MimeType(mimeType), null, null)
-    {
-    }
-
-    /// <summary>
     /// Creates Asset from Base64 string.
     /// </summary>
     /// <param name="base64">Base64 encoded file content.</param>
@@ -223,6 +231,7 @@ public readonly partial struct Asset : IEquatable<Asset>
 
     /// <summary>
     /// Full internal constructor with all parameters.
+    /// All computations (hash, signature, base64) are done here once.
     /// </summary>
     private Asset(byte[] data, string? name, MimeType? mimeType, Guid? id, DateTime? createdAt)
     {
@@ -233,51 +242,109 @@ public readonly partial struct Asset : IEquatable<Asset>
             throw new ArgumentException($"File size ({size}) exceeds maximum allowed ({MaxSize}).", nameof(data));
 
         _data = data;
-        _sha256 = null;
-        _md5 = null;
-
         Id = id ?? Guid.NewGuid();
         CreatedAt = createdAt ?? DateTime.UtcNow;
         Size = size;
 
-        // Determine MIME type first (needed for extension in GUID name)
-        if (mimeType?.HasValue == true)
+        // Compute hashes once (small - ~44 bytes each)
+        Sha256 = data.Length > 0 ? Convert.ToBase64String(SHA256.HashData(data)) : string.Empty;
+        Md5 = data.Length > 0 ? Convert.ToBase64String(MD5.HashData(data)) : string.Empty;
+
+        // Detect signature from magic bytes (small - enum)
+        Signature = DetectSignatureFromData(data);
+
+        // Determine MIME type: signature first, then parameter, then extension, then fallback
+        var signatureMime = GetMimeTypeFromSignature(Signature);
+        if (signatureMime.HasValue && signatureMime != MimeType.OctetStream)
         {
-            ContentType = mimeType.Value;
+            MediaType = signatureMime;
+        }
+        else if (mimeType?.HasValue == true)
+        {
+            MediaType = mimeType.Value;
         }
         else if (!string.IsNullOrWhiteSpace(name))
         {
-            ContentType = MimeType.FromPath(name);
+            MediaType = MimeType.FromPath(name);
         }
         else
         {
-            ContentType = MimeType.OctetStream;
+            MediaType = MimeType.OctetStream;
         }
 
-        // Set name (or generate GUID-based)
+        // Note: Base64 and DataUrl are computed on-demand (properties)
+        // to avoid storing duplicate large data in memory
+
+        // Set name (or generate GUID-based) - use MediaType for extension
         if (!string.IsNullOrWhiteSpace(name))
         {
-            OriginalName = FileName.TryCreate(name, out var fn) ? fn : GenerateFileName(ContentType);
+            OriginalName = FileName.TryCreate(name, out var fn) ? fn : GenerateFileName(MediaType);
         }
         else
         {
-            OriginalName = GenerateFileName(ContentType);
+            OriginalName = GenerateFileName(MediaType);
         }
     }
 
     /// <summary>
-    /// Internal constructor for deserialization (with precomputed values).
+    /// Internal constructor for deserialization (legacy format without signature/mimeType).
+    /// Recomputes MimeType from signature.
     /// </summary>
-    internal Asset(byte[] data, FileName originalName, MimeType contentType, Guid id, DateTime createdAt, string? sha256, string? md5)
+    internal Asset(
+        byte[] data,
+        FileName originalName,
+        MimeType legacyMimeType,
+        Guid id,
+        DateTime createdAt,
+        string? sha256,
+        string? md5)
     {
         _data = data;
-        _sha256 = sha256;
-        _md5 = md5;
         Id = id;
         OriginalName = originalName;
-        ContentType = contentType;
         CreatedAt = createdAt;
         Size = new FileSize(data.Length);
+
+        // Compute hashes only if not provided (small - ~44 bytes each)
+        Sha256 = sha256 ?? (data.Length > 0 ? Convert.ToBase64String(SHA256.HashData(data)) : string.Empty);
+        Md5 = md5 ?? (data.Length > 0 ? Convert.ToBase64String(MD5.HashData(data)) : string.Empty);
+
+        // Detect signature (small - enum)
+        Signature = DetectSignatureFromData(data);
+
+        // Determine MediaType from signature, fallback to legacy value
+        var signatureMime = GetMimeTypeFromSignature(Signature);
+        MediaType = signatureMime.HasValue && signatureMime != MimeType.OctetStream
+            ? signatureMime
+            : legacyMimeType;
+
+        // Note: Base64 and DataUrl are computed on-demand (properties)
+    }
+
+    /// <summary>
+    /// Internal constructor for full deserialization (with all precomputed values).
+    /// Base64 and DataUrl are NOT stored - they are computed on-demand.
+    /// </summary>
+    internal Asset(
+        byte[] data,
+        FileName originalName,
+        MimeType mimeType,
+        SignatureType signature,
+        Guid id,
+        DateTime createdAt,
+        string sha256,
+        string md5)
+    {
+        _data = data;
+        Id = id;
+        OriginalName = originalName;
+        MediaType = mimeType;
+        Signature = signature;
+        CreatedAt = createdAt;
+        Size = new FileSize(data.Length);
+        Sha256 = sha256;
+        Md5 = md5;
+        // Note: Base64 and DataUrl are computed on-demand (properties)
     }
 
     private static FileName GenerateFileName(MimeType mimeType)
@@ -369,14 +436,16 @@ public readonly partial struct Asset : IEquatable<Asset>
     #region Data Conversion
 
     /// <summary>
-    /// Gets data as Base64 string.
+    /// Gets data as Base64 string. Alias for <see cref="Base64"/> property.
     /// </summary>
-    public string ToBase64() => Convert.ToBase64String(Data);
+    [Obsolete("Use Base64 property instead.")]
+    public string ToBase64() => Base64;
 
     /// <summary>
-    /// Gets data URL (data:mime;base64,xxx).
+    /// Gets data URL. Alias for <see cref="DataUrl"/> property.
     /// </summary>
-    public string ToDataUrl() => $"data:{ContentType.Value};base64,{ToBase64()}";
+    [Obsolete("Use DataUrl property instead.")]
+    public string ToDataUrl() => DataUrl;
 
     /// <summary>
     /// Opens a read-only MemoryStream over the data.
@@ -408,26 +477,16 @@ public readonly partial struct Asset : IEquatable<Asset>
     #region Hash & Integrity
 
     /// <summary>
-    /// Computes SHA256 hash of the file data.
-    /// </summary>
-    public string ComputeSha256() => Convert.ToBase64String(SHA256.HashData(Data));
-
-    /// <summary>
-    /// Computes MD5 hash of the file data.
-    /// </summary>
-    public string ComputeMd5() => Convert.ToBase64String(MD5.HashData(Data));
-
-    /// <summary>
     /// Verifies the file data against a known SHA256 hash.
     /// </summary>
     public bool VerifyHash(string expectedHash) =>
-        string.Equals(ComputeSha256(), expectedHash, StringComparison.Ordinal);
+        string.Equals(Sha256, expectedHash, StringComparison.Ordinal);
 
     /// <summary>
     /// Verifies the file data against a known MD5 hash.
     /// </summary>
     public bool VerifyMd5(string expectedMd5) =>
-        string.Equals(ComputeMd5(), expectedMd5, StringComparison.Ordinal);
+        string.Equals(Md5, expectedMd5, StringComparison.Ordinal);
 
     #endregion
 
@@ -496,17 +555,18 @@ public readonly partial struct Asset : IEquatable<Asset>
     /// <summary>
     /// Creates a copy with different original name.
     /// </summary>
-    public Asset WithName(FileName newName) => new(Data, newName.Value, ContentType, Id, CreatedAt);
+    public Asset WithName(FileName newName) => new(Data, newName.Value, MediaType, Id, CreatedAt);
 
     /// <summary>
     /// Creates a copy with different original name.
     /// </summary>
-    public Asset WithName(string newName) => new(Data, newName, ContentType, Id, CreatedAt);
+    public Asset WithName(string newName) => new(Data, newName, MediaType, Id, CreatedAt);
 
     /// <summary>
     /// Creates a copy with different MIME type.
     /// </summary>
-    public Asset WithContentType(MimeType newContentType) => new(Data, OriginalName.Value, newContentType, Id, CreatedAt);
+    [Obsolete("MediaType is detected from binary signature and should not be changed manually.")]
+    public Asset WithMediaType(MimeType newMediaType) => new(Data, OriginalName.Value, newMediaType, Id, CreatedAt);
 
     #endregion
 
@@ -536,7 +596,7 @@ public readonly partial struct Asset : IEquatable<Asset>
 
     /// <inheritdoc />
     public override string ToString() =>
-        HasValue ? $"{OriginalName.Value} ({ContentType.Value}, {Size})" : "(empty)";
+        HasValue ? $"{OriginalName.Value} ({MediaType.Value}, {Size})" : "(empty)";
 }
 
 /// <summary>

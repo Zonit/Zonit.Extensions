@@ -147,13 +147,13 @@ public sealed class AssetJsonConverter : JsonConverter<Asset>
             ? new Asset.MimeType(mimeType)
             : Asset.MimeType.OctetStream;
 
-        // If we have all metadata, use internal constructor
+        // If we have all metadata, use internal constructor (legacy format)
         if (id.HasValue && createdAt.HasValue)
         {
             return new Asset(bytes, fileName, mime, id.Value, createdAt.Value, sha256, md5);
         }
 
-        // Otherwise create new Asset (generates new Id/CreatedAt)
+        // Otherwise create new Asset (generates new Id/CreatedAt, detects MimeType from signature)
         return new Asset(bytes, fileName, mime);
     }
 
@@ -170,7 +170,8 @@ public sealed class AssetJsonConverter : JsonConverter<Asset>
         writer.WriteString("id", value.Id);
         writer.WriteString("originalName", value.OriginalName.Value);
         writer.WriteString("uniqueName", value.UniqueName);
-        writer.WriteString("mimeType", value.ContentType.Value);
+        writer.WriteString("mimeType", value.MediaType.Value);
+        writer.WriteString("signature", value.Signature.ToString());
         writer.WriteString("extension", value.Extension);
         writer.WriteNumber("sizeBytes", value.Size.Bytes);
         writer.WriteString("size", value.Size.ToString());
@@ -178,7 +179,7 @@ public sealed class AssetJsonConverter : JsonConverter<Asset>
         writer.WriteString("sha256", value.Sha256);
         writer.WriteString("md5", value.Md5);
         writer.WriteString("category", value.Category.ToString());
-        writer.WriteString("data", value.ToBase64());
+        writer.WriteString("data", value.Base64);
         writer.WriteEndObject();
     }
 }
