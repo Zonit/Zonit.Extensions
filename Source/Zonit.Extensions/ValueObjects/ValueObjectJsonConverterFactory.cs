@@ -5,7 +5,7 @@ namespace Zonit.Extensions;
 
 /// <summary>
 /// JSON converter factory for value objects.
-/// Automatically handles serialization/deserialization of Title, Description, Content, Url, UrlSlug, Culture, Price.
+/// Automatically handles serialization/deserialization of Title, Description, Content, Url, UrlSlug, Culture, Price, Asset.
 /// </summary>
 public sealed class ValueObjectJsonConverterFactory : JsonConverterFactory
 {
@@ -18,7 +18,8 @@ public sealed class ValueObjectJsonConverterFactory : JsonConverterFactory
                typeToConvert == typeof(Url) ||
                typeToConvert == typeof(UrlSlug) ||
                typeToConvert == typeof(Culture) ||
-               typeToConvert == typeof(Price);
+               typeToConvert == typeof(Price) ||
+               typeToConvert == typeof(Asset);
     }
 
     /// <inheritdoc />
@@ -38,6 +39,8 @@ public sealed class ValueObjectJsonConverterFactory : JsonConverterFactory
             return new CultureJsonConverter();
         if (typeToConvert == typeof(Price))
             return new PriceJsonConverter();
+        if (typeToConvert == typeof(Asset))
+            return new AssetJsonConverter();
 
         throw new NotSupportedException($"Cannot create converter for {typeToConvert}");
     }

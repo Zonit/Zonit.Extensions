@@ -141,6 +141,52 @@ This design ensures:
 
 ## Available Value Objects
 
+### `Asset`
+Represents a file asset as an immutable value object for transfer and storage.
+
+**Features:**
+- Stores file data (`byte[]`), file name, and MIME type
+- SHA256 hash for integrity verification and deduplication
+- Safe filename generation (GUID-based, timestamp-based)
+- File signature (magic bytes) detection and validation
+- Nested types: `Asset.MimeType`, `Asset.FileName`
+- Categories: Image, Video, Audio, Document, Text, Archive
+- EF Core integration (stored as `byte[]` with embedded header)
+
+**For detailed examples, see [Asset.Examples.md](Asset.Examples.md)**
+
+**Quick Usage:**
+```csharp
+// Create from bytes
+var asset = new Asset(fileBytes, "document.pdf");
+
+// Properties
+Console.WriteLine(asset.Name);           // "document.pdf"
+Console.WriteLine(asset.ContentType);    // "application/pdf"
+Console.WriteLine(asset.Size);           // 1234567
+Console.WriteLine(asset.SizeFormatted);  // "1.2 MB"
+Console.WriteLine(asset.Hash);           // SHA256 hash
+Console.WriteLine(asset.IsDocument);     // true
+Console.WriteLine(asset.Category);       // AssetCategory.Document
+
+// Safe filename for storage
+var safeName = asset.GetSafeFileName();               // "7a3b9c4d-1234-5678-90ab-cdef12345678.pdf"
+var timestamped = asset.GetSafeFileNameWithTimestamp(); // "20260120_143530_7a3b9c4d.pdf"
+
+// Data conversions
+var base64 = asset.ToBase64();
+var dataUrl = asset.ToDataUrl();   // data:application/pdf;base64,...
+var stream = asset.ToStream();
+var memory = asset.AsMemory();     // Zero-copy
+
+// Security validation
+var validation = asset.Validate(AssetValidationOptions.Documents());
+if (!validation.IsValid)
+    Console.WriteLine(string.Join(", ", validation.Errors));
+```
+
+---
+
 ### `Culture`
 Represents a culture in language format (e.g., "en-US", "pl-PL").
 
@@ -172,6 +218,75 @@ string code = culture; // Implicit conversion to string
 
 ---
 
+### `Color`
+Represents a color stored in OKLCH format for maximum precision and perceptual uniformity.
+
+**Features:**
+- **OKLCH storage** - perceptually uniform color space (CSS Color Level 4)
+- Conversions to Hex, RGB, HSL formats
+- Color manipulation - lighten, darken, saturate, desaturate
+- Complementary colors, mixing, grayscale
+- Wide gamut support (P3, Rec2020)
+- Alpha/transparency support
+- `IFormattable` - multiple output formats
+- `IParsable<Color>` - parse from hex, rgb, hsl, oklch
+- `JsonConverter` - stores as OKLCH for full precision
+
+**Usage:**
+```csharp
+// Create from various formats
+Color color = Color.FromHex("#3498db");
+Color color = Color.FromRgb(52, 152, 219);
+Color color = Color.FromHsl(204, 0.7, 0.53);
+Color color = Color.FromOklch(0.65, 0.15, 250);
+Color color = "#3498db";  // Implicit conversion
+
+// Access in different formats
+Console.WriteLine(color.Hex);      // "#3498DB"
+Console.WriteLine(color.CssRgb);   // "rgb(52, 152, 219)"
+Console.WriteLine(color.CssHsl);   // "hsl(204, 70%, 53%)"
+Console.WriteLine(color.CssOklch); // "oklch(65% 0.15 250)"
+
+// RGB components
+var (r, g, b) = color.Rgb;         // (52, 152, 219)
+var (r, g, b, a) = color.Rgba;     // With alpha
+
+// Color manipulation (perceptually uniform)
+Color lighter = color.Lighten(0.1);
+Color darker = color.Darken(0.1);
+Color saturated = color.Saturate(0.05);
+Color complement = color.Complementary;  // 180° hue rotation
+Color gray = color.Grayscale;
+
+// Mix colors
+Color mixed = color1.Mix(color2, 0.5);  // 50% blend
+
+// Alpha transparency
+Color transparent = color.WithAlpha(0.5);
+Console.WriteLine(transparent.HasAlpha);  // true
+
+// IFormattable - format output
+Console.WriteLine($"{color:hex}");    // "#3498DB"
+Console.WriteLine($"{color:rgb}");    // "rgb(52, 152, 219)"
+Console.WriteLine($"{color:hsl}");    // "hsl(204, 70%, 53%)"
+Console.WriteLine($"{color:oklch}");  // "oklch(65% 0.15 250)" (default)
+```
+
+**Why OKLCH?**
+- **Perceptually uniform** - equal changes produce equal perceived color differences
+- **Better manipulation** - adjusting lightness doesn't shift hue (unlike HSL)
+- **Wider gamut** - represents colors outside sRGB (P3, Rec2020)
+- **Lossless** - converting from OKLCH preserves maximum color information
+- **Modern standard** - CSS Color Level 4 native support
+
+**When to use Color vs string:**
+| Type | Use Case | Benefits |
+|------|----------|----------|
+| `Color` | Brand colors, themes, dynamic color manipulation | Type-safe, validated, perceptually uniform |
+| `string` | Simple hex storage without manipulation | Simpler storage |
+
+---
+
 ### `Price`
 Represents a monetary price with high precision for calculations and standard rounding for display.
 **Use for product prices, unit costs - values that should never be negative.**
@@ -182,6 +297,7 @@ Represents a monetary price with high precision for calculations and standard ro
 - **Non-negative by default** - throws exception for negative values
 - Arithmetic operators: `+`, `-`, `*`, `/`
 - `IParsable<Price>` for modern parsing
+- `IFormattable` for string formatting (`{price:C}`, `{price:N2}`)
 - `JsonConverter` for automatic JSON serialization
 - Comparison operators: `<`, `>`, `<=`, `>=`
 - **Type-safe**: Always use `decimal`
@@ -198,6 +314,10 @@ var discounted = price * 0.9m; // 17.991 (internally), 17.99 (display)
 
 Console.WriteLine(price.Value);        // 19.99000000
 Console.WriteLine(price.DisplayValue); // 19.99
+
+// IFormattable - formatting support
+Console.WriteLine($"{price:C}");     // "$19.99" (culture-dependent)
+Console.WriteLine($"{price:N2}");    // "19.99"
 
 // ❌ Negative values throw exception
 var invalid = new Price(-10m); // Throws ArgumentOutOfRangeException
@@ -224,6 +344,7 @@ Represents a monetary amount that can be positive or negative.
 - Arithmetic operators: `+`, `-`, `*`, `/`
 - Unary minus operator: `-money`
 - `IParsable<Money>` for modern parsing
+- `IFormattable` for string formatting (`{money:C}`, `{money:N2}`)
 - `JsonConverter` for automatic JSON serialization
 - Comparison operators: `<`, `>`, `<=`, `>=`
 - Helper properties: `IsNegative`, `IsPositive`, `IsZero`
@@ -440,11 +561,31 @@ var invalid = new Title(new string('A', 61)); // ? Exception at creation
 
 ## Integration with Entity Framework
 
+Use `Zonit.Extensions.Databases.SqlServer` for automatic Value Object converters:
+
+```csharp
+// In DbContext.OnModelCreating
+protected override void OnModelCreating(ModelBuilder modelBuilder)
+{
+    // Automatically configures all Value Object converters
+    modelBuilder.UseZonitDatabasesConverters();
+}
+```
+
+### Manual Configuration (if needed)
+
 ```csharp
 public class ProductConfiguration : IEntityTypeConfiguration<Product>
 {
     public void Configure(EntityTypeBuilder<Product> builder)
     {
+        // Asset - stored as byte[] with embedded header
+        builder.Property(p => p.Attachment)
+            .HasConversion(
+                v => v.ToStorageBytes(),
+                v => Asset.FromStorageBytes(v)
+            );
+        
         builder.Property(p => p.Title)
             .HasConversion(
                 v => v.Value,

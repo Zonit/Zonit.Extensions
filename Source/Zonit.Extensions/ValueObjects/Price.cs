@@ -11,7 +11,7 @@ namespace Zonit.Extensions;
 /// In Blazor, use InputNumber which binds directly to decimal - no string conversion needed.
 /// </summary>
 [JsonConverter(typeof(PriceJsonConverter))]
-public readonly struct Price : IEquatable<Price>, IComparable<Price>, IParsable<Price>
+public readonly struct Price : IEquatable<Price>, IComparable<Price>, IParsable<Price>, IFormattable
 {
     private const int InternalPrecision = 8;
     private const int DisplayPrecision = 2;
@@ -180,9 +180,22 @@ public readonly struct Price : IEquatable<Price>, IComparable<Price>, IParsable<
     public override string ToString() => DisplayValue.ToString("F2");
 
     /// <summary>
+    /// Returns the display value formatted with the specified format and culture.
+    /// </summary>
+    /// <param name="format">Format string (e.g., "C" for currency, "N" for number, "F" for fixed-point). If null or empty, defaults to "F2".</param>
+    /// <param name="formatProvider">Format provider for culture-specific formatting.</param>
+    /// <returns>Formatted string representation of the display value.</returns>
+    public string ToString(string? format, IFormatProvider? formatProvider)
+    {
+        return string.IsNullOrEmpty(format)
+            ? DisplayValue.ToString("F2", formatProvider)
+            : DisplayValue.ToString(format, formatProvider);
+    }
+
+    /// <summary>
     /// Returns the display value formatted with the specified culture.
     /// </summary>
-    public string ToString(IFormatProvider formatProvider) => DisplayValue.ToString("F2", formatProvider);
+    public string ToString(IFormatProvider formatProvider) => ToString(null, formatProvider);
 
     /// <summary>
     /// Returns the full precision value as string.
