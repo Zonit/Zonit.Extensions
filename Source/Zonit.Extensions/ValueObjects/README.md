@@ -487,6 +487,49 @@ if (Url.TryCreate(userInput, out var validUrl))
 
 ---
 
+### `Schedule`
+Represents a schedule rule with compact binary storage (16 bytes). Works like cron but with strong typing.
+
+**Features:**
+- **Binary Storage** - Compact 16-byte format for database storage
+- **Two Modes** - Interval (every X time) or Calendar (cron-like)
+- **Nullable Fields** - null = wildcard (any value)
+- **Factory Methods** - `EveryMinutes(5)`, `EveryDay(15, 0)`, etc.
+- **GetNextOccurrence** - Calculate next execution time
+- **JsonConverter** and **TypeConverter** support
+
+**For detailed examples, see [Schedule.README.md](Schedule.README.md)**
+
+**Quick Usage:**
+```csharp
+// Interval mode: every 5 minutes
+var schedule = Schedule.EveryMinutes(5);
+
+// Calendar mode: daily at 15:00
+var daily = Schedule.EveryDay(15, 0);
+
+// Weekly on Monday at 9:00
+var weekly = Schedule.EveryWeek(DayOfWeek.Monday, 9, 0);
+
+// Monthly on 1st at midnight
+var monthly = Schedule.EveryMonth(1, 0, 0);
+
+// Get next occurrence
+DateTimeOffset? next = schedule.GetNextOccurrence(DateTimeOffset.Now);
+
+// Binary storage (16 bytes)
+byte[] bytes = schedule.ToBytes();
+Schedule restored = Schedule.FromBytes(bytes);
+
+// Multiple schedules (e.g., 8:00 and 18:00)
+Schedule[] morningAndEvening = [
+    Schedule.EveryDay(8, 0),
+    Schedule.EveryDay(18, 0)
+];
+```
+
+---
+
 ## Common Features
 
 All value objects implement:
