@@ -62,6 +62,10 @@ public readonly record struct Schedule : IEquatable<Schedule>
     private readonly sbyte _month;
     private readonly sbyte _dayOfWeek;
     private readonly int _maxExecutions;
+    private readonly byte _flags;
+
+    // Flag bits packed into _flags (byte 15 of binary layout).
+    private const byte FlagIsStartup = 0x01;
 
     #endregion
 
@@ -141,6 +145,17 @@ public readonly record struct Schedule : IEquatable<Schedule>
     }
 
     /// <summary>
+    /// When <c>true</c>, this schedule fires exactly once - immediately after the schedule is
+    /// started (e.g. at application startup). Combine with calendar/interval schedules to run
+    /// once on startup plus on a recurring cadence.
+    /// </summary>
+    public bool IsStartup
+    {
+        get => (_flags & FlagIsStartup) != 0;
+        init => _flags = value ? (byte)(_flags | FlagIsStartup) : (byte)(_flags & ~FlagIsStartup);
+    }
+
+    /// <summary>
     /// Indicates whether this is an interval-based schedule (vs calendar-based).
     /// </summary>
     public bool IsInterval => _intervalTicks != NullIntervalTicks && _intervalTicks > 0;
@@ -148,7 +163,7 @@ public readonly record struct Schedule : IEquatable<Schedule>
     /// <summary>
     /// Indicates whether this schedule has any meaningful configuration.
     /// </summary>
-    public bool HasValue => IsInterval || HasCalendarFields;
+    public bool HasValue => IsInterval || HasCalendarFields || IsStartup;
 
     /// <summary>
     /// Indicates whether any calendar field is set.
@@ -178,6 +193,7 @@ public readonly record struct Schedule : IEquatable<Schedule>
         _month = NullSentinel;
         _dayOfWeek = NullSentinel;
         _maxExecutions = 0;
+        _flags = 0;
     }
 
     /// <summary>
@@ -191,7 +207,8 @@ public readonly record struct Schedule : IEquatable<Schedule>
         sbyte dayOfMonth,
         sbyte month,
         sbyte dayOfWeek,
-        int maxExecutions)
+        int maxExecutions,
+        byte flags)
     {
         _intervalTicks = intervalTicks;
         _second = second;
@@ -201,6 +218,7 @@ public readonly record struct Schedule : IEquatable<Schedule>
         _month = month;
         _dayOfWeek = dayOfWeek;
         _maxExecutions = maxExecutions;
+        _flags = flags;
     }
 
     #endregion
@@ -266,7 +284,7 @@ public readonly record struct Schedule : IEquatable<Schedule>
         destination[12] = (byte)_dayOfMonth;
         destination[13] = (byte)_month;
         destination[14] = (byte)_dayOfWeek;
-        destination[15] = 0; // Reserved
+        destination[15] = _flags;
     }
 
     /// <summary>
@@ -288,9 +306,9 @@ public readonly record struct Schedule : IEquatable<Schedule>
         var dayOfMonth = (sbyte)bytes[12];
         var month = (sbyte)bytes[13];
         var dayOfWeek = (sbyte)bytes[14];
-        // bytes[15] reserved
+        var flags = bytes[15];
 
-        return new Schedule(intervalTicks, second, minute, hour, dayOfMonth, month, dayOfWeek, 0);
+        return new Schedule(intervalTicks, second, minute, hour, dayOfMonth, month, dayOfWeek, 0, flags);
     }
 
     /// <summary>
@@ -306,6 +324,21 @@ public readonly record struct Schedule : IEquatable<Schedule>
     #endregion
 
     #region Static Factory Methods - Interval
+
+    /// <summary>
+    /// Creates a one-shot schedule that fires immediately when the schedule starts
+    /// (e.g., at application startup) and never again. Combine with other schedules
+    /// to run once on startup plus on a recurring cadence.
+    /// </summary>
+    /// <example>
+    /// <code>
+    /// // Run once at startup, then every Friday at 22:00
+    /// services.AddSchedule&lt;SyncHandler&gt;(
+    ///     Schedule.Startup(),
+    ///     Schedule.EveryWeek(DayOfWeek.Friday, 22));
+    /// </code>
+    /// </example>
+    public static Schedule Startup() => new() { IsStartup = true };
 
     /// <summary>
     /// Creates an interval schedule that executes every N seconds.
@@ -388,7 +421,7 @@ public readonly record struct Schedule : IEquatable<Schedule>
     /// Returns a new schedule with the specified maximum execution count.
     /// </summary>
     public Schedule WithMaxExecutions(int count) =>
-        new(_intervalTicks, _second, _minute, _hour, _dayOfMonth, _month, _dayOfWeek, count);
+        new(_intervalTicks, _second, _minute, _hour, _dayOfMonth, _month, _dayOfWeek, count, _flags);
 
     #endregion
 
@@ -403,6 +436,10 @@ public readonly record struct Schedule : IEquatable<Schedule>
     public DateTimeOffset? GetNextOccurrence(DateTimeOffset after, TimeZoneInfo? timeZone = null)
     {
         if (!HasValue)
+            return null;
+
+        // Startup-only schedules fire once at Start() and never recur.
+        if (IsStartup && !IsInterval && !HasCalendarFields)
             return null;
 
         timeZone ??= TimeZoneInfo.Local;
@@ -530,11 +567,12 @@ public readonly record struct Schedule : IEquatable<Schedule>
         _dayOfMonth == other._dayOfMonth &&
         _month == other._month &&
         _dayOfWeek == other._dayOfWeek &&
-        _maxExecutions == other._maxExecutions;
+        _maxExecutions == other._maxExecutions &&
+        _flags == other._flags;
 
     /// <inheritdoc />
     public override int GetHashCode() =>
-        HashCode.Combine(_intervalTicks, _second, _minute, _hour, _dayOfMonth, _month, _dayOfWeek);
+        HashCode.Combine(_intervalTicks, _second, _minute, _hour, _dayOfMonth, _month, _dayOfWeek, _flags);
 
     #endregion
 
@@ -546,10 +584,16 @@ public readonly record struct Schedule : IEquatable<Schedule>
         if (!HasValue)
             return "(empty)";
 
+        if (IsStartup && !IsInterval && !HasCalendarFields)
+            return "Startup (fire once)";
+
         if (IsInterval)
             return $"Every {Interval!.Value}";
 
         var parts = new List<string>();
+
+        if (IsStartup)
+            parts.Add("Startup");
 
         if (Month.HasValue)
             parts.Add($"Month={Month.Value}");
