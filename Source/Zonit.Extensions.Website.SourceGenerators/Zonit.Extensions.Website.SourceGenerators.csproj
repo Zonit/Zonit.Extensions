@@ -7,6 +7,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
     <IsRoslynComponent>true</IsRoslynComponent>
+    <!-- The generator DLL is shipped inside Zonit.Extensions.Website.nupkg.
+         This project must NOT produce its own NuGet package. -->
+    <IsPackable>false</IsPackable>
     <!-- Roslyn analyzers: AOT/trim flags from Directory.Build.props do not apply. -->
     <IsTrimmable>false</IsTrimmable>
     <IsAotCompatible>false</IsAotCompatible>
@@ -18,16 +21,6 @@
     <PublishTrimmed>false</PublishTrimmed>
     <!-- Don't emit docs for generator internals. -->
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
-
-    <!-- Package metadata -->
-    <Description>Source generator for Zonit.Extensions.Website that emits AOT-safe ViewModel metadata (accessors, auto-save attributes) and JsonSerializerContext for PageViewBase/PageEditBase consumers. Automatically referenced by Zonit.Extensions.Website.</Description>
-    <Summary>Source generator for AOT-safe PageEditBase/PageViewBase metadata</Summary>
-    <PackageTags>Zonit;Extensions;Website;Blazor;AOT;SourceGenerator;Analyzer</PackageTags>
-
-    <!-- Don't expose the generator assembly itself as a runtime reference. -->
-    <IncludeBuildOutput>false</IncludeBuildOutput>
-    <DevelopmentDependency>true</DevelopmentDependency>
-    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
   </PropertyGroup>
 
   <ItemGroup>
@@ -35,12 +28,4 @@
     <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" PrivateAssets="all" />
   </ItemGroup>
 
-  <!-- Pack the generator DLL into the /analyzers/dotnet/cs folder of the NuGet package.
-       Uses a Target instead of a static ItemGroup so that $(TargetPath) is resolved after the
-       build completes; evaluated in an ItemGroup it can be empty, causing NU5017. -->
-  <Target Name="IncludeAnalyzerInPackage" BeforeTargets="_GetPackageFiles">
-    <ItemGroup>
-      <None Include="$(TargetPath)" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
-    </ItemGroup>
-  </Target>
 </Project>
