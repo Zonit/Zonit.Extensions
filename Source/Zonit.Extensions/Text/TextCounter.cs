@@ -6,6 +6,9 @@ public sealed partial class TextCounter(string text) : TextBase<TextCounter>(tex
 {
     private readonly string Text = text;
 
+    /// <inheritdoc />
+    protected override TextCounter Create(string text) => new(text);
+
     #region Basic Statistics
 
     /// <summary>

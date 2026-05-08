@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- Roslyn source generators must target netstandard2.0 and C# latest. -->
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+    <IsRoslynComponent>true</IsRoslynComponent>
+    <!-- Roslyn analyzers: AOT/trim flags from Directory.Build.props do not apply. -->
+    <IsTrimmable>false</IsTrimmable>
+    <IsAotCompatible>false</IsAotCompatible>
+    <EnableTrimAnalyzer>false</EnableTrimAnalyzer>
+    <EnableAotAnalyzer>false</EnableAotAnalyzer>
+    <EnableConfigurationBindingGenerator>false</EnableConfigurationBindingGenerator>
+    <!-- A consumer running `dotnet publish /p:PublishTrimmed=true` would otherwise propagate the
+         flag to this analyzer project (netstandard2.0) and fail with NETSDK1124. -->
+    <PublishTrimmed>false</PublishTrimmed>
+    <!-- Don't emit docs for generator internals. -->
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+
+    <!-- Package metadata -->
+    <Description>Source generator for Zonit.Extensions.Website that emits AOT-safe ViewModel metadata (accessors, auto-save attributes) and JsonSerializerContext for PageViewBase/PageEditBase consumers. Automatically referenced by Zonit.Extensions.Website.</Description>
+    <Summary>Source generator for AOT-safe PageEditBase/PageViewBase metadata</Summary>
+    <PackageTags>Zonit;Extensions;Website;Blazor;AOT;SourceGenerator;Analyzer</PackageTags>
+
+    <!-- Don't expose the generator assembly itself as a runtime reference. -->
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <DevelopmentDependency>true</DevelopmentDependency>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!-- Pack the generator DLL into the /analyzers/dotnet/cs folder of the NuGet package. -->
+  <ItemGroup>
+    <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+  </ItemGroup>
+</Project>

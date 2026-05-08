@@ -426,10 +426,8 @@ public readonly partial struct Asset : IEquatable<Asset>
     /// </summary>
     public static implicit operator ReadOnlyMemory<byte>(Asset asset) => asset.Data.AsMemory();
 
-    /// <summary>
-    /// Implicit conversion to ReadOnlySpan&lt;byte&gt; is not possible (ref struct limitation).
-    /// Use AsSpan() method instead.
-    /// </summary>
+    // Note: implicit conversion to ReadOnlySpan<byte> is not possible (ref struct limitation).
+    // Use AsSpan() method instead.
 
     #endregion
 

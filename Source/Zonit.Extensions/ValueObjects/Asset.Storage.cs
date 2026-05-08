@@ -294,9 +294,9 @@ public readonly partial struct Asset
 
         if (options.ValidateSignature && !IsSignatureValid())
         {
-            var warning = GetSignatureMismatchWarning();
-            if (warning is not null)
-                errors.Add(warning);
+            // Inlined intentionally: GetSignatureMismatchWarning is [Obsolete] for public consumers,
+            // but the underlying check (Signature == Unknown) is still the right validation here.
+            errors.Add($"Could not detect file signature. Using fallback MIME type: '{MediaType.Value}'.");
         }
 
         return new AssetValidationResult(errors.Count == 0, errors);

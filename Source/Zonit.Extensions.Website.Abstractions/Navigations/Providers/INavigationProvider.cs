@@ -14,7 +14,8 @@ public interface INavigationProvider
     /// <summary>
     /// Downloading navigation by area
     /// </summary>
-    /// <param name="area"></param>
-    /// <returns></returns>
+    /// <param name="area">The area type to filter navigation groups by.</param>
+    /// <param name="position">Optional position filter (e.g. "header", "sidebar"); <c>null</c> returns all positions.</param>
+    /// <returns>Matching navigation groups, or <c>null</c> if none defined.</returns>
     public IReadOnlyList<NavGroupModel>? Get(AreaType area, string? position);
 }

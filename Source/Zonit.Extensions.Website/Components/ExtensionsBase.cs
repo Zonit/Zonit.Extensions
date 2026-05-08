@@ -2,6 +2,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Diagnostics.CodeAnalysis;
 using Zonit.Extensions.Cultures;
 using Zonit.Extensions.Identity;
 using Zonit.Extensions.Organizations;
@@ -114,11 +115,18 @@ public abstract class ExtensionsBase : Base, IDisposable
         => ServiceProvider.GetRequiredService<T>();
 
     /// <summary>
-    /// Pobiera opcje konfiguracji typu TModel z automatycznym odświeżaniem interfejsu przy zmianie
+    /// Pobiera opcje konfiguracji typu <typeparamref name="TModel"/> z automatycznym odświeżaniem interfejsu przy zmianie.
     /// </summary>
-    /// <typeparam name="TModel">Typ modelu opcji</typeparam>
-    /// <returns>Wartości opcji z monitorowaniem</returns>
-    protected TModel Options<TModel>() where TModel : class
+    /// <remarks>
+    /// Wymaga <c>IOptionsMonitor&lt;TModel&gt;</c>, które używa bezparametrowego konstruktora i refleksji
+    /// nad publicznymi właściwościami <typeparamref name="TModel"/> do bindingu konfiguracji.
+    /// W trybie trimmed/AOT, <typeparamref name="TModel"/> musi mieć zachowane publiczne konstruktory i właściwości.
+    /// </remarks>
+    /// <typeparam name="TModel">Typ modelu opcji (musi mieć bezparametrowy konstruktor).</typeparam>
+    /// <returns>Aktualne wartości opcji z monitorowaniem.</returns>
+    [RequiresUnreferencedCode("IOptionsMonitor<T> binds configuration using reflection over TModel's public properties.")]
+    [RequiresDynamicCode("IOptionsMonitor<T> may require runtime code generation for TModel binding.")]
+    protected TModel Options<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] TModel>() where TModel : class, new()
     {
         var monitor = ServiceProvider.GetRequiredService<IOptionsMonitor<TModel>>();
 

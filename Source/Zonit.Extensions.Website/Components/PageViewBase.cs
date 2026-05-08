@@ -1,13 +1,30 @@
 ﻿using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.Logging;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Zonit.Extensions.Website;
 
 /// <summary>
-/// Prosta klasa bazowa dla komponentów wyświetlających dane
+/// Prosta klasa bazowa dla komponentów wyświetlających dane z opcjonalną persystencją modelu
+/// między prerenderem a interactive renderem (Blazor SSR → WebAssembly/Server).
 /// </summary>
-/// <typeparam name="TViewModel">Typ modelu danych</typeparam>
-public class PageViewBase<TViewModel> : PageBase where TViewModel : class
+/// <remarks>
+/// <para><strong>AOT/Trimming:</strong> trimmer zachowuje publiczne pola, właściwości i konstruktory
+/// <typeparamref name="TViewModel"/> dzięki adnotacji <c>[DynamicallyAccessedMembers]</c> na
+/// parametrze generycznym — wszystkie wymagane przez <see cref="PersistentComponentState.PersistAsJson{T}"/>.
+/// Wewnętrzne wywołania JSON są lokalnie supresowane (IL2026/IL3050) z uzasadnieniem, że trimmer
+/// ma pełną informację o członkach <typeparamref name="TViewModel"/>.</para>
+/// <para>Gdy konsument referuje <c>Zonit.Extensions.Website.SourceGenerators</c> (domyślnie via paczka NuGet),
+/// generator emituje statyczne metadane (accesory właściwości) zastępujące refleksję w
+/// <c>PageEditBase</c>. JSON-owa persystencja wciąż chodzi przez <see cref="PersistentComponentState"/>
+/// (do .NET 10 brak przeciążenia z <c>JsonTypeInfo</c>; planowane na .NET 11).</para>
+/// </remarks>
+/// <typeparam name="TViewModel">Typ modelu danych.</typeparam>
+public class PageViewBase<[DynamicallyAccessedMembers(
+        DynamicallyAccessedMemberTypes.PublicProperties
+      | DynamicallyAccessedMemberTypes.PublicFields
+      | DynamicallyAccessedMemberTypes.PublicConstructors)] TViewModel>
+    : PageBase where TViewModel : class
 {
     /// <summary>
     /// Model danych do wyświetlenia
@@ -43,7 +60,7 @@ public class PageViewBase<TViewModel> : PageBase where TViewModel : class
             _persistingSubscription = PersistentComponentState.RegisterOnPersisting(PersistState);
 
             // Próba odzyskania modelu z persystencji
-            if (PersistentComponentState.TryTakeFromJson<TViewModel>(StateKey, out var restored))
+            if (TryTakeModelFromState(out var restored))
             {
                 Model = restored;
                 // Nie ładuj danych ponownie jeśli już odzyskano z persystencji
@@ -122,15 +139,29 @@ public class PageViewBase<TViewModel> : PageBase where TViewModel : class
         => await LoadDataAsync(cancellationToken);
 
     /// <summary>
-    /// Automatyczne zapisywanie stanu
+    /// Zapisuje aktualny <see cref="Model"/> w <see cref="PersistentComponentState"/>.
     /// </summary>
+    [UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode",
+        Justification = "TViewModel ma adnotacje DynamicallyAccessedMembers (PublicProperties | PublicFields | PublicConstructors) wystarczające dla System.Text.Json. .NET 11 doda przeciążenie PersistAsJson(JsonTypeInfo) i wtedy supresję można usunąć.")]
+    [UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode",
+        Justification = "Reflection-based serializer używany dla prostego DTO; trimmer zachowuje publicznych członków via DAM. AOT-safe wariant z JsonTypeInfo będzie użyty w .NET 11.")]
     private Task PersistState()
     {
-        if (PersistentModel && Model != null)
+        if (PersistentModel && Model is not null)
             PersistentComponentState.PersistAsJson(StateKey, Model);
 
         return Task.CompletedTask;
     }
+
+    /// <summary>
+    /// Próbuje odtworzyć <see cref="Model"/> z <see cref="PersistentComponentState"/>.
+    /// </summary>
+    [UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode",
+        Justification = "TViewModel ma adnotacje DynamicallyAccessedMembers (PublicProperties | PublicFields | PublicConstructors) wystarczające dla System.Text.Json. .NET 11 doda przeciążenie TryTakeFromJson(JsonTypeInfo) i wtedy supresję można usunąć.")]
+    [UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode",
+        Justification = "Reflection-based serializer używany dla prostego DTO; trimmer zachowuje publicznych członków via DAM. AOT-safe wariant z JsonTypeInfo będzie użyty w .NET 11.")]
+    private bool TryTakeModelFromState(out TViewModel? value)
+        => PersistentComponentState.TryTakeFromJson(StateKey, out value);
 
     protected override async void OnRefreshChangeAsync()
     {

@@ -1,7 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk.Razor">
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
-    
     <!-- Package Metadata -->
     <Description>MudBlazor integration for Zonit.Extensions Value Objects. Provides automatic converters for Value Objects (Title, Description, UrlSlug, Content, Url) with built-in exception handling and localized error messages for MudBlazor form components.</Description>
     <Summary>MudBlazor converters for Zonit.Extensions Value Objects</Summary>

@@ -6,15 +6,17 @@ public sealed partial class TextAnalyzer(string text) : TextBase<TextAnalyzer>(t
 {
     private readonly string Text = text;
 
+    /// <inheritdoc />
+    protected override TextAnalyzer Create(string text) => new(text);
+
     /// <summary>
-    /// Oblicza przybliżony czas czytania tekstu.
+    /// Oblicza przybliżony czas czytania tekstu (zakłada średnią prędkość 200 słów/min).
     /// </summary>
-    /// <param name="wordsPerMinute">Średnia prędkość czytania (słów na minutę).</param>
     /// <returns>Przybliżony czas czytania.</returns>
     public TimeSpan ReadingTime
     {
         get {
-            var wordsPerMinute = 200;
+            const int wordsPerMinute = 200;
 
             if (string.IsNullOrWhiteSpace(Text) || wordsPerMinute <= 0)
                 return TimeSpan.Zero;

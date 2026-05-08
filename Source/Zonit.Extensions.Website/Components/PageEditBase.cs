@@ -2,16 +2,37 @@
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.Extensions.Logging;
 using System.ComponentModel.DataAnnotations;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using Zonit.Extensions.Text;
 
 namespace Zonit.Extensions.Website;
 
-public abstract class PageEditBase<TViewModel> : PageViewBase<TViewModel> where TViewModel : class, new()
+/// <summary>
+/// Klasa bazowa dla edytorów (formularzy) pracujących na <typeparamref name="TViewModel"/>.
+/// </summary>
+/// <remarks>
+/// <para><strong>AOT/Trimming:</strong> klasa preferuje statyczne metadane wygenerowane przez
+/// <c>Zonit.Extensions.Website.SourceGenerators</c> (włączany automatycznie via paczka NuGet).
+/// Dopóki metadata jest dostępna, wszystkie operacje na właściwościach <typeparamref name="TViewModel"/>
+/// idą przez wygenerowane delegaty (zero refleksji). W przeciwnym razie używany jest fallback
+/// refleksyjny — wciąż bezpieczny, bo trimmer zachowuje członków <typeparamref name="TViewModel"/>
+/// dzięki <c>[DynamicallyAccessedMembers]</c>.</para>
+/// <para><c>DataAnnotations.Validator.TryValidateObject</c> działa refleksyjnie i wymaga, by
+/// wszystkie używane <see cref="ValidationAttribute"/> były zachowane przez trimmer. Wbudowane atrybuty
+/// (Required, MinLength, ...) są root-owane przez .NET; <strong>własne</strong> atrybuty walidacji powinny
+/// być deklarowane na publicznym typie aby trimmer je zatrzymał.</para>
+/// </remarks>
+public abstract class PageEditBase<[DynamicallyAccessedMembers(
+        DynamicallyAccessedMemberTypes.PublicProperties
+      | DynamicallyAccessedMemberTypes.PublicFields
+      | DynamicallyAccessedMemberTypes.PublicConstructors)] TViewModel>
+    : PageViewBase<TViewModel> where TViewModel : class, new()
 {
     [SupplyParameterFromForm]
 #pragma warning disable CS8765 // Dopuszczanie wartości null dla typu parametru nie jest zgodne z przesłoniętą składową (prawdopodobnie z powodu atrybutów dopuszczania wartości null).
-    protected override TViewModel Model { get; set; } = new TViewModel();
+    // Using default! + lazy init in OnInitialized to avoid BL0008 (property initializer + [SupplyParameterFromForm]).
+    protected override TViewModel Model { get; set; } = default!;
 #pragma warning restore CS8765 // Dopuszczanie wartości null dla typu parametru nie jest zgodne z przesłoniętą składową (prawdopodobnie z powodu atrybutów dopuszczania wartości null).
     protected EditContext? EditContext { get; private set; }
     protected ValidationMessageStore? ValidationMessages { get; private set; }
@@ -116,6 +137,23 @@ public abstract class PageEditBase<TViewModel> : PageViewBase<TViewModel> where 
             => await Task.CompletedTask;
 
     protected virtual bool IsFieldAutoSaveEnabled(string fieldName)
+    {
+        // Fast path: source-generated metadata (AOT-safe, zero reflection).
+        if (ViewModelMetadata<TViewModel>.Instance is { } metadata
+            && metadata.Properties.TryGetValue(fieldName, out var accessor))
+        {
+            return accessor.AutoSave is not null;
+        }
+
+        // Fallback: reflection (backward compatibility when generator isn't hooked up).
+        return IsFieldAutoSaveEnabledReflective(fieldName);
+    }
+
+    [UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode",
+        Justification = "TViewModel is annotated with DAM(PublicProperties|PublicFields|PublicConstructors); fallback path used only when source generator is absent.")]
+    [UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode",
+        Justification = "Reflection over TViewModel properties; trimmer/AOT keeps the members via DAM annotations on TViewModel.")]
+    private static bool IsFieldAutoSaveEnabledReflective(string fieldName)
     {
         var property = typeof(TViewModel).GetProperty(fieldName);
         return property?.GetCustomAttribute<AutoSaveAttribute>() != null;
@@ -246,6 +284,38 @@ public abstract class PageEditBase<TViewModel> : PageViewBase<TViewModel> where 
 
     private void CleanModelData()
     {
+        // Fast path: source-generated string accessors (AOT-safe).
+        if (ViewModelMetadata<TViewModel>.Instance is { } metadata)
+        {
+            foreach (var accessor in metadata.StringProperties)
+            {
+                var value = accessor.Get(Model);
+                if (value is null)
+                    continue;
+
+                var cleanedValue = value;
+
+                if (AutoTrimStrings)
+                    cleanedValue = cleanedValue.Trim();
+
+                if (AutoNormalizeWhitespace)
+                    cleanedValue = TextNormalizer.Whitespace(cleanedValue);
+
+                if (cleanedValue != value)
+                    accessor.Set(Model, cleanedValue);
+            }
+            return;
+        }
+
+        CleanModelDataReflective();
+    }
+
+    [UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode",
+        Justification = "TViewModel is annotated with DAM(PublicProperties|PublicFields|PublicConstructors); fallback path used only when source generator is absent.")]
+    [UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode",
+        Justification = "Reflection over TViewModel properties; trimmer/AOT keeps the members via DAM annotations on TViewModel.")]
+    private void CleanModelDataReflective()
+    {
         var properties = typeof(TViewModel)
             .GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Where(p => p.CanRead && p.CanWrite && p.PropertyType == typeof(string));
@@ -312,6 +382,23 @@ public abstract class PageEditBase<TViewModel> : PageViewBase<TViewModel> where 
 
     private TimeSpan GetFieldAutoSaveDelay(string fieldName)
     {
+        // Fast path: source-generated metadata.
+        if (ViewModelMetadata<TViewModel>.Instance is { } metadata
+            && metadata.Properties.TryGetValue(fieldName, out var accessor)
+            && accessor.AutoSave is { } attr)
+        {
+            return TimeSpan.FromMilliseconds(attr.DelayMs);
+        }
+
+        return GetFieldAutoSaveDelayReflective(fieldName);
+    }
+
+    [UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode",
+        Justification = "TViewModel is annotated with DAM(PublicProperties|PublicFields|PublicConstructors); fallback path used only when source generator is absent.")]
+    [UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode",
+        Justification = "Reflection over TViewModel properties; trimmer/AOT keeps the members via DAM annotations on TViewModel.")]
+    private TimeSpan GetFieldAutoSaveDelayReflective(string fieldName)
+    {
         var property = typeof(TViewModel).GetProperty(fieldName);
         var autoSaveAttr = property?.GetCustomAttribute<AutoSaveAttribute>();
 
@@ -322,6 +409,34 @@ public abstract class PageEditBase<TViewModel> : PageViewBase<TViewModel> where 
     }
 
     private object? GetFieldValue(FieldIdentifier fieldIdentifier)
+    {
+        // Fast path: if the FieldIdentifier's model is our TViewModel and we have metadata.
+        if (fieldIdentifier.Model is TViewModel typed
+            && ViewModelMetadata<TViewModel>.Instance is { } metadata
+            && metadata.Properties.TryGetValue(fieldIdentifier.FieldName, out var accessor))
+        {
+            try
+            {
+                return accessor.Get(typed);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Błąd podczas pobierania wartości pola {FieldName} w {ComponentType}",
+                    fieldIdentifier.FieldName, GetType().Name);
+                return null;
+            }
+        }
+
+        return GetFieldValueReflective(fieldIdentifier);
+    }
+
+    [UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode",
+        Justification = "FieldIdentifier.Model.GetType() may be any type; reflection used to read a property by name. Fallback path used only when source generator is absent.")]
+    [UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode",
+        Justification = "Reflection-based property read; safe because the runtime model is the trimmer-rooted form-bound TViewModel.")]
+    [UnconditionalSuppressMessage("Trimming", "IL2075:UnrecognizedReflectionPattern",
+        Justification = "FieldIdentifier.Model is the form-bound TViewModel whose properties are preserved via DAM annotations on the type parameter.")]
+    private object? GetFieldValueReflective(FieldIdentifier fieldIdentifier)
     {
         try
         {
@@ -353,9 +468,9 @@ public abstract class PageEditBase<TViewModel> : PageViewBase<TViewModel> where 
         ValidationMessages?.Clear();
 
         var validationResults = new List<ValidationResult>();
-        var validationContext = new ValidationContext(Model);
+        var validationContext = CreateValidationContext(Model);
 
-        bool isValid = Validator.TryValidateObject(Model, validationContext, validationResults, true);
+        bool isValid = TryValidate(Model!, validationContext, validationResults);
 
         if (!isValid)
         {
@@ -387,32 +502,61 @@ public abstract class PageEditBase<TViewModel> : PageViewBase<TViewModel> where 
         {
             if (Model is null)
                 return;
-            // Znajdź właściwość w modelu, która odpowiada tej wartości
-            var properties = typeof(TViewModel)
-                .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                .Where(p => p.CanRead && p.CanWrite && p.PropertyType == typeof(T));
 
-            foreach (var property in properties)
+            // Fast path: source-generated metadata.
+            if (ViewModelMetadata<TViewModel>.Instance is { } metadata)
             {
-                var currentValue = property.GetValue(Model);
-
-                // Sprawdź czy wartości są równe - to jest właściwość, którą chcemy zaktualizować
-                if (EqualityComparer<T>.Default.Equals((T)currentValue!, modelValue))
+                foreach (var accessor in metadata.Properties.Values)
                 {
-                    // Aktualizuj wartość właściwości
-                    property.SetValue(Model, newValue);
+                    if (accessor.PropertyType != typeof(T))
+                        continue;
 
-                    // Powiadom EditContext o zmianie
-                    if (EditContext != null)
+                    var currentValue = accessor.Get(Model);
+                    if (EqualityComparer<T>.Default.Equals((T)currentValue!, modelValue))
                     {
-                        EditContext.NotifyFieldChanged(EditContext.Field(property.Name));
+                        accessor.Set(Model, newValue);
+                        EditContext?.NotifyFieldChanged(EditContext.Field(accessor.Name));
+                        break;
                     }
-
-                    // Znaleźliśmy pasującą właściwość, nie musimy sprawdzać dalej
-                    break;
                 }
+                return;
             }
+
+            OnValueChangedReflective(modelValue, newValue);
         });
+    }
+
+    [UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode",
+        Justification = "TViewModel is annotated with DAM(PublicProperties|PublicFields|PublicConstructors); fallback path used only when source generator is absent.")]
+    [UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode",
+        Justification = "Reflection over TViewModel properties; trimmer/AOT keeps the members via DAM annotations on TViewModel.")]
+    private void OnValueChangedReflective<T>(T modelValue, T newValue)
+    {
+        // Znajdź właściwość w modelu, która odpowiada tej wartości
+        var properties = typeof(TViewModel)
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.CanRead && p.CanWrite && p.PropertyType == typeof(T));
+
+        foreach (var property in properties)
+        {
+            var currentValue = property.GetValue(Model);
+
+            // Sprawdź czy wartości są równe - to jest właściwość, którą chcemy zaktualizować
+            if (EqualityComparer<T>.Default.Equals((T)currentValue!, modelValue))
+            {
+                // Aktualizuj wartość właściwości
+                property.SetValue(Model, newValue);
+
+                // Powiadom EditContext o zmianie
+                if (EditContext != null)
+                {
+                    EditContext.NotifyFieldChanged(EditContext.Field(property.Name));
+                }
+
+                // Znaleźliśmy pasującą właściwość, nie musimy sprawdzać dalej
+                break;
+            }
+        }
     }
 
     protected override void Dispose(bool disposing)
@@ -437,4 +581,19 @@ public abstract class PageEditBase<TViewModel> : PageViewBase<TViewModel> where 
 
         base.Dispose(disposing);
     }
+
+    [UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode",
+        Justification = "ValidationContext(object) reflects over instance.GetType() to resolve DisplayName. TViewModel members are preserved via DAM annotations; resolved Type is the trimmer-rooted TViewModel.")]
+    private static ValidationContext CreateValidationContext(TViewModel instance)
+        => new ValidationContext(instance);
+
+    [UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode",
+        Justification = "Validator.TryValidateObject reflects over Model's properties and validation attributes. TViewModel's public members are preserved via DAM; built-in ValidationAttribute types are rooted by the framework. Custom ValidationAttributes must be public to be kept by the trimmer.")]
+    [UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode",
+        Justification = "Validator.TryValidateObject uses reflection; AOT safe because validation attributes are referenced statically and trimmer keeps TViewModel members.")]
+    private static bool TryValidate(
+        object instance,
+        ValidationContext validationContext,
+        ICollection<ValidationResult> validationResults)
+        => Validator.TryValidateObject(instance, validationContext, validationResults, validateAllProperties: true);
 }

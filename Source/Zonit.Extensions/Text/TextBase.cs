@@ -19,14 +19,13 @@ public abstract partial class TextBase<T>(string text) where T : TextBase<T>
     public T NormalizeWhitespace =>
         Create(WhitespaceRegex().Replace(text.Trim(), " "));
 
-    protected T Create(string text)
-    {
-        var constructor = typeof(T).GetConstructor([typeof(string)]);
-
-        return constructor is null
-            ? throw new InvalidOperationException("Constructor that takes a string parameter not found.")
-            : (T)constructor.Invoke([text]);
-    }
+    /// <summary>
+    /// Factory method that subclasses must implement to construct a new instance with the given text.
+    /// Replaces the previous reflection-based implementation for full AOT/trimming compatibility.
+    /// </summary>
+    /// <param name="text">The text content for the new instance.</param>
+    /// <returns>A new <typeparamref name="T"/> instance wrapping <paramref name="text"/>.</returns>
+    protected abstract T Create(string text);
 
     public override string ToString() => text;
     public string Result => text;

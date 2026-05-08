@@ -1,35 +1,74 @@
 <Project>
-  <!-- Common NuGet Package Metadata for all Zonit.Extensions packages -->
+  <!-- Common settings for all Zonit.Extensions packages -->
   <PropertyGroup>
+    <!--
+      Target framework: tracks .NET major version. One TFM at a time.
+      When .NET 11 ships → bump to net11.0 here + bump version to 11.x in Directory.Packages.props.
+      Individual projects may override (e.g. a future netstandard2.0 Source Generator).
+    -->
+    <TargetFramework Condition="'$(TargetFramework)' == '' and '$(TargetFrameworks)' == ''">net10.0</TargetFramework>
+
+    <!-- Package author / repo metadata (shared by all projects) -->
     <Authors>Zonit</Authors>
     <Company>Zonit</Company>
     <Product>Zonit.Extensions</Product>
     <Copyright>Copyright (c) Zonit</Copyright>
-    
+
     <!-- Repository and Project URLs -->
     <PackageProjectUrl>https://github.com/Zonit/Zonit.Extensions</PackageProjectUrl>
     <RepositoryUrl>https://github.com/Zonit/Zonit.Extensions</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    
+
     <!-- License -->
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    
+
     <!-- Package Assets -->
     <PackageIcon>icon.png</PackageIcon>
     <PackageReadmeFile>Readme.md</PackageReadmeFile>
     <PackageReleaseNotes>See https://github.com/Zonit/Zonit.Extensions/releases</PackageReleaseNotes>
-    
+
     <!-- Build settings -->
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
-    
-    <!-- AOT and Trimming support (not for Source Generators) -->
+
+    <!--
+      AOT and Trimming support.
+      - IsTrimmable / IsAotCompatible     → mark assembly as trim- and AOT-safe (shipped flag).
+      - EnableTrimAnalyzer / EnableAotAnalyzer → emit warnings during `dotnet build`
+        (not only on `dotnet publish`), so CI catches issues immediately.
+      Source Generators (netstandard2.0) must opt out because they run inside Roslyn,
+      where these flags are meaningless and trigger NETSDK errors.
+    -->
     <IsTrimmable Condition="'$(IsRoslynComponent)' != 'true'">true</IsTrimmable>
     <IsAotCompatible Condition="'$(IsRoslynComponent)' != 'true'">true</IsAotCompatible>
+    <EnableTrimAnalyzer Condition="'$(IsRoslynComponent)' != 'true'">true</EnableTrimAnalyzer>
+    <EnableAotAnalyzer Condition="'$(IsRoslynComponent)' != 'true'">true</EnableAotAnalyzer>
+
+    <!-- Suppress the "you're using a .NET preview SDK" info banner. -->
+    <SuppressNETCoreSdkPreviewMessage>true</SuppressNETCoreSdkPreviewMessage>
+
+    <!--
+      AOT source generators (free AOT wins).
+      EnableConfigurationBindingGenerator: replaces reflection-based IOptions<T> binding
+      with compile-time generated code. Eliminates IL2091 warnings from IOptionsMonitor<T>.
+      Requires Microsoft.Extensions.Configuration.Binder 8.0+ (transitively present).
+    -->
+    <EnableConfigurationBindingGenerator Condition="'$(IsRoslynComponent)' != 'true'">true</EnableConfigurationBindingGenerator>
   </PropertyGroup>
-  
+
+  <!--
+    When a consumer publishes with `dotnet publish /p:PublishTrimmed=true`, the global property
+    propagates to every transitively-built ProjectReference. For our netstandard2.0 source
+    generator project that triggers NETSDK1124 ("trimming requires .NET Core 3.0+"). We reset the
+    property only for Roslyn components — runtime projects retain the user's choice.
+  -->
+  <PropertyGroup Condition="'$(IsRoslynComponent)' == 'true'">
+    <PublishTrimmed>false</PublishTrimmed>
+    <PublishAot>false</PublishAot>
+  </PropertyGroup>
+
   <!-- Language settings - only for non-SourceGenerator projects -->
   <PropertyGroup Condition="'$(IsRoslynComponent)' != 'true'">
     <Nullable>enable</Nullable>

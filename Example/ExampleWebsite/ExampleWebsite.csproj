@@ -2,14 +2,25 @@
   <PropertyGroup>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="MudBlazor" Version="9.0.0-preview.2" />
+    <PackageReference Include="MudBlazor" Version="9.4.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\Source\Zonit.Extensions.Website.MudBlazor\Zonit.Extensions.Website.MudBlazor.csproj" />
     <ProjectReference Include="..\..\Source\Zonit.Extensions.Website\Zonit.Extensions.Website.csproj" />
     <ProjectReference Include="..\..\Source\Zonit.Extensions\Zonit.Extensions.csproj" />
+    <!--
+      Source generator: emits AOT-safe ViewModelMetadata for every TViewModel used in
+      PageViewBase<T>/PageEditBase<T>. In production this flows automatically through the
+      Zonit.Extensions.Website NuGet package's analyzers/dotnet/cs folder; with
+      ProjectReference we have to attach it explicitly because analyzer assets are not
+      transitive across ProjectReference boundaries.
+    -->
+    <ProjectReference Include="..\..\Source\Zonit.Extensions.Website.SourceGenerators\Zonit.Extensions.Website.SourceGenerators.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false"
+                      UndefineProperties="PublishTrimmed;PublishAot;TargetFramework" />
   </ItemGroup>
 </Project>
