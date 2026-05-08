@@ -57,6 +57,13 @@ public readonly struct Currency : IEquatable<Currency>, IComparable<Currency>, I
     public string Code => _code ?? string.Empty;
 
     /// <summary>
+    /// Alias for <see cref="Code"/>. Provided for consistency with other Zonit value objects
+    /// (Title.Value, Description.Value, ...). Used by reflective consumers like
+    /// <c>ValueObjectTypeConverter&lt;Currency&gt;</c>.
+    /// </summary>
+    public string Value => Code;
+
+    /// <summary>
     /// Indicates whether the currency has a meaningful value.
     /// </summary>
     public bool HasValue => !string.IsNullOrEmpty(_code);

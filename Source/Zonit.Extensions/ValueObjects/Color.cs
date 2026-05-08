@@ -21,6 +21,7 @@ namespace Zonit.Extensions;
 /// </list>
 /// <para><strong>Conversion note:</strong> Converting from OKLCH to Hex/RGB may clip colors outside sRGB gamut.</para>
 /// </remarks>
+[TypeConverter(typeof(ColorTypeConverter))]
 [JsonConverter(typeof(ColorJsonConverter))]
 public readonly partial struct Color : IEquatable<Color>, IParsable<Color>, IFormattable
 {
@@ -660,9 +661,17 @@ public readonly partial struct Color : IEquatable<Color>, IParsable<Color>, IFor
     #region Implicit Conversions
 
     /// <summary>
-    /// Converts a hex string to a Color.
+    /// Safely converts a string (hex, rgb, hsl, or oklch) to a <see cref="Color"/>.
+    /// Returns <see cref="Transparent"/> for null, whitespace, or unrecognized input — never throws.
+    /// Use <see cref="Parse(string, IFormatProvider?)"/> or <see cref="FromHex"/> when you need exception-on-invalid behavior.
     /// </summary>
-    public static implicit operator Color(string hex) => FromHex(hex);
+    public static implicit operator Color(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return Transparent;
+
+        return TryParse(value, null, out var color) ? color : Transparent;
+    }
 
     /// <summary>
     /// Converts a Color to a hex string.
@@ -670,6 +679,46 @@ public readonly partial struct Color : IEquatable<Color>, IParsable<Color>, IFor
     public static implicit operator string(Color color) => color.Hex;
 
     #endregion
+}
+
+/// <summary>
+/// Type converter for <see cref="Color"/> (model binding, Blazor forms, property grids).
+/// Accepts strings in any supported format (hex, rgb, hsl, oklch) and converts to <see cref="Color.CssOklch"/> on output.
+/// Returns <see cref="Color.Transparent"/> for null/whitespace input; throws <see cref="FormatException"/> for unparseable strings.
+/// </summary>
+public sealed class ColorTypeConverter : TypeConverter
+{
+    /// <inheritdoc />
+    public override bool CanConvertFrom(ITypeDescriptorContext? context, Type sourceType) =>
+        sourceType == typeof(string) || base.CanConvertFrom(context, sourceType);
+
+    /// <inheritdoc />
+    public override bool CanConvertTo(ITypeDescriptorContext? context, Type? destinationType) =>
+        destinationType == typeof(string) || base.CanConvertTo(context, destinationType);
+
+    /// <inheritdoc />
+    public override object? ConvertFrom(ITypeDescriptorContext? context, CultureInfo? culture, object value)
+    {
+        if (value is string s)
+        {
+            if (string.IsNullOrWhiteSpace(s))
+                return Color.Transparent;
+            if (Color.TryParse(s, null, out var color))
+                return color;
+            throw new FormatException($"Cannot convert '{s}' to Color. Expected hex (#rrggbb), rgb(...), hsl(...) or oklch(...).");
+        }
+
+        return base.ConvertFrom(context, culture, value);
+    }
+
+    /// <inheritdoc />
+    public override object? ConvertTo(ITypeDescriptorContext? context, CultureInfo? culture, object? value, Type destinationType)
+    {
+        if (destinationType == typeof(string) && value is Color color)
+            return color.CssOklch;
+
+        return base.ConvertTo(context, culture, value, destinationType);
+    }
 }
 
 /// <summary>

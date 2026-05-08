@@ -1,11 +1,13 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Zonit.Extensions.Converters;
 
 namespace Zonit.Extensions;
 
 /// <summary>
 /// JSON converter factory for value objects.
-/// Automatically handles serialization/deserialization of Title, Description, Content, Url, UrlSlug, Culture, Currency, Price, Asset.
+/// Automatically handles serialization/deserialization of all Zonit value objects:
+/// Title, Description, Content, Url, UrlSlug, Culture, Currency, Price, Money, FileSize, Color, Schedule, Asset.
 /// </summary>
 public sealed class ValueObjectJsonConverterFactory : JsonConverterFactory
 {
@@ -20,6 +22,10 @@ public sealed class ValueObjectJsonConverterFactory : JsonConverterFactory
                typeToConvert == typeof(Culture) ||
                typeToConvert == typeof(Currency) ||
                typeToConvert == typeof(Price) ||
+               typeToConvert == typeof(Money) ||
+               typeToConvert == typeof(FileSize) ||
+               typeToConvert == typeof(Color) ||
+               typeToConvert == typeof(Schedule) ||
                typeToConvert == typeof(Asset);
     }
 
@@ -42,6 +48,14 @@ public sealed class ValueObjectJsonConverterFactory : JsonConverterFactory
             return new CurrencyJsonConverter();
         if (typeToConvert == typeof(Price))
             return new PriceJsonConverter();
+        if (typeToConvert == typeof(Money))
+            return new MoneyJsonConverter();
+        if (typeToConvert == typeof(FileSize))
+            return new FileSizeJsonConverter();
+        if (typeToConvert == typeof(Color))
+            return new ColorJsonConverter();
+        if (typeToConvert == typeof(Schedule))
+            return new ScheduleJsonConverter();
         if (typeToConvert == typeof(Asset))
             return new AssetJsonConverter();
 
