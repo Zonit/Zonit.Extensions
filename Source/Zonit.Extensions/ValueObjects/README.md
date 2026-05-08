@@ -218,6 +218,68 @@ string code = culture; // Implicit conversion to string
 
 ---
 
+### `Currency`
+Represents a currency identified by an ISO 4217 alphabetic code (fiat) or a commonly-used ticker (crypto).
+Examples: `USD`, `EUR`, `PLN`, `GBP`, `JPY`, `BTC`, `ETH`.
+
+**Features:**
+- ISO 4217 code (e.g. `USD`) is the canonical, normalized (uppercase) value
+- Built-in metadata: `Symbol`, `Name`, `DecimalDigits`, `IsCrypto`, `IsKnown`
+- ~30 fiat currencies + 12 popular cryptos predefined as static fields (`Currency.USD`, `Currency.PLN`, `Currency.BTC`, ...)
+- Unknown but syntactically valid codes (2–10 alphanumerics) are accepted (custom/exotic tickers)
+- Symbols where standardised (`$`, `€`, `zł`, `£`, `¥`, `₿`, `Ξ`, ...) — empty string when no symbol exists
+- Smart amount formatting via `Format(decimal)` — uses correct symbol position and decimal digits
+- Implicit string ↔ Currency conversion (returns `Empty` for invalid input — never throws)
+- `IParsable<Currency>`, `ISpanParsable<Currency>`, `IComparable<Currency>`, `IEquatable<Currency>`
+- `JsonConverter` (serializes as the code string) and `TypeConverter` for model binding
+- EF Core: stored as the alphabetic code, length `Currency.MaxLength` (10)
+
+**Usage:**
+```csharp
+// Predefined
+var pln = Currency.PLN;
+var btc = Currency.BTC;
+
+// From string (implicit, safe)
+Currency usd = "usd";          // normalized to "USD"
+Currency unknown = "xyz123";   // valid (unknown ticker), still works
+Currency empty = "";           // returns Currency.Empty
+
+// Strict creation
+var eur = Currency.Create("EUR");                 // throws on invalid
+Currency.TryCreate("PLN", out var ok);            // false-safe
+
+// Metadata
+Console.WriteLine(pln.Code);          // "PLN"
+Console.WriteLine(pln.Symbol);        // "zł"
+Console.WriteLine(pln.Name);          // "Polish Złoty"
+Console.WriteLine(pln.DecimalDigits); // 2
+Console.WriteLine(btc.IsCrypto);      // true
+Console.WriteLine(btc.DecimalDigits); // 8
+
+// Format an amount with this currency's conventions
+Console.WriteLine(usd.Format(19.99m));   // "$19.99"
+Console.WriteLine(pln.Format(19.99m));   // "19,99 zł" (current culture)
+Console.WriteLine(btc.Format(0.5m));     // "0,50000000 BTC"
+
+// JSON
+JsonSerializer.Serialize(Currency.PLN);  // "\"PLN\""
+```
+
+**Combine with `Money` / `Price`:**
+```csharp
+public class Order
+{
+    public Price Amount { get; set; }
+    public Currency Currency { get; set; }
+}
+
+// Display: "19.99 zł"
+var line = order.Currency.Format(order.Amount.Value);
+```
+
+---
+
 ### `Color`
 Represents a color stored in OKLCH format for maximum precision and perceptual uniformity.
 

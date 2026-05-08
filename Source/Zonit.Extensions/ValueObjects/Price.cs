@@ -198,6 +198,13 @@ public readonly struct Price : IEquatable<Price>, IComparable<Price>, IParsable<
     public string ToString(IFormatProvider formatProvider) => ToString(null, formatProvider);
 
     /// <summary>
+    /// Returns the display value formatted with the specified format string using the current culture.
+    /// </summary>
+    /// <param name="format">Format string (e.g., "C" for currency, "N2" for number with 2 decimals, "F" for fixed-point). If null or empty, defaults to "F2".</param>
+    /// <returns>Formatted string representation of the display value.</returns>
+    public string ToString(string? format) => ToString(format, System.Globalization.CultureInfo.CurrentCulture);
+
+    /// <summary>
     /// Returns the full precision value as string.
     /// </summary>
     public string ToFullPrecisionString() => Value.ToString("F8");
