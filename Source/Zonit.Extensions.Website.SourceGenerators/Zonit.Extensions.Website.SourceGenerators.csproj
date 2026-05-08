@@ -36,9 +36,11 @@
   </ItemGroup>
 
   <!-- Pack the generator DLL into the /analyzers/dotnet/cs folder of the NuGet package.
-       Uses $(TargetPath) instead of $(OutputPath)\$(AssemblyName).dll to avoid path-separator
-       issues on Linux ($(OutputPath) already ends with /, so \$(AssemblyName) produces //...). -->
-  <ItemGroup>
-    <None Include="$(TargetPath)" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
-  </ItemGroup>
+       Uses a Target instead of a static ItemGroup so that $(TargetPath) is resolved after the
+       build completes; evaluated in an ItemGroup it can be empty, causing NU5017. -->
+  <Target Name="IncludeAnalyzerInPackage" BeforeTargets="_GetPackageFiles">
+    <ItemGroup>
+      <None Include="$(TargetPath)" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+    </ItemGroup>
+  </Target>
 </Project>
