@@ -39,8 +39,7 @@
     consumers installing Zonit.Extensions.Website via NuGet automatically get the generator.
   -->
   <Target Name="IncludeSourceGeneratorInPackage"
-          BeforeTargets="_GetPackageFiles"
-          DependsOnTargets="ResolveProjectReferences">
+          BeforeTargets="_GetPackageFiles">
     <ItemGroup>
       <None Include="$(MSBuildThisFileDirectory)..\Zonit.Extensions.Website.SourceGenerators\bin\$(Configuration)\netstandard2.0\Zonit.Extensions.Website.SourceGenerators.dll"
             Condition="Exists('$(MSBuildThisFileDirectory)..\Zonit.Extensions.Website.SourceGenerators\bin\$(Configuration)\netstandard2.0\Zonit.Extensions.Website.SourceGenerators.dll')"
