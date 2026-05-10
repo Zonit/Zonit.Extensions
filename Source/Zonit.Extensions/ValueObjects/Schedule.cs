@@ -65,7 +65,7 @@ public readonly record struct Schedule : IEquatable<Schedule>
     private readonly byte _flags;
 
     // Flag bits packed into _flags (byte 15 of binary layout).
-    private const byte FlagIsStartup = 0x01;
+    private const byte FlagIsNow = 0x01;
 
     #endregion
 
@@ -145,14 +145,14 @@ public readonly record struct Schedule : IEquatable<Schedule>
     }
 
     /// <summary>
-    /// When <c>true</c>, this schedule fires exactly once - immediately after the schedule is
-    /// started (e.g. at application startup). Combine with calendar/interval schedules to run
-    /// once on startup plus on a recurring cadence.
+    /// When <c>true</c>, this schedule fires exactly once - immediately (now), as soon as the
+    /// schedule is started (e.g. at application startup). Combine with calendar/interval
+    /// schedules to run once immediately plus on a recurring cadence.
     /// </summary>
-    public bool IsStartup
+    public bool IsNow
     {
-        get => (_flags & FlagIsStartup) != 0;
-        init => _flags = value ? (byte)(_flags | FlagIsStartup) : (byte)(_flags & ~FlagIsStartup);
+        get => (_flags & FlagIsNow) != 0;
+        init => _flags = value ? (byte)(_flags | FlagIsNow) : (byte)(_flags & ~FlagIsNow);
     }
 
     /// <summary>
@@ -163,7 +163,7 @@ public readonly record struct Schedule : IEquatable<Schedule>
     /// <summary>
     /// Indicates whether this schedule has any meaningful configuration.
     /// </summary>
-    public bool HasValue => IsInterval || HasCalendarFields || IsStartup;
+    public bool HasValue => IsInterval || HasCalendarFields || IsNow;
 
     /// <summary>
     /// Indicates whether any calendar field is set.
@@ -326,19 +326,19 @@ public readonly record struct Schedule : IEquatable<Schedule>
     #region Static Factory Methods - Interval
 
     /// <summary>
-    /// Creates a one-shot schedule that fires immediately when the schedule starts
+    /// Creates a one-shot schedule that fires immediately (now) when the schedule starts
     /// (e.g., at application startup) and never again. Combine with other schedules
-    /// to run once on startup plus on a recurring cadence.
+    /// to run once immediately plus on a recurring cadence.
     /// </summary>
     /// <example>
     /// <code>
-    /// // Run once at startup, then every Friday at 22:00
+    /// // Run once immediately, then every Friday at 22:00
     /// services.AddSchedule&lt;SyncHandler&gt;(
-    ///     Schedule.Startup(),
+    ///     Schedule.Now(),
     ///     Schedule.EveryWeek(DayOfWeek.Friday, 22));
     /// </code>
     /// </example>
-    public static Schedule Startup() => new() { IsStartup = true };
+    public static Schedule Now() => new() { IsNow = true };
 
     /// <summary>
     /// Creates an interval schedule that executes every N seconds.
@@ -438,8 +438,8 @@ public readonly record struct Schedule : IEquatable<Schedule>
         if (!HasValue)
             return null;
 
-        // Startup-only schedules fire once at Start() and never recur.
-        if (IsStartup && !IsInterval && !HasCalendarFields)
+        // Now-only (one-shot) schedules fire once at Start() and never recur.
+        if (IsNow && !IsInterval && !HasCalendarFields)
             return null;
 
         timeZone ??= TimeZoneInfo.Local;
@@ -584,16 +584,16 @@ public readonly record struct Schedule : IEquatable<Schedule>
         if (!HasValue)
             return "(empty)";
 
-        if (IsStartup && !IsInterval && !HasCalendarFields)
-            return "Startup (fire once)";
+        if (IsNow && !IsInterval && !HasCalendarFields)
+            return "Now (fire once)";
 
         if (IsInterval)
             return $"Every {Interval!.Value}";
 
         var parts = new List<string>();
 
-        if (IsStartup)
-            parts.Add("Startup");
+        if (IsNow)
+            parts.Add("Now");
 
         if (Month.HasValue)
             parts.Add($"Month={Month.Value}");
