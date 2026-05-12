@@ -8,7 +8,7 @@
       Versioning policy: track .NET major version.
       Currently aligned with .NET 10. When .NET 11 ships, drop net10.0 and bump to 11.x.
     -->
-    <Version>10.0.0-preview.1</Version>
+    <Version>10.0.0-preview.2</Version>
     <AssemblyVersion>10.0.0.0</AssemblyVersion>
     <FileVersion>10.0.0.0</FileVersion>
     <!-- Package Output -->
