@@ -40,7 +40,7 @@ public sealed class ZonitCookiesExtension : ComponentBase, IDisposable
         else
             Cookies = restored!;
         
-        Cookie.Inicjalize(Cookies);
+        Cookie.Initialize(Cookies);
     }
 
     [UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode",

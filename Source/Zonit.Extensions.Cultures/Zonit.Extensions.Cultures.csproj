@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Culture, language and translation services for Zonit applications. Provides ICultureProvider, ILanguageProvider, translation repositories, and ASP.NET Core middleware. Built on top of Zonit.Extensions value objects (Culture, Translated).</Description>
+    <Summary>Culture and translation services for Zonit applications.</Summary>
+    <PackageTags>Zonit;Extensions;Cultures;Translation;i18n;Localization;Blazor;AspNetCore</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SourceLink.GitHub">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Zonit.Extensions\Zonit.Extensions.csproj" />
+  </ItemGroup>
+</Project>

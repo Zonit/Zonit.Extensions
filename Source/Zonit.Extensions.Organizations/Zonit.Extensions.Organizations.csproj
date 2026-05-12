@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Organization (tenant / workspace) services for Zonit applications. Provides IWorkspaceProvider, IOrganizationManager, organization repositories and middleware. Built on top of Zonit.Extensions value objects (Organization).</Description>
+    <Summary>Organization (tenant) services for Zonit applications.</Summary>
+    <PackageTags>Zonit;Extensions;Organizations;Tenants;Workspaces;MultiTenancy;Blazor;AspNetCore</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SourceLink.GitHub">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Zonit.Extensions\Zonit.Extensions.csproj" />
+    <ProjectReference Include="..\Zonit.Extensions.Cultures\Zonit.Extensions.Cultures.csproj" />
+    <ProjectReference Include="..\Zonit.Extensions.Auth\Zonit.Extensions.Auth.csproj" />
+  </ItemGroup>
+</Project>

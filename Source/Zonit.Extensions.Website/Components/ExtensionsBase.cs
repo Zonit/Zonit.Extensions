@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Diagnostics.CodeAnalysis;
 using Zonit.Extensions.Cultures;
-using Zonit.Extensions.Identity;
+using Zonit.Extensions.Auth;
 using Zonit.Extensions.Organizations;
 using Zonit.Extensions.Projects;
 

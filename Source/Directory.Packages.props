@@ -15,10 +15,14 @@
     <PackageOutputPath>$(MSBuildThisFileDirectory)..\Packages</PackageOutputPath>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
   </PropertyGroup>
-  <!-- Package files (icon and README) -->
+  <!-- Package files. The README is per-project: each Source/Zonit.Extensions.* folder
+       owns its own Readme.md and that file is shipped inside the corresponding NuGet
+       package. The repository-level Readme.md acts only as a top-level index on GitHub. -->
   <ItemGroup>
     <None Include="$(MSBuildThisFileDirectory)..\Asset\icon.png" Pack="true" PackagePath="" Visible="false" />
-    <None Include="$(MSBuildThisFileDirectory)..\Readme.md" Pack="true" PackagePath="" Visible="false" />
+    <None Include="$(MSBuildProjectDirectory)\Readme.md"
+          Condition="Exists('$(MSBuildProjectDirectory)\Readme.md')"
+          Pack="true" PackagePath="" Visible="false" />
   </ItemGroup>
   <!-- Common Dependencies -->
   <ItemGroup>
@@ -27,10 +31,9 @@
     <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0" />
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="10.0.203" PrivateAssets="All" />
     <PackageVersion Include="MudBlazor" Version="9.4.0" />
-    <PackageVersion Include="Zonit.Extensions.Cultures.Abstractions" Version="0.1.51" />
-    <PackageVersion Include="Zonit.Extensions.Organizations.Abstractions" Version="0.1.52" />
-    <PackageVersion Include="Zonit.Extensions.Identity.Abstractions" Version="0.1.51" />
-    <PackageVersion Include="Zonit.Extensions.Projects.Abstractions" Version="0.1.51" />
+    <!-- Legacy Zonit.Extensions.*.Abstractions NuGet packages were consolidated into
+         in-tree projects during E2-E5. Entries removed; no longer referenced anywhere. -->
+
   </ItemGroup>
   <!-- .NET 10.0 specific dependencies (currently none) -->
 </Project>

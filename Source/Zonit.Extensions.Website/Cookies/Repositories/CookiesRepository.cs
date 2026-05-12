@@ -32,6 +32,6 @@ internal class CookiesRepository : ICookiesRepository
         return cookie;
     }
 
-    public void Inicjalize(List<CookieModel> cookies)
+    public void Initialize(List<CookieModel> cookies)
         => Cookies = cookies;
 }

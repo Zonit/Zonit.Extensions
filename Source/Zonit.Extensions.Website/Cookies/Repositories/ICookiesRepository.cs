@@ -4,7 +4,7 @@ namespace Zonit.Extensions.Website.Cookies.Repositories;
 
 public interface ICookiesRepository
 {
-    public void Inicjalize(List<CookieModel> cookies);
+    public void Initialize(List<CookieModel> cookies);
     public CookieModel Add(CookieModel cookie);
     public List<CookieModel> GetCookies();
 }

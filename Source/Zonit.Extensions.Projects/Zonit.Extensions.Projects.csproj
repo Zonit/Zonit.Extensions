@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Project (catalog) services for Zonit applications. Provides ICatalogProvider, project repositories and middleware. Built on top of Zonit.Extensions value objects (Project).</Description>
+    <Summary>Project / catalog services for Zonit applications.</Summary>
+    <PackageTags>Zonit;Extensions;Projects;Catalogs;Blazor;AspNetCore</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SourceLink.GitHub">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Zonit.Extensions\Zonit.Extensions.csproj" />
+    <ProjectReference Include="..\Zonit.Extensions.Cultures\Zonit.Extensions.Cultures.csproj" />
+    <ProjectReference Include="..\Zonit.Extensions.Auth\Zonit.Extensions.Auth.csproj" />
+    <ProjectReference Include="..\Zonit.Extensions.Organizations\Zonit.Extensions.Organizations.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,6 +1,6 @@
 ﻿using Microsoft.AspNetCore.Components;
 using System.Runtime.CompilerServices;
-using CulturesTranslated = Zonit.Extensions.Cultures.Translated;
+using CulturesTranslated = Zonit.Extensions.Translated;
 
 namespace Zonit.Extensions.Website;
 
