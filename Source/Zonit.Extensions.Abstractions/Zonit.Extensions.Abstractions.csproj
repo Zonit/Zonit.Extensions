@@ -1,8 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <!-- Package Metadata -->
-    <Description>Abstractions and interfaces for Zonit.Extensions library. Provides contracts and base types for building extensible .NET applications with Zonit framework.</Description>
-    <Summary>Core abstractions and interfaces for Zonit.Extensions</Summary>
-    <PackageTags>Zonit;Extensions;Abstractions;Interfaces;Contracts</PackageTags>
-  </PropertyGroup>
-</Project>

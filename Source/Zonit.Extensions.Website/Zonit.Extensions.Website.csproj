@@ -19,7 +19,6 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Zonit.Extensions.Website.Abstractions\Zonit.Extensions.Website.Abstractions.csproj" />
     <ProjectReference Include="..\Zonit.Extensions\Zonit.Extensions.csproj" />
     <!--
       Source generator: emits AOT-safe ViewModelMetadata for every TViewModel used in

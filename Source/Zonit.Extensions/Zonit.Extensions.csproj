@@ -12,7 +12,4 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
   </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\Zonit.Extensions.Abstractions\Zonit.Extensions.Abstractions.csproj" />
-  </ItemGroup>
 </Project>

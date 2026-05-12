@@ -1,4 +1,4 @@
-﻿using Zonit.Extensions.Website.Abstractions.Toasts.Types;
+using Zonit.Extensions.Website.Toasts.Types;
 
 namespace Zonit.Extensions.Website.Toasts.Services;
 

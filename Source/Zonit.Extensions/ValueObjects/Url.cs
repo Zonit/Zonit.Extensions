@@ -275,6 +275,7 @@ public readonly struct Url : IEquatable<Url>, IComparable<Url>, IParsable<Url>, 
 
     /// <summary>
     /// Tries to create a URL from the specified address.
+    /// Accepts both absolute (<c>https://example.com</c>) and relative (<c>/path</c>) URLs.
     /// </summary>
     /// <param name="value">URL address.</param>
     /// <param name="url">Created URL or default if value is invalid.</param>
@@ -289,7 +290,8 @@ public readonly struct Url : IEquatable<Url>, IComparable<Url>, IParsable<Url>, 
 
         try
         {
-            url = new Url(value);
+            // Accept relative URLs (e.g. "/payments", "catalog/123") used by nav/breadcrumbs.
+            url = new Url(value, allowRelative: true);
             return true;
         }
         catch (UriFormatException)

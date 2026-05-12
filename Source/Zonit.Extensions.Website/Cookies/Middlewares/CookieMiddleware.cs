@@ -1,6 +1,6 @@
-﻿using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http;
 using Zonit.Extensions.Website.Cookies.Repositories;
-using Zonit.Extensions.Website.Abstractions.Cookies.Models;
+using Zonit.Extensions.Website.Cookies.Models;
 
 namespace Zonit.Extensions.Website.Cookies.Middlewares;
 

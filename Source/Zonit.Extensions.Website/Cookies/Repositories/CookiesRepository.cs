@@ -1,4 +1,4 @@
-﻿using Zonit.Extensions.Website.Abstractions.Cookies.Models;
+using Zonit.Extensions.Website.Cookies.Models;
 
 namespace Zonit.Extensions.Website.Cookies.Repositories;
 

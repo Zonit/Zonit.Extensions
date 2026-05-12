@@ -1,12 +1,12 @@
-﻿using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components;
 using System.Diagnostics.CodeAnalysis;
-using Zonit.Extensions.Website.Abstractions.Cookies.Models;
+using Zonit.Extensions.Website.Cookies.Models;
 using Zonit.Extensions.Website.Cookies.Repositories;
 
 namespace Zonit.Extensions;
 
 /// <summary>
-/// Blazor component that persists the user's cookie consent list across prerender → interactive boundary.
+/// Blazor component that persists the user's cookie consent list across prerender � interactive boundary.
 /// </summary>
 /// <remarks>
 /// <para><strong>AOT/Trimming:</strong> uses <see cref="PersistentComponentState.TryTakeFromJson"/> and

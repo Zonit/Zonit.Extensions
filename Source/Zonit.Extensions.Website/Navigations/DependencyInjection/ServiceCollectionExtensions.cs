@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Zonit.Extensions.Website;
 using Zonit.Extensions.Website.Navigations.Services;
 
@@ -8,8 +9,7 @@ public static class ServiceCollectionNavigationsExtensions
 {
     public static IServiceCollection AddNavigationsExtension(this IServiceCollection services)
     {
-        services.AddSingleton<INavigationProvider, NavigationService>();
-
+        services.TryAddSingleton<INavigationProvider, NavigationService>();
         return services;
     }
 }

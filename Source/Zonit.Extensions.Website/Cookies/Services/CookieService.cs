@@ -1,5 +1,5 @@
-﻿using Microsoft.JSInterop;
-using Zonit.Extensions.Website.Abstractions.Cookies.Models;
+using Microsoft.JSInterop;
+using Zonit.Extensions.Website.Cookies.Models;
 using Zonit.Extensions.Website.Cookies.Repositories;
 
 namespace Zonit.Extensions.Website.Cookies.Services;
@@ -15,24 +15,19 @@ public class CookieService(
         => this.Cookies?
             .SingleOrDefault(x => x.Name.Equals(key, StringComparison.OrdinalIgnoreCase));
 
-    public List<CookieModel> GetCookies()
-        => this.Cookies;
+    public List<CookieModel> GetCookies() => this.Cookies;
 
-    public async Task<CookieModel> SetAsync(string key, string value, int days = 360)
-        => await this.SetAsync(new CookieModel
-        {
-            Name = key,
-            Value = value,
-            Expires = DateTime.UtcNow.AddDays(days),
-        });
+    public CookieModel Set(string key, string value, TimeSpan lifetime)
+        => Set(key, value, DateTime.UtcNow + lifetime);
 
-    public CookieModel Set(string key, string value, int days = 360)
-        => this.Set(new CookieModel
-        {
-            Name = key,
-            Value = value,
-            Expires = DateTime.UtcNow.AddDays(days),
-        });
+    public Task<CookieModel> SetAsync(string key, string value, TimeSpan lifetime)
+        => SetAsync(key, value, DateTime.UtcNow + lifetime);
+
+    public CookieModel Set(string key, string value, DateTime expires)
+        => Set(new CookieModel { Name = key, Value = value, Expires = expires });
+
+    public Task<CookieModel> SetAsync(string key, string value, DateTime expires)
+        => SetAsync(new CookieModel { Name = key, Value = value, Expires = expires });
 
     public CookieModel Set(CookieModel model)
         => _cookieRepository.Add(model);
