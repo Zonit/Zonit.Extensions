@@ -1,0 +1,8 @@
+@page "/auth/admin-only"
+@using Zonit.Extensions.Website.Authentication
+@attribute [RequirePermission("settings.write")]
+@rendermode InteractiveServer
+
+<h1>Admin only</h1>
+<p>You see this because you hold <code>settings.write</code> (or a wildcard like <code>*</code>).</p>
+<p><a href="/auth/require-permission">← Back</a></p>

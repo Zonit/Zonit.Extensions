@@ -124,6 +124,25 @@ public sealed class UrlJsonConverter : JsonConverter<Url>
 }
 
 /// <summary>
+/// JSON converter for UrlPath value object.
+/// </summary>
+public sealed class UrlPathJsonConverter : JsonConverter<UrlPath>
+{
+    /// <inheritdoc />
+    public override UrlPath Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        var value = reader.GetString();
+        return UrlPath.TryCreate(value, out var path) ? path : UrlPath.Empty;
+    }
+
+    /// <inheritdoc />
+    public override void Write(Utf8JsonWriter writer, UrlPath value, JsonSerializerOptions options)
+    {
+        writer.WriteStringValue(value.Value);
+    }
+}
+
+/// <summary>
 /// JSON converter for UrlSlug value object.
 /// </summary>
 public sealed class UrlSlugJsonConverter : JsonConverter<UrlSlug>

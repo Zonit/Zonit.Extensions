@@ -13,6 +13,8 @@ public static class ServiceCollectionExtensions
         services.TryAddScoped<ICatalogManager, CatalogRepository>();
         services.TryAddScoped<ICatalogProvider, CatalogService>();
 
+        // Safety net: empty catalog if the consumer never wires their own source.
+        services.TryAddScoped<IProjectSource, NullProjectSource>();
         return services;
     }
 }

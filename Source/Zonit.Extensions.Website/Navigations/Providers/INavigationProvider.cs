@@ -10,7 +10,7 @@ public interface INavigationProvider
     /// Registers an additional navigation group at runtime (in-memory; lost on app restart).
     /// Useful for dynamic features that are revealed conditionally.
     /// </summary>
-    void Add(NavGroupModel model, string? areaKey = null);
+    void Add(NavGroup model, string? areaKey = null);
 
     /// <summary>
     /// Removes runtime-added groups by area key.
@@ -24,7 +24,7 @@ public interface INavigationProvider
     /// <param name="areaKey">Area to filter by (matches <see cref="IWebsiteArea.Key"/>).</param>
     /// <param name="position">Optional layout position filter (e.g. <c>"sidebar"</c>); <c>null</c> = all.</param>
     /// <returns>Ordered, permission-filtered navigation groups; empty list when nothing matches.</returns>
-    IReadOnlyList<NavGroupModel> Get(string areaKey, string? position = null);
+    IReadOnlyList<NavGroup> Get(string areaKey, string? position = null);
 
     /// <summary>
     /// Forces re-evaluation of navigation (e.g. after a permission change like

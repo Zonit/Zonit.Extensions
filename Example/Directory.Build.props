@@ -1,0 +1,27 @@
+<Project>
+  <!--
+    Common settings for every Example/* project. The Example tree intentionally lives
+    OUTSIDE Source/, so it does not inherit Source/Directory.Build.props. Keeps the
+    library packages strict (trim/AOT analyzers ON, doc-file generation ON, central
+    versioning) while letting the demo be permissive.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+
+    <!-- Demos are never published as NuGet. -->
+    <IsPackable>false</IsPackable>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+
+    <!-- Demo wires reflection-heavy bits (EditForm + DataAnnotations + tenant settings).
+         The libraries themselves stay AOT-clean; the demo doesn't. -->
+    <IsTrimmable>false</IsTrimmable>
+    <IsAotCompatible>false</IsAotCompatible>
+    <EnableTrimAnalyzer>false</EnableTrimAnalyzer>
+    <EnableAotAnalyzer>false</EnableAotAnalyzer>
+
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+</Project>

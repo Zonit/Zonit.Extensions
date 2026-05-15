@@ -1,0 +1,62 @@
+@page "/cultures"
+@rendermode InteractiveServer
+@inherits PageBase
+
+<h1>Cultures — overview</h1>
+
+<p>
+    The host wires <code>ICultureProvider</code> (read) and <code>ICultureManager</code>
+    (write). Both are <strong>scoped</strong>; mutations fire <code>OnChange</code> which
+    propagates to providers, layouts and pages.
+</p>
+
+<p class="muted">
+    Inside this Razor file we use <code>@@inherits PageBase</code> instead of <code>@@inject</code>
+    so that the page automatically gets <code>Culture</code>, <code>Workspace</code>,
+    <code>Catalog</code>, <code>Authenticated</code>, <code>Toast</code>, <code>Cookie</code>
+    and <code>BreadcrumbsProvider</code> as protected properties — straight from
+    <code>ExtensionsBase</code>.
+</p>
+
+<section class="card">
+    <h2>Quick switcher</h2>
+    <p>Current culture: <strong>@Culture.Current.Value</strong></p>
+    <select @onchange="OnCultureChanged" value="@Culture.Current.Value">
+        @foreach (var lang in CultureManager.Supported)
+        {
+            <option value="@lang.Code">@lang.NativeName (@lang.Code)</option>
+        }
+    </select>
+    <p class="muted">
+        Switching here is reflected globally — the layout's switcher and any page subscribed
+        to <code>Culture.OnChange</code> re-render.
+    </p>
+</section>
+
+<section class="card">
+    <h2>Inline translation</h2>
+    <p>The two helpers are equivalent:</p>
+    <pre>Culture.Translate("Welcome").Value
+Translated t = Culture.Translate("Hello {0}!", "world");  // implicit-string</pre>
+    <ul>
+        <li>Translate: <strong>@Culture.Translate("Welcome").Value</strong></li>
+        <li>With args: <strong>@Culture.Translate("Hello {0}!", "world").Value</strong></li>
+    </ul>
+    <p class="muted">
+        No translations registered — the missing-key tracker stores the request and the
+        provider returns the input verbatim. A real host wires
+        <code>ITranslationRepository</code> with a real source.
+    </p>
+</section>
+
+@code {
+    [Inject] ICultureManager CultureManager { get; set; } = default!;
+
+    // PageBase already subscribes Culture.OnChange → StateHasChanged and disposes itself.
+
+    void OnCultureChanged(ChangeEventArgs e)
+    {
+        if (e.Value is string code)
+            CultureManager.SetCulture(code);
+    }
+}

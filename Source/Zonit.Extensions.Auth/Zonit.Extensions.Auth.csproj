@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <Description>Authentication and authorization services for Zonit applications. Provides IAuthenticatedProvider, IUserProvider, ISessionProvider, session middleware, and credential management. Built on top of Zonit.Extensions value objects (Identity, Credential, Permission, Role).</Description>
+    <Description>Authentication and authorization services for Zonit applications. Provides IAuthenticatedProvider, IAuthSource, IUserDirectory, session middleware, and credential management. Built on top of Zonit.Extensions value objects (Identity, Credential, Permission, Role).</Description>
     <Summary>Authentication and authorization services for Zonit applications.</Summary>
     <PackageTags>Zonit;Extensions;Auth;Authentication;Authorization;Identity;Sessions;Blazor;AspNetCore</PackageTags>
   </PropertyGroup>

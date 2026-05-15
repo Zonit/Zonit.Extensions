@@ -1,0 +1,62 @@
+@page "/components/breadcrumbs"
+@rendermode InteractiveServer
+@inherits PageBase
+
+<h1>Breadcrumbs</h1>
+
+<p>
+    <code>PageBase</code> exposes <code>BreadcrumbsProvider</code>; the recommended pattern
+    is to override <code>ShowBreadcrumbs</code> and <code>Breadcrumbs</code> on the page —
+    they are pushed automatically on init.
+</p>
+
+<section class="card">
+    <h2>This page's breadcrumbs</h2>
+    @if (BreadcrumbsProvider.Get() is { Count: > 0 } crumbs)
+    {
+        <ol class="crumbs">
+            @foreach (var b in crumbs)
+            {
+                <li>
+                    @if (b.Href.HasValue && !b.Disabled)
+                    {
+                        <a href="@b.Href.Value">@b.Text.Value</a>
+                    }
+                    else
+                    {
+                        <span class="muted">@b.Text.Value</span>
+                    }
+                </li>
+            }
+        </ol>
+    }
+    else
+    {
+        <p class="muted">(none)</p>
+    }
+</section>
+
+<section class="card">
+    <h2>Recipe</h2>
+    <pre>@@inherits PageBase
+
+protected override bool? ShowBreadcrumbs => true;
+
+protected override List&lt;BreadcrumbsModel&gt; Breadcrumbs =&gt;
+[
+    new() { Text = "Home",       Href = "/" },
+    new() { Text = "Components", Href = "/components" },
+    new() { Text = "Breadcrumbs"                       },   // current page — no Href
+];</pre>
+</section>
+
+@code {
+    protected override bool? ShowBreadcrumbs => true;
+
+    protected override List<BreadcrumbsModel> Breadcrumbs =>
+    [
+        new() { Text = "Home",        Href = "/" },
+        new() { Text = "Components",  Href = "/components/page-view" },
+        new() { Text = "Breadcrumbs" },
+    ];
+}

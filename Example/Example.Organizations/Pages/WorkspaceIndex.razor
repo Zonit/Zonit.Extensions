@@ -1,0 +1,43 @@
+@page "/organizations"
+@rendermode InteractiveServer
+@inherits PageBase
+
+<h1>Workspace</h1>
+
+<p>
+    <code>IWorkspaceProvider</code> exposes the current user's selected organization as
+    an <code>Organization</code> value object. Hydrated by <code>WorkspaceMiddleware</code>
+    from <code>IOrganizationSource</code> (the in-memory stub in this demo).
+</p>
+
+@if (!Workspace.Organization.HasValue)
+{
+    <div class="alert">No organization selected. Log in first.</div>
+}
+else
+{
+    <section class="card">
+        <h2>Current</h2>
+        <dl>
+            <dt>Id</dt>   <dd><code>@Workspace.Organization.Id</code></dd>
+            <dt>Name</dt> <dd>@Workspace.Organization.Name.Value</dd>
+            <dt>Slug</dt> <dd>@Workspace.Organization.Slug.Value</dd>
+        </dl>
+    </section>
+}
+
+<section class="card">
+    <h2>Cross-domain reference</h2>
+    <p>
+        Use <code>Organization</code> as the type of foreign-key columns. The VO carries the
+        Id verbatim and the snapshot is hydrated on demand by
+        <code>Zonit.Extensions.Databases</code> (when wired) — no hidden I/O.
+    </p>
+    <pre>public sealed class Order
+{
+    public Identity     Author       { get; init; }
+    public Organization Organization { get; init; }   // ← VO; persisted as Guid
+    public Project      Project      { get; init; }
+    public Money        Total        { get; init; }
+}</pre>
+</section>

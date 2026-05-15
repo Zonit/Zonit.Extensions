@@ -13,6 +13,8 @@ public static class ServiceCollectionExtensions
         services.TryAddScoped<IWorkspaceManager, WorkspaceRepository>();
         services.TryAddScoped<IWorkspaceProvider, WorkspaceService>();
 
+        // Safety net: empty workspace if the consumer never wires their own source.
+        services.TryAddScoped<IOrganizationSource, NullOrganizationSource>();
         return services;
     }
 }

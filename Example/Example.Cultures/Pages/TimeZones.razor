@@ -1,0 +1,49 @@
+@page "/cultures/time-zone"
+@rendermode InteractiveServer
+@inherits PageBase
+
+<h1>Time zones</h1>
+
+<p>
+    The <code>TimeZone</code> value object accepts IANA identifiers, Windows IDs, and
+    fixed offsets (<code>(int)</code>). <code>ICultureProvider.ClientTimeZone(utc)</code>
+    converts a <code>DateTime</code> in UTC to the user's selected zone.
+</p>
+
+<section class="card">
+    <h2>Switch zone</h2>
+    <select @onchange="OnZoneChanged" value="@CultureManager.TimeZone.Value">
+        @foreach (var tz in TimeZoneInfo.GetSystemTimeZones())
+        {
+            <option value="@tz.Id">@tz.DisplayName</option>
+        }
+    </select>
+</section>
+
+<section class="card">
+    <h2>Now</h2>
+    <dl>
+        <dt>UTC</dt>      <dd>@DateTime.UtcNow.ToString("u")</dd>
+        <dt>Zone</dt>     <dd>@CultureManager.TimeZone.Value</dd>
+        <dt>Offset</dt>   <dd>@CultureManager.TimeZone.Offset</dd>
+        <dt>In zone</dt>  <dd>@Culture.ClientTimeZone(DateTime.UtcNow).ToString("u")</dd>
+    </dl>
+</section>
+
+<section class="card">
+    <h2>Implicit conversions</h2>
+    <pre>Zonit.Extensions.TimeZone tz = "Europe/Warsaw";   // IANA
+Zonit.Extensions.TimeZone fixedOffset = 2;        // UTC+02:00
+TimeSpan offset = tz.Offset;                       // explicit query
+DateTime here = tz.ConvertFromUtc(DateTime.UtcNow);</pre>
+</section>
+
+@code {
+    [Inject] ICultureManager CultureManager { get; set; } = default!;
+
+    void OnZoneChanged(ChangeEventArgs e)
+    {
+        if (e.Value is string id)
+            CultureManager.SetTimeZone(id);
+    }
+}

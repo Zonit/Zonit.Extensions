@@ -35,7 +35,13 @@ public sealed class WebsiteOptions
 
     private readonly List<IWebsiteArea> _areas = new();
 
-    /// <summary>Registers a plug-in area in this host.</summary>
+    /// <summary>Registers a plug-in area instance in this host.</summary>
+    /// <remarks>
+    /// Prefer the generic <see cref="AddArea{TArea}"/> overload — it keeps the
+    /// area class as the single source of truth (no <c>new</c> at every host registration).
+    /// Use this overload only when the area instance needs to be constructed with
+    /// runtime arguments.
+    /// </remarks>
     public WebsiteOptions AddArea(IWebsiteArea area)
     {
         ArgumentNullException.ThrowIfNull(area);
@@ -44,4 +50,13 @@ public sealed class WebsiteOptions
         _areas.Add(area);
         return this;
     }
+
+    /// <summary>
+    /// Registers a plug-in area by type. <typeparamref name="TArea"/> must expose a
+    /// public parameterless constructor — areas are intentionally data-first POCOs;
+    /// runtime services come from <see cref="IWebsiteArea.ConfigureServices"/>.
+    /// </summary>
+    /// <typeparam name="TArea">Concrete <see cref="IWebsiteArea"/> implementation.</typeparam>
+    public WebsiteOptions AddArea<TArea>() where TArea : IWebsiteArea, new()
+        => AddArea(new TArea());
 }

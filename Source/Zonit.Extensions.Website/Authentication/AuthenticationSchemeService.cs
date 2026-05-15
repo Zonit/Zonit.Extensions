@@ -8,14 +8,14 @@ namespace Zonit.Extensions.Website.Authentication;
 
 /// <summary>
 /// Cookie-based authentication handler that converts the <c>Session</c> cookie into a
-/// <see cref="System.Security.Claims.ClaimsPrincipal"/> via <see cref="ISessionProvider"/>
+/// <see cref="System.Security.Claims.ClaimsPrincipal"/> via <see cref="IAuthSource"/>
 /// and <see cref="IdentityClaimsBuilder"/>.
 /// </summary>
 public sealed class AuthenticationSchemeService(
         IOptionsMonitor<AuthenticationSchemeOptions> options,
         ILoggerFactory logger,
         UrlEncoder encoder,
-        ISessionProvider session
+        IAuthSource session
     ) : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
     /// <summary>Name of the ASP.NET Core authentication scheme this handler is registered as.</summary>

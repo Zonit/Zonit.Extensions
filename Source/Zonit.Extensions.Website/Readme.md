@@ -14,7 +14,7 @@ dotnet add package Zonit.Extensions.Website
 - **`PageBase` / `PageEditBase<T>` / `PageViewBase<T>`** — Razor base components with cancellation, logging, view-model binding and a source-generator that emits AOT-safe metadata for every `T`.
 - **`ExtensionsBase`** — the parent base injecting `Culture`, `Workspace`, `Catalog`, `Authenticated` (Identity VO), `Toast`, `Cookie`, `Breadcrumbs`. Subscribes to `OnChange` events and re-renders.
 - **Areas / plugin model** — `IWebsiteArea` interface, `WebsiteOptions.AddArea<T>()`, navigation aggregation through `INavigationProvider`.
-- **Navigation** — `NavLinkModel` / `NavGroupModel` with VO-typed `Title`, `Url`, `Permission` and `Target` enum; tree structure with children + groups; thread-safe runtime additions.
+- **Navigation** — `NavItem` / `NavGroup` with VO-typed `Title`, `Url`, `Permission` and `Target` enum; tree structure with children + groups; thread-safe runtime additions.
 - **Breadcrumbs**, **toasts**, **cookies** — small, focused providers.
 - **`AddWebsite()`** extension method that registers compression, forwarded headers, antiforgery, Razor components and all areas in one call.
 

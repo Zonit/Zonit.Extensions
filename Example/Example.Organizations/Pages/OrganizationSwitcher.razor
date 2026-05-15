@@ -1,0 +1,50 @@
+@page "/organizations/switcher"
+@rendermode InteractiveServer
+@inherits PageBase
+
+<h1>Organization switcher</h1>
+
+<p>
+    <code>IWorkspaceManager</code> mutates the per-scope state (<code>Initialize</code> /
+    <code>SwitchOrganizationAsync</code>) and fires <code>OnChange</code>. Page subscribes
+    via <code>PageBase</code> so the switch is reflected without a manual refresh.
+</p>
+
+@if (Manager.Organizations is { Count: > 0 } orgs)
+{
+    <section class="card">
+        <h2>Pick one</h2>
+        <ul class="switcher">
+            @foreach (var org in orgs)
+            {
+                <li>
+                    <button type="button"
+                            @onclick="() => SwitchTo(org.Id)"
+                            disabled="@(org.Id == Workspace.Organization.Id)">
+                        <strong>@org.Name</strong>
+                        <small class="muted">@org.City, @org.Country</small>
+                    </button>
+                </li>
+            }
+        </ul>
+    </section>
+}
+else
+{
+    <div class="alert">Log in to see your organizations.</div>
+}
+
+<section class="card">
+    <h2>Switching projects</h2>
+    <p>Switching organizations resets the project scope. See <a href="/projects/switcher">/projects/switcher</a>.</p>
+</section>
+
+@code {
+    [Inject] IWorkspaceManager Manager { get; set; } = default!;
+
+    async Task SwitchTo(Guid id)
+    {
+        await Manager.SwitchOrganizationAsync(id);
+        Toast.AddSuccess("Switched to {0}", Workspace.Organization.Name.Value);
+    }
+}

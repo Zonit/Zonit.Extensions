@@ -1,0 +1,35 @@
+@page "/login"
+
+@*
+    Plain HTML form posting to /auth/login. Deliberately NOT @rendermode InteractiveServer —
+    login flips the auth cookie, and Blazor interactive handling can't issue cookies
+    mid-circuit. A full-page POST + redirect lands us in an authenticated state on the
+    next request, which is the cleanest pattern.
+*@
+
+<h1>Log in</h1>
+
+@if (string.Equals(Error, "invalid", StringComparison.OrdinalIgnoreCase))
+{
+    <div class="alert alert-error">
+        Invalid credentials. Try <code>admin / admin</code> or <code>user / user</code>.
+    </div>
+}
+
+<form action="/auth/login" method="post" class="card stack">
+    <label>
+        Username
+        <input name="username" autocomplete="username" autofocus required />
+    </label>
+    <label>
+        Password
+        <input name="password" type="password" autocomplete="current-password" required />
+    </label>
+    <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+    <button type="submit" class="btn-primary">Log in</button>
+</form>
+
+@code {
+    [SupplyParameterFromQuery] public string? Error { get; set; }
+    [SupplyParameterFromQuery(Name = "returnUrl")] public string ReturnUrl { get; set; } = "/";
+}

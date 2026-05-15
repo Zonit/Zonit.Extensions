@@ -1,0 +1,43 @@
+@page "/vo/strings"
+@rendermode InteractiveServer
+
+<h1>String-shaped value objects</h1>
+
+<p>
+    Each VO is a tiny <code>readonly struct</code> with an implicit
+    <code>string → VO</code> conversion, a hand-rolled <code>JsonConverter</code> and a
+    <code>TypeConverter</code> — they work transparently with JSON, EF Core, model binding
+    and forms.
+</p>
+
+<section class="card">
+    <h2>Title</h2>
+    @{ Title title = _titleInput; }
+    <input class="input" @bind="_titleInput" @bind:event="oninput" />
+    <pre>title.HasValue -> @title.HasValue
+title.Value    -> "@title.Value"
+title.Length   -> @title.Length</pre>
+</section>
+
+<section class="card">
+    <h2>Url</h2>
+    @{ Url url = _urlInput; }
+    <input class="input" @bind="_urlInput" @bind:event="oninput" />
+    <pre>url.HasValue       -> @url.HasValue
+url.Value          -> "@url.Value"
+url.IsAbsolute     -> @url.IsAbsolute</pre>
+</section>
+
+<section class="card">
+    <h2>UrlSlug</h2>
+    <p>Slug normalises the input — lowercase, hyphens, ASCII only.</p>
+    @{ UrlSlug.TryCreate(_slugInput, out var slug); }
+    <input class="input" @bind="_slugInput" @bind:event="oninput" />
+    <pre>UrlSlug.TryCreate("@_slugInput", out var slug) -> @(slug.HasValue ? slug.Value : "(invalid)")</pre>
+</section>
+
+@code {
+    string _titleInput = "Hello Zonit";
+    string _urlInput   = "https://zonit.dev";
+    string _slugInput  = "Hello World!";
+}

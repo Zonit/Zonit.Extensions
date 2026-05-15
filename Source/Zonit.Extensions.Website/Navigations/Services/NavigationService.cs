@@ -12,13 +12,13 @@ namespace Zonit.Extensions.Website.Navigations.Services;
 ///
 /// <para>Permission-based filtering is intentionally NOT done here – pass a
 /// <c>predicate</c>-style filter in the UI layer if needed (we don't have a global
-/// <c>IPermissionChecker</c> abstraction yet). <see cref="NavGroupModel.Permission"/>
+/// <c>IPermissionChecker</c> abstraction yet). <see cref="NavGroup.Permission"/>
 /// remains as data the UI can consult.</para>
 /// </remarks>
 internal sealed class NavigationService : INavigationProvider
 {
-    private readonly IReadOnlyDictionary<string, IReadOnlyList<NavGroupModel>> _staticByArea;
-    private readonly ConcurrentDictionary<string, List<NavGroupModel>> _runtime = new(StringComparer.OrdinalIgnoreCase);
+    private readonly IReadOnlyDictionary<string, IReadOnlyList<NavGroup>> _staticByArea;
+    private readonly ConcurrentDictionary<string, List<NavGroup>> _runtime = new(StringComparer.OrdinalIgnoreCase);
 
     public event Action<string?>? OnChanged;
 
@@ -28,15 +28,15 @@ internal sealed class NavigationService : INavigationProvider
             .GroupBy(a => a.Key, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(
                 g => g.Key,
-                g => (IReadOnlyList<NavGroupModel>)g.SelectMany(a => a.Navigation ?? Array.Empty<NavGroupModel>()).ToList(),
+                g => (IReadOnlyList<NavGroup>)g.SelectMany(a => a.Navigation ?? Array.Empty<NavGroup>()).ToList(),
                 StringComparer.OrdinalIgnoreCase);
     }
 
-    public void Add(NavGroupModel model, string? areaKey = null)
+    public void Add(NavGroup model, string? areaKey = null)
     {
         ArgumentNullException.ThrowIfNull(model);
         var key = areaKey ?? string.Empty;
-        var list = _runtime.GetOrAdd(key, _ => new List<NavGroupModel>());
+        var list = _runtime.GetOrAdd(key, _ => new List<NavGroup>());
         lock (list) { list.Add(model); }
         OnChanged?.Invoke(areaKey);
     }
@@ -48,11 +48,11 @@ internal sealed class NavigationService : INavigationProvider
         OnChanged?.Invoke(areaKey);
     }
 
-    public IReadOnlyList<NavGroupModel> Get(string areaKey, string? position = null)
+    public IReadOnlyList<NavGroup> Get(string areaKey, string? position = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(areaKey);
 
-        IEnumerable<NavGroupModel> source = Array.Empty<NavGroupModel>();
+        IEnumerable<NavGroup> source = Array.Empty<NavGroup>();
 
         if (_staticByArea.TryGetValue(areaKey, out var staticGroups))
             source = source.Concat(staticGroups);

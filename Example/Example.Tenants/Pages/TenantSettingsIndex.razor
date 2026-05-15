@@ -1,0 +1,55 @@
+@page "/tenants"
+@rendermode InteractiveServer
+@inject ITenantProvider Tenant
+
+<h1>Tenant settings</h1>
+
+<p>
+    <code>ITenantProvider</code> surfaces hydrated <code>Setting&lt;T&gt;</code> instances.
+    The auto-generated <code>TenantSettings</code> partial class adds one strongly-typed
+    property per <code>Setting&lt;T&gt;</code>, visible at compile time.
+</p>
+
+<p class="muted">
+    The <code>localhost</code> tenant overrides <code>site</code> and <code>theme</code>; any
+    other host falls back to defaults via <code>Tenant.Solo</code>.
+</p>
+
+<section class="card">
+    <h2>Site</h2>
+    <dl>
+        <dt>Title</dt>            <dd>@Tenant.Settings.Site.Title</dd>
+        <dt>Meta description</dt> <dd>@Tenant.Settings.Site.MetaDescription</dd>
+        <dt>Default language</dt> <dd>@Tenant.Settings.Site.Language</dd>
+        <dt>Logo</dt>             <dd>@(Tenant.Settings.Site.LogoUrl    ?? "(default)")</dd>
+        <dt>Favicon</dt>          <dd>@(Tenant.Settings.Site.FaviconUrl ?? "(default)")</dd>
+    </dl>
+</section>
+
+<section class="card">
+    <h2>Theme</h2>
+    <div class="theme-preview">
+        <span class="swatch" style="background:@Tenant.Settings.Theme.PrimaryColor">primary</span>
+        <span class="swatch" style="background:@Tenant.Settings.Theme.SecondaryColor">secondary</span>
+        <span class="swatch" style="background:@Tenant.Settings.Theme.AccentColor">accent</span>
+        <span class="swatch" style="background:@Tenant.Settings.Theme.NeutralColor; color:@Tenant.Settings.Theme.ContentColor">neutral</span>
+        <span class="swatch" style="background:@Tenant.Settings.Theme.SurfaceColor; color:@Tenant.Settings.Theme.ContentColor">surface</span>
+    </div>
+</section>
+
+<section class="card">
+    <h2>Maintenance</h2>
+    <p>Active: <strong>@Tenant.Settings.Maintenance.IsActive</strong></p>
+    <p>Message: @(Tenant.Settings.Maintenance.MaintenanceMessage ?? "(none)")</p>
+</section>
+
+<section class="card">
+    <h2>Social media</h2>
+    <ul>
+        <li>Facebook: @(Tenant.Settings.SocialMedia.Facebook ?? "—")</li>
+        <li>X: @(Tenant.Settings.SocialMedia.X ?? "—")</li>
+        <li>Instagram: @(Tenant.Settings.SocialMedia.Instagram ?? "—")</li>
+        <li>LinkedIn: @(Tenant.Settings.SocialMedia.LinkedIn ?? "—")</li>
+        <li>YouTube: @(Tenant.Settings.SocialMedia.YouTube ?? "—")</li>
+    </ul>
+</section>

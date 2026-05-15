@@ -1,0 +1,38 @@
+@page "/components/toasts"
+@rendermode InteractiveServer
+@inherits PageBase
+
+<h1>Toasts</h1>
+
+<p>
+    <code>IToastProvider</code> queues lightweight notifications keyed by
+    <code>ToastType</code>. The provider is layout-agnostic — the rendering UI lives in
+    your layout / MudBlazor area. Here we just push toasts and let the host display them
+    (open the dev console to see them in action even without a renderer).
+</p>
+
+<section class="card">
+    <h2>Try the API</h2>
+    <div class="row">
+        <button class="btn-primary" @onclick='() => Toast.AddSuccess("Saved!")'>Success</button>
+        <button @onclick='() => Toast.AddInfo("FYI")'>Info</button>
+        <button @onclick='() => Toast.AddWarning("Heads up")'>Warning</button>
+        <button @onclick='() => Toast.AddError("Boom")'>Error</button>
+        <button @onclick='() => Toast.AddNormal("Plain message")'>Normal</button>
+    </div>
+</section>
+
+<section class="card">
+    <h2>With format args</h2>
+    <pre>Toast.AddSuccess("Created {0} (#{1})", "Order", 42);</pre>
+    <button class="btn-primary" @onclick='() => Toast.AddSuccess("Created {0} (#{1})", "Order", 42)'>Push</button>
+</section>
+
+<section class="card">
+    <h2>Where to render them</h2>
+    <p>
+        The MudBlazor area (<code>Zonit.Extensions.Website.MudBlazor</code>) renders toasts
+        through MudBlazor's snackbar. Custom layouts can subscribe to
+        <code>IToastProvider</code>'s underlying queue and render manually.
+    </p>
+</section>

@@ -1,0 +1,42 @@
+@page "/vo/numbers"
+@rendermode InteractiveServer
+
+<h1>Numeric value objects</h1>
+
+<section class="card">
+    <h2>Money / Price — locale-flexible parsing</h2>
+    <p>
+        Both <code>,</code> and <code>.</code> decimal separators are accepted, mixed
+        thousand separators are tolerated. Known ambiguity: <code>"1,234"</code> parses as
+        <em>"one and 234"</em> (decimal-first heuristic). Document this in your UI.
+    </p>
+
+    <input class="input" @bind="_input" @bind:event="oninput" placeholder="1.234,56" />
+    <pre>Money.TryParse("@_input", null, out m) -> @(_money.HasValue ? _money.Value.ToString() : "(invalid)")
+Price.TryParse("@_input", null, out p) -> @(_price.HasValue ? _price.Value.ToString() : "(invalid)")</pre>
+</section>
+
+<section class="card">
+    <h2>FileSize — pretty-print</h2>
+    <pre>new FileSize(123).ToString()         -> @(new FileSize(123).ToString())
+new FileSize(1500).ToString()        -> @(new FileSize(1500).ToString())
+new FileSize(1_500_000).ToString()   -> @(new FileSize(1_500_000).ToString())
+new FileSize(15_000_000_000).ToString() -> @(new FileSize(15_000_000_000).ToString())</pre>
+</section>
+
+<section class="card">
+    <h2>Color — hex roundtrip</h2>
+    @{ Color.TryParse(_color, null, out var c); }
+    <input class="input" @bind="_color" @bind:event="oninput" />
+    <pre>Color.TryParse("@_color", out var c) -> @c.Hex
+                                  RGB hex -> @c.Hex
+                                  OKLCH   -> L=@c.L.ToString("0.00") C=@c.C.ToString("0.00") H=@c.H.ToString("0.0")</pre>
+</section>
+
+@code {
+    string _input = "1.234,56";
+    string _color = "#2563EB";
+
+    Money? _money => Money.TryParse(_input, null, out var v) ? v : null;
+    Price? _price => Price.TryParse(_input, null, out var v) ? v : null;
+}

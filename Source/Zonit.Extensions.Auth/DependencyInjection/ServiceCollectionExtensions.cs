@@ -29,6 +29,13 @@ public static class ServiceCollectionExtensions
     {
         services.TryAddScoped<IAuthenticatedRepository, AuthenticatedRepository>();
         services.TryAddScoped<IAuthenticatedProvider, AuthenticatedService>();
+
+        // Safety net: if the host never registers a real consumer-side adapter the
+        // system still boots — every token resolves to Identity.Empty, every user
+        // lookup returns null. Consumers register their EF/Dapper/remote-API impl via
+        // services.AddScoped<IAuthSource, MyAuthSource>() and TryAdd skips this default.
+        services.TryAddScoped<IAuthSource, NullAuthSource>();
+        services.TryAddScoped<IUserDirectory, NullAuthSource>();
         return services;
     }
 }

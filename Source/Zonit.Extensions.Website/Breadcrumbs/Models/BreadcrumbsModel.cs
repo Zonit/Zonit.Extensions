@@ -8,8 +8,8 @@ public class BreadcrumbsModel
     /// <summary>Display text.</summary>
     public Title Text { get; init; }
 
-    /// <summary>Optional URL to navigate to. Empty = non-clickable.</summary>
-    public Url Href { get; init; }
+    /// <summary>Optional in-site path to navigate to. Empty = non-clickable.</summary>
+    public UrlPath Href { get; init; }
 
     /// <summary>Whether the item is disabled (cannot be clicked).</summary>
     public bool Disabled { get; init; }
@@ -25,7 +25,7 @@ public class BreadcrumbsModel
 
     public BreadcrumbsModel() { }
 
-    public BreadcrumbsModel(Title text, Url href = default, bool disabled = false, string? icon = null)
+    public BreadcrumbsModel(Title text, UrlPath href = default, bool disabled = false, string? icon = null)
     {
         Text = text;
         Href = href;

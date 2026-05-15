@@ -1,8 +1,8 @@
-﻿﻿namespace Zonit.Extensions.Organizations.Repositories;
+namespace Zonit.Extensions.Organizations.Repositories;
 
 /// <summary>
 /// Per-scope cache for the current user's workspace + organization snapshot. Acts as
-/// the boundary between the (consumer-supplied) <see cref="IUserOrganizationManager"/>
+/// the boundary between the (consumer-supplied) <see cref="IOrganizationSource"/>
 /// data source and Zonit's <see cref="IWorkspaceProvider"/> consumers.
 /// </summary>
 /// <remarks>
@@ -10,7 +10,7 @@
 /// <see cref="InitializeAsync"/> exactly once per request scope; subsequent reads of
 /// <see cref="State"/> hit the cached snapshot. Consumers that need a fresh fetch
 /// across requests should bring their own caching layer at the
-/// <see cref="IUserOrganizationManager"/> implementation — this class is intentionally
+/// <see cref="IOrganizationSource"/> implementation — this class is intentionally
 /// stateless beyond the per-scope snapshot, in line with the rule "no caching beyond
 /// request scope".</para>
 ///
@@ -25,9 +25,9 @@
 /// in parallel (<c>Workspace</c> and <c>Organizations</c>) — they target different
 /// resources and can run concurrently, halving the perceived latency on cold loads.</para>
 /// </remarks>
-internal sealed class WorkspaceRepository(IUserOrganizationManager userWorkspace) : IWorkspaceManager
+internal sealed class WorkspaceRepository(IOrganizationSource userWorkspace) : IWorkspaceManager
 {
-    private readonly IUserOrganizationManager _userWorkspace = userWorkspace;
+    private readonly IOrganizationSource _userWorkspace = userWorkspace;
     private StateModel? _state;
 
     public event Action? OnChange;

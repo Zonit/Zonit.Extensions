@@ -79,6 +79,7 @@ public static class WebsiteServiceCollectionExtensions
         services.AddAuthExtension();
         services.AddOrganizationsExtension();
         services.AddProjectsExtension();
+        services.AddTenantsExtension();
 
         // ASP.NET Core authentication / authorization wiring that previously lived in
         // Zonit.Extensions.Auth.AddAuthExtension. Lives here so Auth core stays free of
@@ -96,6 +97,12 @@ public static class WebsiteServiceCollectionExtensions
         }
 
         services.AddAuthorization();
+
+        // Replace the default policy provider with one that synthesizes a policy for any
+        // name that parses as a Permission token. Lets <AuthorizeView Policy="orders.read">
+        // and <AuthorizeView Policy="orders.*"> work without manual AddPolicy(...) calls.
+        // Falls through to DefaultAuthorizationPolicyProvider for everything else.
+        services.Replace(ServiceDescriptor.Singleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>());
 
         // Zonit VO-backed authorization handlers ([RequirePermission], [RequireRole]).
         services.TryAddEnumerable(
@@ -194,6 +201,10 @@ public static class WebsiteServiceCollectionExtensions
         app.UseMiddleware<CultureMiddleware>();
         app.UseMiddleware<WorkspaceMiddleware>();
         app.UseMiddleware<ProjectMiddleware>();
+        // TenantMiddleware runs last; tenant resolution is independent of auth and
+        // the per-user workspace, but downstream pages might want all of them already
+        // populated by the time @inject ITenantProvider is consulted.
+        app.UseMiddleware<TenantMiddleware>();
 
         return app;
     }

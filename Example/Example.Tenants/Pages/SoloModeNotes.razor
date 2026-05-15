@@ -1,0 +1,39 @@
+@page "/tenants/solo"
+@inject ITenantProvider Tenant
+
+<h1>Solo vs multi-site</h1>
+
+<p>
+    <code>TenantMiddleware</code> auto-detects single-site hosts. There are two cases that
+    end up in the same place:
+</p>
+
+<ol>
+    <li>The host did <strong>not</strong> register an <code>ITenantSource</code> at all.</li>
+    <li>The registered manager returned <code>null</code> for the current host name.</li>
+</ol>
+
+<p>
+    Either way, the middleware seeds <code>ITenantRepository</code> with
+    <code>Tenant.Solo</code> — a sentinel with <code>Id == Guid.Empty</code> and
+    <code>Domain == "*"</code>. The result: <code>ITenantProvider.Current</code> is never
+    <code>null</code>, settings always surface either persisted overrides or the
+    compile-time defaults, and pages don't need null-checks.
+</p>
+
+<section class="card">
+    <h2>Right now</h2>
+    <dl>
+        <dt>Id</dt>      <dd><code>@Tenant.Current?.Id</code></dd>
+        <dt>Domain</dt>  <dd>@Tenant.Current?.Domain</dd>
+        <dt>IsSolo</dt>  <dd>@Tenant.Current?.IsSolo</dd>
+        <dt>Vars</dt>    <dd>@(Tenant.Current?.Variables.Count ?? 0)</dd>
+    </dl>
+</section>
+
+<section class="card">
+    <h2>How to flip the demo</h2>
+    <pre>// Program.cs
+// Comment this out to force solo-mode globally:
+// builder.Services.AddScoped&lt;ITenantSource, InMemoryTenantManager&gt;();</pre>
+</section>

@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\..\Source\Zonit.Extensions.Website\Zonit.Extensions.Website.csproj" />
+  </ItemGroup>
+</Project>

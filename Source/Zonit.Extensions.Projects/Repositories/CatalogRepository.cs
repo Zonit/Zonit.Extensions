@@ -1,13 +1,13 @@
-﻿﻿namespace Zonit.Extensions.Projects.Repositories;
+namespace Zonit.Extensions.Projects.Repositories;
 
 /// <summary>
 /// Per-scope cache for the current user's project / catalog snapshot. Mirror of
 /// <c>WorkspaceRepository</c> for the project domain; see that type for the full
 /// contract notes (OnChange-on-init, parallel hydration, no cross-scope cache).
 /// </summary>
-internal sealed class CatalogRepository(IOrganizationProjectManager organizationProject) : ICatalogManager
+internal sealed class CatalogRepository(IProjectSource organizationProject) : ICatalogManager
 {
-    private readonly IOrganizationProjectManager _organizationProject = organizationProject;
+    private readonly IProjectSource _organizationProject = organizationProject;
     private StateModel? _state;
 
     public event Action? OnChange;

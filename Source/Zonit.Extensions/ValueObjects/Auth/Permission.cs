@@ -14,7 +14,7 @@ namespace Zonit.Extensions;
 /// <para>This is a DDD value object designed for:</para>
 /// <list type="bullet">
 ///   <item>Authorization checks (<c>IPermissionChecker.Has(Permission)</c>)</item>
-///   <item>Navigation/UI guard rails (<c>NavGroupModel.Permission</c>)</item>
+///   <item>Navigation/UI guard rails (<c>NavGroup.Permission</c>)</item>
 ///   <item>Entity Framework Core (value object mapping)</item>
 ///   <item>JSON serialization / Model binding</item>
 /// </list>

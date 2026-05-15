@@ -1,0 +1,97 @@
+/* Minimal stylesheet for the demo. The "real" UI lives in Zonit.Extensions.Website.MudBlazor. */
+:root {
+    --primary: #2563EB;
+    --secondary: #7C3AED;
+    --accent: #DC2626;
+    --neutral: #F1F5F9;
+    --surface: #FFFFFF;
+    --content: #0F172A;
+    --muted: #64748B;
+    --border: #E2E8F0;
+    color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--neutral);
+    color: var(--content);
+}
+
+.app-shell { display: grid; grid-template-columns: 260px 1fr; min-height: 100vh; }
+
+.sidebar {
+    display: flex; flex-direction: column;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 16px;
+}
+
+.brand { display: flex; align-items: baseline; gap: 8px; margin-bottom: 12px; }
+.brand strong { font-size: 16px; }
+
+.badge { font-size: 11px; padding: 2px 6px; border-radius: 4px; background: var(--neutral); color: var(--muted); }
+.badge.solo  { background: #DCFCE7; color: #166534; }
+.badge.multi { background: #DBEAFE; color: #1E3A8A; }
+.badge.ok    { background: #DCFCE7; color: #166534; }
+.badge.muted { background: var(--neutral); color: var(--muted); }
+
+.nav-menu { flex: 1 1 auto; }
+.nav-menu h3 { font-size: 11px; text-transform: uppercase; color: var(--muted); margin: 16px 0 4px; }
+.nav-menu ul { list-style: none; padding: 0; margin: 0; }
+.nav-menu li a { display: block; padding: 6px 8px; text-decoration: none; color: var(--content); border-radius: 4px; }
+.nav-menu li a:hover { background: var(--neutral); }
+.nav-menu li a.active { background: var(--primary); color: #fff; }
+
+.auth-card { padding: 12px 0; border-top: 1px solid var(--border); display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+.muted { color: var(--muted); }
+
+.content { padding: 24px 32px; }
+.topbar { display: flex; gap: 16px; align-items: center; margin-bottom: 24px; }
+.topbar select { padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); }
+
+.page > h1 { margin-top: 0; }
+.page p.lead { color: var(--muted); }
+
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+.card h2 { margin: 0 0 12px; font-size: 14px; text-transform: uppercase; color: var(--muted); letter-spacing: 0.05em; }
+.card pre { background: var(--neutral); padding: 12px; border-radius: 4px; overflow-x: auto; margin: 0; }
+.card dl { display: grid; grid-template-columns: 200px 1fr; gap: 4px 12px; margin: 0; }
+.card dt { color: var(--muted); }
+.card dd { margin: 0; }
+
+.feature-grid { columns: 2; }
+.creds { width: 100%; border-collapse: collapse; }
+.creds th, .creds td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+
+.theme-preview { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.theme-preview .swatch {
+    flex: 1 1 100px; padding: 24px 8px; border-radius: 4px;
+    color: #fff; text-align: center; font-size: 12px;
+    text-shadow: 0 1px 2px rgba(0,0,0,.4);
+}
+
+.switcher { list-style: none; padding: 0; display: flex; gap: 8px; flex-wrap: wrap; }
+.switcher button { padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; background: var(--surface); }
+.switcher button:disabled { background: var(--primary); color: #fff; cursor: default; }
+
+form.stack { display: flex; flex-direction: column; gap: 12px; max-width: 360px; }
+form.stack label { display: flex; flex-direction: column; gap: 4px; }
+form.stack input, form.stack select { padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; }
+
+.btn-primary {
+    padding: 8px 12px; border: 0; border-radius: 6px;
+    background: var(--primary); color: #fff; cursor: pointer; text-decoration: none;
+}
+.btn-primary:hover { filter: brightness(1.05); }
+
+.alert { padding: 12px; border-radius: 6px; background: var(--neutral); border: 1px solid var(--border); margin: 12px 0; }
+.alert.ok    { background: #DCFCE7; border-color: #86EFAC; color: #166534; }
+.alert.alert-error { background: #FEE2E2; border-color: #FCA5A5; color: #991B1B; }
+
+.inline-form { display: inline; }
+.inline-form button { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0; text-decoration: underline; }
+
+.validation-message { color: #B91C1C; font-size: 12px; margin: 0; }

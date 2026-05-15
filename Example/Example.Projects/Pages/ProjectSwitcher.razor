@@ -1,0 +1,38 @@
+@page "/projects/switcher"
+@rendermode InteractiveServer
+@inherits PageBase
+
+<h1>Project switcher</h1>
+
+@if (Manager.Projects is { Count: > 0 } projects)
+{
+    <section class="card">
+        <h2>Pick one</h2>
+        <ul class="switcher">
+            @foreach (var p in projects)
+            {
+                <li>
+                    <button type="button"
+                            @onclick="() => SwitchTo(p.Id)"
+                            disabled="@(p.Id == Catalog.Project.Id)">
+                        @p.Name
+                    </button>
+                </li>
+            }
+        </ul>
+    </section>
+}
+else
+{
+    <div class="alert">No projects under the current organization.</div>
+}
+
+@code {
+    [Inject] ICatalogManager Manager { get; set; } = default!;
+
+    async Task SwitchTo(Guid id)
+    {
+        await Manager.SwitchProjectAsync(id);
+        Toast.AddSuccess("Switched to {0}", Catalog.Project.Name.Value);
+    }
+}

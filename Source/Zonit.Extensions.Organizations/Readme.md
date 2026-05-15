@@ -13,7 +13,7 @@ dotnet add package Zonit.Extensions.Organizations
 
 - **`IWorkspaceProvider.Organization : Organization`** — current tenant as VO. Returns `Organization.Empty` when none is selected.
 - **`IWorkspaceManager`** — write surface (`Initialize(...)`, `SwitchOrganizationAsync(id)`, exposes `Workspace`/`Organizations`/`State`).
-- **`IUserOrganizationManager`** — consumer-implemented contract for backend hydration.
+- **`IOrganizationSource`** — consumer-implemented contract for backend hydration.
 - A Blazor `<ZonitOrganizationsExtension />` component that bridges prerendered state across render modes.
 
 ## Setup
@@ -28,7 +28,7 @@ app.UseMiddleware<OrganizationsMiddleware>();
 <ZonitOrganizationsExtension />
 ```
 
-Implement `IUserOrganizationManager` in your app (typically backed by EF Core).
+Implement `IOrganizationSource` in your app (typically backed by EF Core).
 
 ## Reading the workspace
 

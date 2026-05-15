@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Tenant (per-domain settings) services for Zonit applications. Provides ITenantProvider, ITenantManager, plugin-aware Setting&lt;T&gt; templates, and the auto-generated TenantSettings access layer. Built on top of Zonit.Extensions value objects.</Description>
+    <Summary>Tenant settings + plugin-aware configuration for Zonit applications.</Summary>
+    <PackageTags>Zonit;Extensions;Tenants;Settings;MultiTenancy;Plugins;Blazor;AspNetCore</PackageTags>
+  </PropertyGroup>
+
+  <!--
+    Framework-agnostic core. The web glue (TenantMiddleware) lives in
+    Zonit.Extensions.Website which is the only assembly with a FrameworkReference
+    to Microsoft.AspNetCore.App. AddWebsite()/UseWebsite() wires it transparently.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Zonit.Extensions\Zonit.Extensions.csproj" />
+    <!--
+      Source generator: emits the `TenantSettings` partial class with one strongly-typed
+      property per Setting<T> discovered in the consuming assembly (and its referenced
+      assemblies). Shipped as analyzer; the generator DLL is NOT a runtime dependency.
+    -->
+    <ProjectReference Include="..\Zonit.Extensions.Tenants.SourceGenerators\Zonit.Extensions.Tenants.SourceGenerators.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false"
+                      UndefineProperties="PublishTrimmed;PublishAot;TargetFramework" />
+  </ItemGroup>
+
+  <!-- Pack the source generator DLL inside this NuGet so consumers get it transparently. -->
+  <ItemGroup>
+    <None Include="..\Zonit.Extensions.Tenants.SourceGenerators\bin\$(Configuration)\netstandard2.0\Zonit.Extensions.Tenants.SourceGenerators.dll"
+          Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+  </ItemGroup>
+</Project>

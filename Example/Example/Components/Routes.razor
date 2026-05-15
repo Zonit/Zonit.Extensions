@@ -1,0 +1,27 @@
+@*
+    Single Router serving the host's pages plus pages from every area assembly.
+    AdditionalAssemblies are wired in Program.cs at MapRazorComponents level; we
+    re-list them here so client-side routing resolves cross-assembly @page declarations.
+*@
+<Router AppAssembly="@typeof(Program).Assembly"
+        AdditionalAssemblies="@(new[]
+        {
+            typeof(Example.Cultures.CulturesArea).Assembly,
+            typeof(Example.Auth.AuthArea).Assembly,
+            typeof(Example.Organizations.OrganizationsArea).Assembly,
+            typeof(Example.Projects.ProjectsArea).Assembly,
+            typeof(Example.Tenants.TenantsArea).Assembly,
+            typeof(Example.Components.ComponentsArea).Assembly,
+            typeof(Example.ValueObjects.ValueObjectsArea).Assembly,
+        })">
+    <Found Context="routeData">
+        <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
+            <NotAuthorized>
+                <h1>403 — not authorized</h1>
+                <p>You need additional roles or permissions for this page.</p>
+                <p><a href="/login">Log in as a different user</a></p>
+            </NotAuthorized>
+        </AuthorizeRouteView>
+        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+    </Found>
+</Router>

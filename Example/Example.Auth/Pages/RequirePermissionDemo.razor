@@ -1,0 +1,47 @@
+@page "/auth/require-permission"
+@using Zonit.Extensions.Website.Authentication
+@attribute [RequirePermission("users.read")]
+@rendermode InteractiveServer
+@inherits PageBase
+
+<h1>[RequirePermission] page</h1>
+
+<p>
+    The whole page is gated by <code>[RequirePermission("users.read")]</code> — the
+    attribute is its own <code>IAuthorizationRequirementData</code> so no
+    <code>AddPolicy(...)</code> is needed. Anonymous visitors land here only because
+    <code>&lt;AuthorizeRouteView&gt;</code> shows our custom 403 panel; logged-in users
+    without <code>users.read</code> see the same.
+</p>
+
+<section class="card ok-bg">
+    <p><strong>You are authorized.</strong> Holders of <code>users.read</code> reach this content.</p>
+</section>
+
+<section class="card">
+    <h2>Equivalent declarations</h2>
+    <pre>// Razor / Blazor pages
+@@attribute [RequirePermission("users.read")]
+
+// Components / classes
+[RequirePermission("users.read")]
+public partial class UsersPage : PageBase { }
+
+// Minimal API
+app.MapGet("/api/users", () =&gt; ...)
+   .RequireAuthorization(new RequirePermissionAttribute("users.read"));
+
+// Controllers
+[RequirePermission("users.write")]
+public IActionResult Update(...) =&gt; ...;</pre>
+</section>
+
+<section class="card">
+    <h2>Wildcard requirement</h2>
+    <p>
+        Try clicking the link to a fictional <em>admin</em> page that requires
+        <code>settings.write</code>. The standard <em>user</em> account is denied by both
+        the route view and the <code>RequirePermissionAttribute</code> handler — admin gets in.
+    </p>
+    <a class="btn-primary" href="/auth/admin-only">Admin-only page</a>
+</section>

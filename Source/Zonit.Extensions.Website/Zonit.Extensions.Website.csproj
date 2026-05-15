@@ -23,6 +23,7 @@
     <ProjectReference Include="..\Zonit.Extensions.Auth\Zonit.Extensions.Auth.csproj" />
     <ProjectReference Include="..\Zonit.Extensions.Organizations\Zonit.Extensions.Organizations.csproj" />
     <ProjectReference Include="..\Zonit.Extensions.Projects\Zonit.Extensions.Projects.csproj" />
+    <ProjectReference Include="..\Zonit.Extensions.Tenants\Zonit.Extensions.Tenants.csproj" />
     <!--
       Source generator: emits AOT-safe ViewModelMetadata for every TViewModel used in
       PageViewBase<T> / PageEditBase<T> in the consuming assembly. Referenced as an

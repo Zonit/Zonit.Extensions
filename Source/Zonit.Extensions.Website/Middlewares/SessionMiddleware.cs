@@ -7,13 +7,13 @@ namespace Zonit.Extensions.Website.Middlewares;
 /// <summary>
 /// Hydrates the scoped <see cref="IAuthenticatedRepository"/> from the
 /// <see cref="HttpContext.User"/> populated by <c>UseAuthentication</c>. <b>Does not
-/// query <see cref="Auth.ISessionProvider"/> on its own</b> — the cookie-to-identity
+/// query <see cref="Auth.IAuthSource"/> on its own</b> — the cookie-to-identity
 /// round trip already happened in <see cref="AuthenticationSchemeService"/> (cached
 /// per-request by ASP.NET's <c>IAuthenticationService</c>).
 /// </summary>
 /// <remarks>
 /// <para><b>Why this matters.</b> The previous implementation also pulled the
-/// <c>Session</c> cookie and called <c>ISessionProvider.GetByTokenAsync</c>, doubling
+/// <c>Session</c> cookie and called <c>IAuthSource.GetByTokenAsync</c>, doubling
 /// every database lookup that <see cref="AuthenticationSchemeService"/> already
 /// performed. With this rewrite the auth round trip happens once per HTTP request,
 /// here we just project the cached <see cref="System.Security.Claims.ClaimsPrincipal"/>

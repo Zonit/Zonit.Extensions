@@ -28,10 +28,10 @@ var app = builder.Build();
 app.UseAuthExtension();   // UseAuthentication → UseAuthorization → SessionMiddleware
 ```
 
-Implement `ISessionProvider` in your app (translate the cookie value into an `Identity`):
+Implement `IAuthSource` in your app (translate the cookie value into an `Identity`):
 
 ```csharp
-internal sealed class MyDbSessionProvider(MyDb db) : ISessionProvider
+internal sealed class MyDbSessionProvider(MyDb db) : IAuthSource
 {
     public async Task<Identity> GetByTokenAsync(string token, CancellationToken ct)
     {
@@ -51,7 +51,7 @@ internal sealed class MyDbSessionProvider(MyDb db) : ISessionProvider
 ```
 
 ```csharp
-builder.Services.AddScoped<ISessionProvider, MyDbSessionProvider>();
+builder.Services.AddScoped<IAuthSource, MyDbSessionProvider>();
 ```
 
 ## Declarative authorization
@@ -103,7 +103,7 @@ The permission claim type is a constant: `IdentityClaimsBuilder.PermissionClaimT
 
 ## What this package does NOT do
 
-- It does not provide login UI, password hashing, MFA or session storage. Those are the consumer's concern. The package only exposes the *contract* (`ISessionProvider`).
+- It does not provide login UI, password hashing, MFA or session storage. Those are the consumer's concern. The package only exposes the *contract* (`IAuthSource`).
 - It does not check authorization itself in `IWorkspaceProvider` / `ICatalogProvider`. Those are pure tenant context — authorization is one place, not two.
 
 ## License

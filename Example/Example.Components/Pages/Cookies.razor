@@ -1,0 +1,67 @@
+@page "/components/cookies"
+@rendermode InteractiveServer
+@inherits PageBase
+
+<h1>Cookies</h1>
+
+<p>
+    <code>ICookieProvider</code> is a thin wrapper over <code>HttpContext.Response.Cookies</code>
+    + <code>HttpContext.Request.Cookies</code>. Lifetime overloads accept a
+    <code>TimeSpan</code> (preferred), a <code>DateTime</code>, or a full <code>CookieModel</code>.
+</p>
+
+<section class="card stack">
+    <h2>Read &amp; write</h2>
+
+    <label>
+        Demo cookie value
+        <input @bind="_value" @bind:event="oninput" />
+    </label>
+
+    <div class="row">
+        <button class="btn-primary" @onclick="Save">Save (1 day)</button>
+        <button @onclick="Load">Load</button>
+        <button @onclick="Delete">Delete</button>
+    </div>
+
+    @if (_loaded is not null)
+    {
+        <p class="muted">Last read: <code>@_loaded</code></p>
+    }
+</section>
+
+<section class="card">
+    <h2>All cookies</h2>
+    <ul>
+        @foreach (var c in Cookie.GetCookies())
+        {
+            <li><code>@c.Name</code> = <code>@c.Value</code></li>
+        }
+    </ul>
+</section>
+
+@code {
+    const string Key = "example.demo";
+    string _value = "hello";
+    string? _loaded;
+
+    void Save()
+    {
+        Cookie.Set(Key, _value, TimeSpan.FromDays(1));
+        Toast.AddSuccess("Saved cookie {0}", Key);
+    }
+
+    void Load()
+    {
+        _loaded = Cookie.Get(Key)?.Value;
+        if (_loaded is null) Toast.AddWarning("Cookie {0} is not set", Key);
+    }
+
+    void Delete()
+    {
+        // Convention: set an expired cookie to delete it.
+        Cookie.Set(Key, string.Empty, DateTime.UtcNow.AddDays(-1));
+        _loaded = null;
+        Toast.AddInfo("Deleted {0}", Key);
+    }
+}

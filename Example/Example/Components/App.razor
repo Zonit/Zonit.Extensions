@@ -1,0 +1,40 @@
+@inject ITenantProvider Tenant
+@*
+    Root document. Tenant settings drive <title>, theme variables and favicon — solo
+    mode falls back to Setting<T> defaults, no special handling required.
+
+    `<Routes @rendermode="InteractiveServer" />` makes EVERY routed page interactive.
+    A more realistic app would set the render mode per page (SSR by default + opt-in
+    interactivity) but for a demo "just works everywhere" beats nuance.
+*@
+<!DOCTYPE html>
+<html lang="@Tenant.Settings.Site.Language">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+    <link rel="stylesheet" href="@Assets["Example.styles.css"]" />
+    <link rel="stylesheet" href="site.css" />
+    <link rel="icon" type="image/png" href="@(Tenant.Settings.Site.FaviconUrl ?? "favicon.png")" />
+    <title>@Tenant.Settings.Site.Title</title>
+    <meta name="description" content="@Tenant.Settings.Site.MetaDescription" />
+    <HeadOutlet />
+    @{
+        var theme = Tenant.Settings.Theme;
+    }
+    <style>
+        :root {
+            --primary:   @theme.PrimaryColor;
+            --secondary: @theme.SecondaryColor;
+            --accent:    @theme.AccentColor;
+            --neutral:   @theme.NeutralColor;
+            --surface:   @theme.SurfaceColor;
+            --content:   @theme.ContentColor;
+        }
+    </style>
+</head>
+<body>
+    <Routes @rendermode="InteractiveServer" />
+    <script src="_framework/blazor.web.js"></script>
+</body>
+</html>

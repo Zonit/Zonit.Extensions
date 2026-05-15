@@ -43,7 +43,7 @@ public interface IWebsiteArea
     /// Static navigation contributed by this area. Combined by the runtime
     /// <see cref="INavigationProvider"/> with navigation from other areas.
     /// </summary>
-    IReadOnlyList<NavGroupModel> Navigation => Array.Empty<NavGroupModel>();
+    IReadOnlyList<NavGroup> Navigation => Array.Empty<NavGroup>();
 
     /// <summary>
     /// Optional hook to register the area's services (idempotent — use <c>TryAdd*</c> for shared services).

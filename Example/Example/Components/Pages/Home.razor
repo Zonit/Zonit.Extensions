@@ -1,0 +1,65 @@
+@page "/"
+@rendermode InteractiveServer
+@inject ITenantProvider Tenant
+@inject IAuthenticatedProvider Auth
+
+<h1>Zonit.Extensions reference host</h1>
+
+<p class="lead">
+    @Tenant.Settings.Site.MetaDescription
+</p>
+
+<section class="card">
+    <h2>What you're looking at</h2>
+    <p>
+        This host is the runtime side of the Zonit.Extensions reference. The interesting
+        stuff lives in the <strong>sidebar areas</strong> on your left — each one is its
+        own project under <code>Example/Example.&lt;Domain&gt;/</code> and registers itself
+        via <code>opts.AddArea(...)</code> in <code>Program.cs</code>. That is exactly how
+        a real consumer plugs feature modules into a Zonit-hosted application.
+    </p>
+</section>
+
+<section class="card">
+    <h2>How to log in</h2>
+    @if (Auth.Current.HasValue)
+    {
+        <div class="alert ok">
+            You are logged in as <strong>@Auth.Current.Name.Value</strong>.
+        </div>
+    }
+    else
+    {
+        <p>Use one of the seeded accounts on the <a href="/login">login page</a>:</p>
+        <table class="creds">
+            <thead><tr><th>Username</th><th>Password</th><th>Roles</th><th>Permissions</th></tr></thead>
+            <tbody>
+                <tr><td>admin</td><td>admin</td><td>admin, user</td><td>users.read, users.write, settings.write, <code>*</code></td></tr>
+                <tr><td>user</td><td>user</td><td>user</td><td>users.read</td></tr>
+            </tbody>
+        </table>
+    }
+</section>
+
+<section class="card">
+    <h2>Areas in this demo</h2>
+    <ul class="feature-grid">
+        <li><strong>Cultures</strong> — translations, language switching, time zones</li>
+        <li><strong>Auth</strong> — Identity VO, roles, permissions, <code>[RequirePermission]</code>, <code>&lt;AuthorizeView&gt;</code></li>
+        <li><strong>Organizations</strong> — workspace switcher backed by <code>IOrganizationSource</code></li>
+        <li><strong>Projects</strong> — catalog switcher backed by <code>IProjectSource</code></li>
+        <li><strong>Tenants</strong> — per-domain settings (Site / Theme / Maintenance / SocialMedia), solo vs multi</li>
+        <li><strong>Components</strong> — <code>PageEditBase&lt;T&gt;</code>, <code>PageViewBase&lt;T&gt;</code>, <code>AutoSave</code>, toasts, breadcrumbs, cookies</li>
+        <li><strong>Value objects</strong> — Title / Url / Money / Price / Identity / TimeZone / Permission&hellip;</li>
+    </ul>
+</section>
+
+<section class="card">
+    <h2>Current tenant snapshot</h2>
+    <dl>
+        <dt>Id</dt>     <dd>@Tenant.Current?.Id</dd>
+        <dt>Domain</dt> <dd>@Tenant.Current?.Domain</dd>
+        <dt>Solo?</dt>  <dd>@Tenant.Current?.IsSolo</dd>
+        <dt>Vars</dt>   <dd>@(Tenant.Current?.Variables.Count ?? 0) override(s)</dd>
+    </dl>
+</section>
