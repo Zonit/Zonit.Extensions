@@ -16,6 +16,11 @@ public interface ICultureManager : ICultureState
     /// <summary>Updates the active culture for this scope. Raises <see cref="ICultureState.OnChange"/>.</summary>
     void SetCulture(Culture culture);
 
-    /// <summary>Updates the active time-zone for this scope. Raises <see cref="ICultureState.OnChange"/>.</summary>
-    void SetTimeZone(string timeZone);
+    /// <summary>
+    /// Updates the active time-zone for this scope. Raises <see cref="ICultureState.OnChange"/>.
+    /// Accepts a <see cref="TimeZone"/> built from an IANA / Windows id or a fixed offset
+    /// (<c>new TimeZone(2)</c>, <c>"Europe/Warsaw"</c>, <c>"UTC-5"</c> etc.). Passing
+    /// <see cref="TimeZone.Empty"/> reverts to the configured default.
+    /// </summary>
+    void SetTimeZone(TimeZone timeZone);
 }

@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Components.Authorization;
-using Zonit.Extensions.Auth.Authorization;
+using Zonit.Extensions.Auth;
 
-namespace Zonit.Extensions.Auth.Services;
+namespace Zonit.Extensions.Website.Authentication;
 
 /// <summary>
 /// Blazor <see cref="AuthenticationStateProvider"/> backed by the scoped

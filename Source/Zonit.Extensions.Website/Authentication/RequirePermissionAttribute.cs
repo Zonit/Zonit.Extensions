@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 
-namespace Zonit.Extensions.Auth.Authorization;
+namespace Zonit.Extensions.Website.Authentication;
 
 /// <summary>
 /// Declarative permission requirement based on <see cref="Permission"/> value object.

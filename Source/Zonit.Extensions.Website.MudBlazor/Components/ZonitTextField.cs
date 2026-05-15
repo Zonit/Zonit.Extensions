@@ -36,6 +36,7 @@ public partial class ZonitTextField<T> : MudTextField<T>
     private int? _detectedMaxLength;
     private bool _isCopied;
     private CancellationTokenSource? _copyResetCts;
+    private readonly bool _isUrlBoundField;
     
     /// <summary>
     /// When true, shows a copy-to-clipboard button on the right side of the input.
@@ -43,7 +44,26 @@ public partial class ZonitTextField<T> : MudTextField<T>
     /// </summary>
     [Parameter]
     public bool Copyable { get; set; }
-    
+
+    /// <summary>
+    /// When true and the bound value is a <see cref="Url"/> (or nullable <c>Url?</c>),
+    /// shows an "open in new tab" icon on the right side of the input. Clicking it
+    /// asks the browser to open the current value in <c>target="_blank"</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>The parameter is silently ignored for non-<see cref="Url"/> field types — it
+    /// would be meaningless to "open" a <c>Title</c> or <c>Description</c>. Empty or
+    /// invalid URLs are not clickable either; the icon disables itself.</para>
+    ///
+    /// <para>When both <see cref="OpenNewTab"/> and <see cref="Copyable"/> are set,
+    /// <see cref="OpenNewTab"/> wins (the URL icon is more action-specific). MudBlazor's
+    /// <c>Adornment</c> slot only holds a single button, so consumers that need both
+    /// behaviors on the same field should keep <see cref="Copyable"/> alone and reach
+    /// for a separate copy control next to the input.</para>
+    /// </remarks>
+    [Parameter]
+    public bool OpenNewTab { get; set; }
+
     public ZonitTextField()
     {
         var type = typeof(T);
@@ -52,7 +72,9 @@ public partial class ZonitTextField<T> : MudTextField<T>
         var underlyingType = Nullable.GetUnderlyingType(type);
         var isNullable = underlyingType is not null;
         var targetType = underlyingType ?? type;
-        
+
+        _isUrlBoundField = targetType == typeof(Url);
+
         var converter = CreateConverterForType(targetType, isNullable);
         if (converter is not null)
         {
@@ -85,15 +107,26 @@ public partial class ZonitTextField<T> : MudTextField<T>
     protected override void OnParametersSet()
     {
         base.OnParametersSet();
-        
+
         // If Counter is 0 and we detected a MaxLength from VO, use it
         if (Counter == 0 && _detectedMaxLength.HasValue)
         {
             Counter = _detectedMaxLength.Value;
         }
-        
-        // Setup copy button adornment
-        if (Copyable)
+
+        // OpenNewTab takes precedence over Copyable because MudTextField's Adornment slot
+        // can hold only one button. The check `_isUrlBoundField` keeps the parameter a
+        // no-op for non-URL types (Title, Description, etc.) where opening a tab is
+        // nonsense.
+        if (OpenNewTab && _isUrlBoundField)
+        {
+            Adornment = Adornment.End;
+            AdornmentIcon = Icons.Material.Filled.OpenInNew;
+            AdornmentColor = global::MudBlazor.Color.Default;
+            AdornmentAriaLabel = "Open in new tab";
+            OnAdornmentClick = EventCallback.Factory.Create<MouseEventArgs>(this, OpenInNewTabAsync);
+        }
+        else if (Copyable)
         {
             Adornment = Adornment.End;
             AdornmentIcon = _isCopied ? Icons.Material.Filled.Check : Icons.Material.Filled.ContentCopy;
@@ -103,6 +136,20 @@ public partial class ZonitTextField<T> : MudTextField<T>
         }
     }
     
+    private async Task OpenInNewTabAsync(MouseEventArgs args)
+    {
+        // Don't try to open an empty / failed-conversion field. ReadText round-trips
+        // through the VO converter, so it already gives us the canonical URL string
+        // (or empty when the input is invalid).
+        var text = ReadText;
+        if (string.IsNullOrWhiteSpace(text))
+            return;
+
+        // window.open with noopener avoids tab-nabbing — the new tab cannot drive
+        // window.opener back into the host page.
+        await JsRuntime.InvokeVoidAsync("open", text, "_blank", "noopener,noreferrer");
+    }
+
     private async Task CopyToClipboardAsync(MouseEventArgs args)
     {
         var text = ReadText;

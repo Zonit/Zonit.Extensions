@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -289,21 +290,20 @@ public readonly struct Price : IEquatable<Price>, IComparable<Price>, IParsable<
     }
 
     /// <summary>
-    /// Tries to parse a string to a Price.
+    /// Tries to parse a string to a Price. Accepts both comma and dot as the decimal
+    /// separator regardless of the active culture or the supplied
+    /// <paramref name="provider"/> — Polish users typing <c>"19,99"</c> and US users
+    /// typing <c>"19.99"</c> both get the same price.
     /// </summary>
     /// <param name="s">The string to parse.</param>
-    /// <param name="provider">Format provider for parsing.</param>
-    /// <param name="result">Parsed Price or default if parsing fails.</param>
-    /// <returns>True if parsing succeeded, false otherwise.</returns>
+    /// <param name="provider">Ignored (kept for <see cref="IParsable{TSelf}"/> compatibility).</param>
+    /// <param name="result">Parsed Price or default if parsing fails / value is negative.</param>
+    /// <returns>True if parsing succeeded (and the value is non-negative), false otherwise.</returns>
     public static bool TryParse([NotNullWhen(true)] string? s, IFormatProvider? provider, out Price result)
     {
-        if (string.IsNullOrWhiteSpace(s))
-        {
-            result = default;
-            return false;
-        }
-
-        if (decimal.TryParse(s, provider, out var decimalValue) && decimalValue >= 0)
+        if (NumericInputNormalizer.TryNormalize(s, out var normalized) &&
+            decimal.TryParse(normalized, NumberStyles.Number, CultureInfo.InvariantCulture, out var decimalValue) &&
+            decimalValue >= 0)
         {
             result = new Price(decimalValue);
             return true;

@@ -22,10 +22,10 @@ public interface ICultureProvider
     /// unchanged when no entry is found.
     /// </summary>
     /// <returns>
-    /// A <see cref="Translated"/> value object. Implicitly convertible to <see cref="string"/>
+    /// A <see cref="Translation"/> value object. Implicitly convertible to <see cref="string"/>
     /// for legacy call sites.
     /// </returns>
-    Translated Translate(string content, params object?[] args);
+    Translation Translate(string content, params object?[] args);
 
     /// <summary>Converts a UTC <see cref="DateTime"/> to the current culture's time zone.</summary>
     DateTime ClientTimeZone(DateTime utcDateTime);

@@ -19,8 +19,12 @@ public interface ICultureState
     /// <summary>Currently active culture for this scope (BCP 47).</summary>
     Culture Current { get; }
 
-    /// <summary>Currently active IANA time-zone identifier for this scope.</summary>
-    string TimeZone { get; }
+    /// <summary>
+    /// Currently active time-zone for this scope as a <see cref="Extensions.TimeZone"/>
+    /// value object. Accepts named zones (IANA / Windows id) or fixed offsets; see
+    /// <see cref="Extensions.TimeZone"/> for the full grammar.
+    /// </summary>
+    TimeZone TimeZone { get; }
 
     /// <summary>Supported cultures (process-wide configuration).</summary>
     ImmutableArray<LanguageModel> Supported { get; }

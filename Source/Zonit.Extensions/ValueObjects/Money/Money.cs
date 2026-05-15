@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -366,21 +367,19 @@ public readonly struct Money : IEquatable<Money>, IComparable<Money>, IParsable<
     }
 
     /// <summary>
-    /// Tries to parse a string to Money.
+    /// Tries to parse a string to Money. Accepts both comma and dot as the decimal
+    /// separator (regardless of the current culture or the supplied
+    /// <paramref name="provider"/>) so that copy-pasted values like <c>"1,5"</c> and
+    /// <c>"1.5"</c> always round-trip into the same amount.
     /// </summary>
     /// <param name="s">The string to parse.</param>
-    /// <param name="provider">Format provider for parsing.</param>
+    /// <param name="provider">Ignored (kept for <see cref="IParsable{TSelf}"/> compatibility).</param>
     /// <param name="result">Parsed Money or default if parsing fails.</param>
     /// <returns>True if parsing succeeded, false otherwise.</returns>
     public static bool TryParse([NotNullWhen(true)] string? s, IFormatProvider? provider, out Money result)
     {
-        if (string.IsNullOrWhiteSpace(s))
-        {
-            result = default;
-            return false;
-        }
-
-        if (decimal.TryParse(s, provider, out var decimalValue))
+        if (NumericInputNormalizer.TryNormalize(s, out var normalized) &&
+            decimal.TryParse(normalized, NumberStyles.Number, CultureInfo.InvariantCulture, out var decimalValue))
         {
             result = new Money(decimalValue);
             return true;

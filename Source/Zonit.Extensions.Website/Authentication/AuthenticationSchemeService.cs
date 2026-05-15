@@ -2,9 +2,9 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Text.Encodings.Web;
-using Zonit.Extensions.Auth.Authorization;
+using Zonit.Extensions.Auth;
 
-namespace Zonit.Extensions.Auth.Services;
+namespace Zonit.Extensions.Website.Authentication;
 
 /// <summary>
 /// Cookie-based authentication handler that converts the <c>Session</c> cookie into a

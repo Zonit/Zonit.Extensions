@@ -1,7 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 
-namespace Zonit.Extensions.Auth.Authorization;
+namespace Zonit.Extensions.Website.Authentication;
 
 /// <summary>
 /// Authorizes <see cref="RequireRoleAttribute"/> by inspecting <see cref="ClaimTypes.Role"/>

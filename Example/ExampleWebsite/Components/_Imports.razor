@@ -12,7 +12,6 @@
 @using MudBlazor
 @using Zonit.Extensions
 @using Zonit.Extensions.MudBlazor
-@* Translated VO has both a core form (Zonit.Extensions.Translated) and a Blazor wrapper
-    (Zonit.Extensions.Website.Translated) supporting MarkupString. In Razor pages we
-    want the wrapper. *@
-@using Translated = Zonit.Extensions.Website.Translated
+@* Translation VO lives in Zonit.Extensions.Cultures (under the Zonit.Extensions namespace).
+    Razor markup rendering (MarkupString) is provided by the TranslationRendering extension
+    method in Zonit.Extensions.Website, imported via the @using above. *@

@@ -4,26 +4,58 @@ using Zonit.Extensions.Cultures.Options;
 
 namespace Zonit.Extensions.Cultures.Services;
 
-internal partial class DetectCultureService(IOptions<CultureOption> options)
+/// <summary>
+/// Resolves a culture tag embedded in the URL path (e.g. <c>/en-us/home</c> or <c>/pl/home</c>)
+/// and rewrites the path so downstream components see <c>/home</c>.
+/// </summary>
+/// <remarks>
+/// <para>Pure regex + options — no <c>HttpContext</c> reference. The web pipeline glue lives
+/// in <c>Zonit.Extensions.Website.Middlewares.CultureMiddleware</c>; non-web consumers
+/// can still call this service directly to translate a path string.</para>
+///
+/// <para>Matching rules, in order:</para>
+/// <list type="number">
+///   <item>Exact match against <c>CultureOption.SupportedCultures</c> (BCP-47, lowercased,
+///         e.g. <c>"en-us"</c>).</item>
+///   <item>Primary-subtag fallback: <c>"pl"</c> matches when at least one supported tag
+///         starts with <c>"pl-"</c>. The first such tag (typically the canonical one,
+///         <c>"pl-pl"</c>) is returned. This lets visitors land on <c>/pl/home</c> without
+///         enumerating every regional flavor.</item>
+/// </list>
+/// </remarks>
+public partial class DetectCultureService(IOptions<CultureOption> options)
 {
-    private readonly HashSet<string> _supportedCultures = options.Value.SupportedCultures.Select(c => c.ToLower()).ToHashSet();
+    // Snapshotted at construction — CultureOption is normally singleton-bound. If the
+    // application starts supporting hot-reload, this becomes a per-call read of options.Value.
+    private readonly HashSet<string> _supportedCultures = options.Value.SupportedCultures
+        .Select(c => c.ToLowerInvariant())
+        .ToHashSet(StringComparer.Ordinal);
 
     public record PathCulture(string Url, string Culture);
 
     public PathCulture? GetUrl(string adres)
     {
         var match = GetUrlRegex().Match(adres);
+        if (!match.Success)
+            return null;
 
-        //if(match.Success)
-        //    return new PathCulture(match.Groups["url"].Value, match.Groups["culture"].Value.ToLower());
+        var culture = match.Groups["culture"].Value.ToLowerInvariant();
+        var url = match.Groups["url"].Value;
 
-        if (match.Success)
+        // 1. Exact match (en-us, pl-pl).
+        if (_supportedCultures.Contains(culture))
+            return new PathCulture(url, culture);
+
+        // 2. Primary-subtag fallback: "en" → first supported "en-*".
+        // Only triggers when the segment has no region (no hyphen). Otherwise an unknown
+        // regional flavor (e.g. "en-au" when we only support "en-us") would silently fold
+        // into "en-us", which is the wrong behavior — the URL should 404 instead.
+        if (!culture.Contains('-'))
         {
-            var culture = match.Groups["culture"].Value.ToLower();
-
-            // TODO: Zrób wsparcie dla "en", "pl" itp. Obecnie działa tylko dla "en-us", "pl-pl" itp.
-            if (_supportedCultures.Contains(culture))
-                return new PathCulture(match.Groups["url"].Value, culture);
+            var prefix = culture + "-";
+            foreach (var supported in _supportedCultures)
+                if (supported.StartsWith(prefix, StringComparison.Ordinal))
+                    return new PathCulture(url, supported);
         }
 
         return null;

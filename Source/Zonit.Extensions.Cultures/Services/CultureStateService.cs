@@ -15,7 +15,7 @@ internal sealed class CultureStateService : ICultureManager
     private readonly CultureOption _options;
 
     private Culture _culture;
-    private string _timeZone;
+    private TimeZone _timeZone;
     private readonly ImmutableArray<LanguageModel> _supported;
 
     public CultureStateService(ILanguageProvider languages, IOptions<CultureOption> options)
@@ -24,12 +24,12 @@ internal sealed class CultureStateService : ICultureManager
         _options = options.Value;
 
         _culture = Culture.TryCreate(_options.DefaultCulture, out var c) ? c : Culture.Default;
-        _timeZone = _options.DefaultTimeZone;
+        _timeZone = ResolveDefaultTimeZone(_options.DefaultTimeZone);
         _supported = BuildSupported(_languages, _options.SupportedCultures);
     }
 
     public Culture Current => _culture;
-    public string TimeZone => _timeZone;
+    public TimeZone TimeZone => _timeZone;
     public ImmutableArray<LanguageModel> Supported => _supported;
 
     public event Action? OnChange;
@@ -43,26 +43,24 @@ internal sealed class CultureStateService : ICultureManager
         OnChange?.Invoke();
     }
 
-    public void SetTimeZone(string timeZone)
+    public void SetTimeZone(TimeZone timeZone)
     {
-        if (string.IsNullOrWhiteSpace(timeZone))
-            timeZone = _options.DefaultTimeZone;
+        // Empty / unparseable input → fall back to configured default. This keeps the
+        // contract symmetric with SetCulture (which also falls back rather than throws).
+        var next = timeZone.HasValue ? timeZone : ResolveDefaultTimeZone(_options.DefaultTimeZone);
+        if (next == _timeZone) return;
 
-        if (string.Equals(_timeZone, timeZone, StringComparison.Ordinal))
-            return;
-
-        try
-        {
-            // Validate — throws TimeZoneNotFoundException if unknown.
-            TimeZoneInfo.FindSystemTimeZoneById(timeZone);
-            _timeZone = timeZone;
-            OnChange?.Invoke();
-        }
-        catch (TimeZoneNotFoundException)
-        {
-            // Fall back to default; do not raise OnChange on no-op fallback.
-        }
+        _timeZone = next;
+        OnChange?.Invoke();
     }
+
+    /// <summary>
+    /// Resolves the configured default into a usable <see cref="TimeZone"/>. If the
+    /// configuration is bogus we collapse to <see cref="TimeZone.Utc"/> rather than crash
+    /// at startup — the caller can change the zone later through <see cref="SetTimeZone"/>.
+    /// </summary>
+    private static TimeZone ResolveDefaultTimeZone(string configured)
+        => TimeZone.TryCreate(configured, out var tz) ? tz : TimeZone.Utc;
 
     /// <summary>
     /// Picks a supported culture from <paramref name="requested"/> or falls back to

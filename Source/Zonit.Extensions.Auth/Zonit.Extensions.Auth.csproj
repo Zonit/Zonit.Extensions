@@ -5,11 +5,15 @@
     <PackageTags>Zonit;Extensions;Auth;Authentication;Authorization;Identity;Sessions;Blazor;AspNetCore</PackageTags>
   </PropertyGroup>
 
+  <!--
+    Framework-agnostic dependencies — Auth core only exposes IAuthenticatedProvider /
+    IAuthenticatedRepository / ISessionProvider plus VO-backed Permission / Role.
+    ASP.NET Core wiring (SessionMiddleware, AuthenticationSchemeService, authorization
+    handlers and attributes, Blazor AuthenticationStateProvider) lives in
+    Zonit.Extensions.Website and is composed by AddWebsite()/UseWebsite().
+  -->
   <ItemGroup>
-    <FrameworkReference Include="Microsoft.AspNetCore.App" />
-  </ItemGroup>
-
-  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.SourceLink.GitHub">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -18,6 +22,5 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Zonit.Extensions\Zonit.Extensions.csproj" />
-    <ProjectReference Include="..\Zonit.Extensions.Cultures\Zonit.Extensions.Cultures.csproj" />
   </ItemGroup>
 </Project>

@@ -7,7 +7,7 @@ namespace Zonit.Extensions;
 /// <summary>
 /// JSON converter factory for value objects.
 /// Automatically handles serialization/deserialization of all Zonit value objects:
-/// Title, Description, Content, Url, UrlSlug, Culture, Currency, Price, Money, FileSize, Color, Schedule, Asset.
+/// Title, Description, Content, Url, UrlSlug, Culture, TimeZone, Currency, Price, Money, FileSize, Color, Schedule, Asset.
 /// </summary>
 public sealed class ValueObjectJsonConverterFactory : JsonConverterFactory
 {
@@ -20,6 +20,7 @@ public sealed class ValueObjectJsonConverterFactory : JsonConverterFactory
                typeToConvert == typeof(Url) ||
                typeToConvert == typeof(UrlSlug) ||
                typeToConvert == typeof(Culture) ||
+               typeToConvert == typeof(TimeZone) ||
                typeToConvert == typeof(Currency) ||
                typeToConvert == typeof(Price) ||
                typeToConvert == typeof(Money) ||
@@ -44,6 +45,8 @@ public sealed class ValueObjectJsonConverterFactory : JsonConverterFactory
             return new UrlSlugJsonConverter();
         if (typeToConvert == typeof(Culture))
             return new CultureJsonConverter();
+        if (typeToConvert == typeof(TimeZone))
+            return new TimeZoneJsonConverter();
         if (typeToConvert == typeof(Currency))
             return new CurrencyJsonConverter();
         if (typeToConvert == typeof(Price))

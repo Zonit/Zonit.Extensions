@@ -155,15 +155,16 @@ public abstract class ExtensionsBase : Base, IDisposable
         => Culture.Translate(content, args).ToString();
 
     /// <summary>
-    /// Alias dla TH() - TM = Translation Markup 
+    /// Render translation as <see cref="MarkupString"/> for raw-HTML output in Razor markup.
     /// </summary>
     public MarkupString TM(string content, params object[] args)
-        => new MarkupString(Culture.Translate(content, args));
+        => new(Culture.Translate(content, args).Value);
 
     /// <summary>
-    /// Alias dla kompatybilności wstecznej - zwraca Translated
+    /// Returns the <see cref="Translation"/> value object directly, for call sites that want
+    /// to inspect <c>IsEmpty</c> or pass it through equality checks.
     /// </summary>
-    public Translated Translate(string content, params object[] args)
+    public Translation Translate(string content, params object[] args)
         => Culture.Translate(content, args);
 
     protected override void Dispose(bool disposing)

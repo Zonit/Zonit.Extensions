@@ -5,11 +5,13 @@
     <PackageTags>Zonit;Extensions;Projects;Catalogs;Blazor;AspNetCore</PackageTags>
   </PropertyGroup>
 
+  <!--
+    Framework-agnostic dependencies — Projects core only declares contracts and a
+    catalog state machine, no HttpContext. ProjectMiddleware lives in
+    Zonit.Extensions.Website and is wired through UseWebsite().
+  -->
   <ItemGroup>
-    <FrameworkReference Include="Microsoft.AspNetCore.App" />
-  </ItemGroup>
-
-  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.SourceLink.GitHub">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -18,8 +20,5 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Zonit.Extensions\Zonit.Extensions.csproj" />
-    <ProjectReference Include="..\Zonit.Extensions.Cultures\Zonit.Extensions.Cultures.csproj" />
-    <ProjectReference Include="..\Zonit.Extensions.Auth\Zonit.Extensions.Auth.csproj" />
-    <ProjectReference Include="..\Zonit.Extensions.Organizations\Zonit.Extensions.Organizations.csproj" />
   </ItemGroup>
 </Project>

@@ -1,4 +1,5 @@
-﻿@using Zonit.Extensions.Website
+﻿@using Zonit.Extensions
+@using Zonit.Extensions.Website
 
 @inherits ExtensionsBase
 
@@ -19,5 +20,5 @@
 <TestComponent Content="@T("Parametr komponentu")" />
 
 @code {
-    Translated Test = new Translated("Hello <b>World</b>");
+    Translation Test = new Translation("Hello <b>World</b>");
 }

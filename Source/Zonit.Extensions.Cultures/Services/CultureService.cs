@@ -37,10 +37,10 @@ internal sealed class CultureService : ICultureProvider, IDisposable
     public DateTimeFormatModel DateTimeFormat => _dateTimeFormat;
     public event Action? OnChange;
 
-    public Translated Translate(string content, params object?[] args)
+    public Translation Translate(string content, params object?[] args)
     {
         if (string.IsNullOrWhiteSpace(content))
-            return Translated.Empty;
+            return Translation.Empty;
 
         var current = _state.Current;
         var currentCode = current.HasValue ? current.Value : Culture.Default.Value;
@@ -65,20 +65,18 @@ internal sealed class CultureService : ICultureProvider, IDisposable
 
     public DateTime ClientTimeZone(DateTime utcDateTime)
     {
+        // Delegated to the VO so that fixed-offset zones ("UTC+2", "UTC-5") work alongside
+        // named ones — the old implementation only handled named zones via
+        // FindSystemTimeZoneById and would silently no-op on a fixed-offset state.
         var tz = _state.TimeZone;
-        if (string.IsNullOrWhiteSpace(tz))
+        if (!tz.HasValue)
             return utcDateTime;
 
         try
         {
-            var info = TimeZoneInfo.FindSystemTimeZoneById(tz);
-            return TimeZoneInfo.ConvertTimeFromUtc(utcDateTime, info);
+            return tz.ConvertFromUtc(utcDateTime);
         }
         catch (TimeZoneNotFoundException)
-        {
-            return utcDateTime;
-        }
-        catch (InvalidTimeZoneException)
         {
             return utcDateTime;
         }
@@ -100,30 +98,40 @@ internal sealed class CultureService : ICultureProvider, IDisposable
         };
     }
 
-    private Translate? FindTranslation(string content, string culture)
+    private Models.Translate? FindTranslation(string content, string culture)
     {
+        // Fast path: TryGet is an O(1) ConcurrentDictionary lookup. The hot loop below
+        // walks at most a handful of cultures per variable; LINQ would allocate a closure
+        // and an enumerator on every Translate() call (this is the busiest method in the
+        // entire stack — every UI render hits it).
         if (!_translations.TryGet(content, out var variable))
             return null;
 
-        return variable.Translates?
-            .FirstOrDefault(t => string.Equals(t.Culture, culture, StringComparison.OrdinalIgnoreCase));
+        var translates = variable.Translates;
+        for (int i = 0; i < translates.Count; i++)
+        {
+            var t = translates[i];
+            if (string.Equals(t.Culture, culture, StringComparison.OrdinalIgnoreCase))
+                return t;
+        }
+        return null;
     }
 
     private static bool IsDefault(string culture) =>
         string.Equals(culture, Culture.Default.Value, StringComparison.OrdinalIgnoreCase);
 
-    private static Translated Format(string content, params object?[]? args)
+    private static Translation Format(string content, params object?[]? args)
     {
         if (args is null || args.Length == 0)
-            return new Translated(content);
+            return new Translation(content);
 
         try
         {
-            return new Translated(string.Format(CultureInfo.CurrentCulture, content, args));
+            return new Translation(string.Format(CultureInfo.CurrentCulture, content, args));
         }
         catch (FormatException)
         {
-            return new Translated(content);
+            return new Translation(content);
         }
     }
 

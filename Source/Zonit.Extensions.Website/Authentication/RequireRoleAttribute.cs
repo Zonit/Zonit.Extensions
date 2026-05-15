@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 
-namespace Zonit.Extensions.Auth.Authorization;
+namespace Zonit.Extensions.Website.Authentication;
 
 /// <summary>
 /// Declarative role requirement based on <see cref="Role"/> value object.
