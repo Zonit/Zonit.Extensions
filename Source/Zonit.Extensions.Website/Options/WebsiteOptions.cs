@@ -1,62 +1,75 @@
+using Microsoft.Extensions.DependencyInjection;
+
 namespace Zonit.Extensions.Website;
 
 /// <summary>
-/// Configuration for a Website host.
+/// Services-time configuration for the Website host. Only flags that influence the
+/// <em>DI container</em> live here — everything middleware-level (compression / HSTS /
+/// proxy / antiforgery / exception handler / HTTPS redirection / auth render mode)
+/// belongs on <see cref="SiteOptions"/> because each Site picks its own request
+/// pipeline.
 /// </summary>
 /// <remarks>
-/// Used by <c>AddWebsite(...)</c>. Captures hosting-level concerns (compression / proxy /
-/// antiforgery / blazor mode) plus a registry of plug-in <see cref="IWebsiteArea"/>s.
+/// <para>Service registrations that match middleware flags
+/// (<c>AddAntiforgery</c> / <c>AddResponseCompression</c> / <c>AddHsts</c> /
+/// <c>Configure&lt;ForwardedHeadersOptions&gt;</c> / <c>AddProblemDetails</c>) are
+/// installed unconditionally — they're cheap, idempotent and never fire by themselves.
+/// The matching <c>Use*</c> middleware is then decided per Site.</para>
 /// </remarks>
 public sealed class WebsiteOptions
 {
+    private readonly IServiceCollection _services;
+    private readonly WebsiteAreaRegistry _registry;
+
+    internal WebsiteOptions(IServiceCollection services, WebsiteAreaRegistry registry)
+    {
+        _services = services;
+        _registry = registry;
+    }
+
     /// <summary>Listening address of the site. Used for self-link generation and signed URLs.</summary>
     public Url Url { get; set; }
 
     /// <summary>
-    /// Optional one-time password / static auth token gating access to the site.
-    /// <c>null</c> = no token required.
+    /// Default in-memory cache (<c>IMemoryCache</c>). Disable if the host already wires a
+    /// distributed cache and you want to avoid both being resolved.
     /// </summary>
-    public string? Token { get; set; }
-
-    /// <summary>Sit behind a reverse proxy (nginx / traefik). Enables forwarded-headers middleware.</summary>
-    public bool Proxy { get; set; } = false;
-
-    /// <summary>Enable response compression (gzip + brotli).</summary>
-    public bool Compression { get; set; } = true;
-
-    /// <summary>Enable antiforgery middleware.</summary>
-    public bool AntiForgery { get; set; } = true;
-
-    /// <summary>Blazor hosting mode for the site.</summary>
-    public WebsiteMode Mode { get; set; } = WebsiteMode.Server;
-
-    /// <summary>Areas registered for this host. Use <see cref="AddArea"/> to add.</summary>
-    public IReadOnlyList<IWebsiteArea> Areas => _areas;
-
-    private readonly List<IWebsiteArea> _areas = new();
-
-    /// <summary>Registers a plug-in area instance in this host.</summary>
-    /// <remarks>
-    /// Prefer the generic <see cref="AddArea{TArea}"/> overload — it keeps the
-    /// area class as the single source of truth (no <c>new</c> at every host registration).
-    /// Use this overload only when the area instance needs to be constructed with
-    /// runtime arguments.
-    /// </remarks>
-    public WebsiteOptions AddArea(IWebsiteArea area)
-    {
-        ArgumentNullException.ThrowIfNull(area);
-        if (_areas.Any(a => a.Key.Equals(area.Key, StringComparison.OrdinalIgnoreCase)))
-            throw new InvalidOperationException($"Area with key '{area.Key}' is already registered.");
-        _areas.Add(area);
-        return this;
-    }
+    public bool MemoryCache { get; set; } = true;
 
     /// <summary>
-    /// Registers a plug-in area by type. <typeparamref name="TArea"/> must expose a
-    /// public parameterless constructor — areas are intentionally data-first POCOs;
-    /// runtime services come from <see cref="IWebsiteArea.ConfigureServices"/>.
+    /// Wire <c>AddControllers()</c> for REST/API endpoints. Off by default — most Blazor
+    /// Component hosts don't need controllers (prefer <see cref="IWebsiteArea.MapEndpoints"/>
+    /// for minimal APIs).
     /// </summary>
-    /// <typeparam name="TArea">Concrete <see cref="IWebsiteArea"/> implementation.</typeparam>
-    public WebsiteOptions AddArea<TArea>() where TArea : IWebsiteArea, new()
-        => AddArea(new TArea());
+    public bool Controllers { get; set; } = false;
+
+    /// <summary>
+    /// Wire <c>AddRazorComponents().AddInteractiveServerComponents()</c> at services-time
+    /// so every Site branch can map Razor components. Disable only for pure-API hosts.
+    /// </summary>
+    public bool RazorComponents { get; set; } = true;
+
+    /// <summary>
+    /// Wire <c>AddRazorPages()</c> for classic <c>.cshtml</c> pages. Off by default —
+    /// Blazor Razor Components is the modern primitive. Enable when migrating older
+    /// apps that still ship <c>Pages/</c> with <c>@page</c>.
+    /// </summary>
+    public bool RazorPages { get; set; } = false;
+
+    /// <summary>
+    /// Registers an Area with the DI container. Instantiates <typeparamref name="TArea"/>
+    /// (must have a public parameterless ctor — Areas are data-first POCOs), runs its
+    /// <see cref="IWebsiteServices.ConfigureServices"/> hook if implemented, and stores
+    /// the singleton instance in <see cref="WebsiteAreaRegistry"/> for later mounting
+    /// at <c>app.UseWebsite&lt;TApp&gt;("/", o => o.AddArea&lt;TArea&gt;())</c>.
+    /// </summary>
+    public WebsiteOptions AddArea<TArea>() where TArea : class, new()
+    {
+        var area = _registry.Register(new TArea());
+
+        if (area is IWebsiteServices svc)
+            svc.ConfigureServices(_services);
+
+        return this;
+    }
 }

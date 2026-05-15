@@ -6,7 +6,6 @@ namespace Example.ValueObjects;
 public sealed class ValueObjectsArea : IWebsiteArea
 {
     public string Key => "value-objects";
-    public Title DisplayName => new("Value objects");
 
     public IReadOnlyList<NavGroup> Navigation { get; } = new[]
     {

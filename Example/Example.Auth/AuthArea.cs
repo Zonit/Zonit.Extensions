@@ -1,5 +1,7 @@
 using Example.Auth.Stubs;
 using Example.Shared;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Zonit.Extensions;
@@ -8,10 +10,20 @@ using Zonit.Extensions.Website;
 
 namespace Example.Auth;
 
-public sealed class AuthArea : IWebsiteArea
+public sealed class AuthArea : IWebsiteArea, IWebsiteServices
 {
     public string Key => "auth";
-    public Title DisplayName => new("Auth");
+
+    /// <summary>
+    /// Wires the area's HTTP endpoints into the Site's branch. Endpoints inherit the
+    /// Site's <c>PathBase</c>, so mounting <see cref="AuthArea"/> under a sub-Site
+    /// (e.g. <c>/admin</c>) automatically exposes <c>POST /admin/auth/login</c>.
+    /// </summary>
+    public void MapEndpoints(IEndpointRouteBuilder endpoints)
+    {
+        endpoints.MapPost("/auth/login",  DemoLoginService.LoginAsync);
+        endpoints.MapPost("/auth/logout", DemoLoginService.LogoutAsync);
+    }
 
     /// <summary>
     /// Registers the demo's auth-side data adapters. A real consumer wires their own

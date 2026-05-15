@@ -1,69 +1,81 @@
 using System.Diagnostics.CodeAnalysis;
 using System.IO.Compression;
+using System.Text.Encodings.Web;
+using System.Text.Unicode;
+using Microsoft.Extensions.WebEncoders;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.ResponseCompression;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Zonit.Extensions.Auth;
-using Zonit.Extensions.Auth.Repositories;
+using Zonit.Extensions.Website;
 using Zonit.Extensions.Website.Authentication;
 using Zonit.Extensions.Website.Middlewares;
 
 namespace Zonit.Extensions;
 
 /// <summary>
-/// Top-level <c>AddWebsite</c> entry point: aggregates Razor Components hosting,
-/// response compression, forwarded headers, antiforgery and registers a set of
-/// <see cref="Zonit.Extensions.Website.IWebsiteArea"/>s.
+/// Top-level entry points for the Website host: <c>AddWebsite</c> (services-time) and
+/// <c>UseWebsite&lt;TApp&gt;</c> (middleware-time, multi-Site).
 /// </summary>
 public static class WebsiteServiceCollectionExtensions
 {
+    private const string GlobalPipelineFlag = "Zonit.Extensions.Website.GlobalPipelineWired";
+
     /// <summary>
-    /// Registers the Website host with the supplied <paramref name="configure"/> options.
+    /// Registers the Website framework (Razor Components hosting, auth scheme,
+    /// compression, antiforgery, navigation/breadcrumbs/toast/cookie providers,
+    /// permission policies, every domain core's <c>Add*Extension()</c>) and runs
+    /// each declared area's <see cref="IWebsiteServices.ConfigureServices"/> hook.
     /// </summary>
     /// <remarks>
-    /// <para>What this does:</para>
-    /// <list type="bullet">
-    ///   <item>Registers <see cref="Zonit.Extensions.Website.WebsiteOptions"/> as a singleton.</item>
-    ///   <item>Registers each declared <see cref="Zonit.Extensions.Website.IWebsiteArea"/>
-    ///     as a singleton and runs <c>area.ConfigureServices(services)</c>.</item>
-    ///   <item>Wires <see cref="Zonit.Extensions.Website.INavigationProvider"/>,
-    ///     <see cref="Zonit.Extensions.Website.IBreadcrumbsProvider"/>,
-    ///     <see cref="Zonit.Extensions.Website.IToastProvider"/>,
-    ///     <see cref="Zonit.Extensions.Website.ICookieProvider"/>.</item>
-    ///   <item>Adds Razor Components host with Server / WebAssembly / Auto interactive modes
-    ///     according to <see cref="Zonit.Extensions.Website.WebsiteOptions.Mode"/>, and
-    ///     <c>AddAdditionalAssemblies(...)</c> for every area's <c>ComponentsAssembly</c>.</item>
-    ///   <item>Configures response compression (gzip + brotli) and forwarded-headers
-    ///     (when <c>Proxy=true</c>).</item>
-    /// </list>
+    /// <para>Areas are <b>not</b> mounted by this call — mounting is per-Site at
+    /// middleware time:</para>
+    /// <code>
+    /// app.UseWebsite&lt;App&gt;(o =>
+    /// {
+    ///     o.Directory = "";          // root site
+    ///     o.AddArea&lt;HomeArea&gt;();
+    ///     o.AddArea&lt;AuthArea&gt;();
+    /// });
     ///
-    /// <para><b>AOT/Trimming:</b> the host is otherwise AOT-safe; areas that bring their
-    /// own services may add reflection/dynamic dependencies — annotate them as needed.</para>
+    /// app.UseWebsite&lt;App&gt;(o =>
+    /// {
+    ///     o.Directory = "/admin";    // second mount sharing AuthArea
+    ///     o.Permission = "admin";
+    ///     o.AddArea&lt;AuthArea&gt;();
+    ///     o.AddArea&lt;AdminArea&gt;();
+    /// });
+    /// </code>
     /// </remarks>
     [RequiresUnreferencedCode("Razor Components and Antiforgery use reflection. Components from area assemblies are discovered dynamically.")]
     [RequiresDynamicCode("Razor Components and Antiforgery may emit dynamic code at runtime.")]
     public static IServiceCollection AddWebsite(
         this IServiceCollection services,
-        Action<Zonit.Extensions.Website.WebsiteOptions>? configure = null)
+        Action<WebsiteOptions>? configure = null)
     {
-        var opts = new Zonit.Extensions.Website.WebsiteOptions();
+        var registry = new WebsiteAreaRegistry();
+        services.TryAddSingleton(registry);
+
+        var opts = new WebsiteOptions(services, registry);
         configure?.Invoke(opts);
 
         services.TryAddSingleton(opts);
-
-        // Areas
-        foreach (var area in opts.Areas)
-        {
-            services.AddSingleton(area);
-            area.ConfigureServices(services);
-        }
-
         services.AddHttpContextAccessor();
+
+        // Per-request marker for the active Site mount. Set by the branch middleware
+        // installed inside UseWebsite<TApp>(o => …) — read by INavigationProvider /
+        // any consumer that needs to scope output to the current mount-point.
+        services.TryAddScoped<ICurrentSite, CurrentSite>();
 
         // Built-in providers
         services.AddNavigationsExtension();
@@ -71,20 +83,14 @@ public static class WebsiteServiceCollectionExtensions
         services.AddToastsExtension();
         services.AddCookiesExtension();
 
-        // Compose the framework-agnostic domain cores. Each AddXxxExtension is idempotent
-        // (TryAdd-based) so consumers who already called them directly aren't penalised.
-        // We always wire all four because every web host transitively expects them via
-        // ExtensionsBase (Culture / Authenticated / Workspace / Catalog accessors).
+        // Domain cores (idempotent — TryAdd-based + Null*Source safety net inside).
         services.AddCulturesExtension();
         services.AddAuthExtension();
         services.AddOrganizationsExtension();
         services.AddProjectsExtension();
         services.AddTenantsExtension();
 
-        // ASP.NET Core authentication / authorization wiring that previously lived in
-        // Zonit.Extensions.Auth.AddAuthExtension. Lives here so Auth core stays free of
-        // Microsoft.AspNetCore.App. Guarded against double-registration so consumers who
-        // already brought their own scheme (e.g. external IdP) don't get clobbered.
+        // ASP.NET auth scheme (only if the consumer hasn't already brought their own).
         if (!services.Any(x => x.ServiceType == typeof(IAuthenticationSchemeProvider)))
         {
             services.AddAuthentication(o =>
@@ -98,114 +104,271 @@ public static class WebsiteServiceCollectionExtensions
 
         services.AddAuthorization();
 
-        // Replace the default policy provider with one that synthesizes a policy for any
-        // name that parses as a Permission token. Lets <AuthorizeView Policy="orders.read">
-        // and <AuthorizeView Policy="orders.*"> work without manual AddPolicy(...) calls.
-        // Falls through to DefaultAuthorizationPolicyProvider for everything else.
+        // Permission-aware policy provider (Permission VO → dynamic policy).
         services.Replace(ServiceDescriptor.Singleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IAuthorizationHandler, PermissionAuthorizationHandler>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IAuthorizationHandler, RoleAuthorizationHandler>());
 
-        // Zonit VO-backed authorization handlers ([RequirePermission], [RequireRole]).
-        services.TryAddEnumerable(
-            ServiceDescriptor.Singleton<IAuthorizationHandler, PermissionAuthorizationHandler>());
-        services.TryAddEnumerable(
-            ServiceDescriptor.Singleton<IAuthorizationHandler, RoleAuthorizationHandler>());
-
-        // Cascading auth state for Blazor + the SessionAuthenticationStateProvider that
-        // projects IAuthenticatedProvider through ClaimsPrincipal.
+        // Cascading auth state for Blazor.
         services.AddCascadingAuthenticationState();
         services.TryAddScoped<AuthenticationStateProvider, SessionAuthenticationService>();
 
-        if (opts.AntiForgery)
-            services.AddAntiforgery();
+        // ─── Middleware-paired services. Always wired (cheap, idempotent). Each Site
+        // picks per-branch whether to actually USE the matching middleware via SiteOptions.
 
-        // Razor Components
-        var razor = services.AddRazorComponents();
-        if (opts.Mode is Zonit.Extensions.Website.WebsiteMode.Server or Zonit.Extensions.Website.WebsiteMode.Auto)
-            razor.AddInteractiveServerComponents();
-        // NOTE: Interactive WebAssembly components require
-        // "Microsoft.AspNetCore.Components.WebAssembly.Server" package referenced by the host project.
-        // Consumers using WebsiteMode.WebAssembly / Auto must call
-        //   builder.Services.AddRazorComponents().AddInteractiveWebAssemblyComponents()
-        // themselves, or reference the package and call our overload.
-        // We don't reference it here to keep this package usable in pure-Server hosts.
+        services.AddAntiforgery();
+        services.AddProblemDetails(); // ASP.NET 7+ standardised error responses (RFC 7807).
 
-        // Compression
-        if (opts.Compression)
+        // Allow the full Unicode range through the default HTML encoder. ASP.NET's default
+        // escapes non-ASCII into &#xNNNN; entities — catastrophic for non-English content
+        // (Polish, German, Cyrillic, CJK, emoji). This single Configure fixes every Razor
+        // / minimal-API string output for the rest of the host's lifetime.
+        services.Configure<WebEncoderOptions>(o =>
         {
-            services.AddResponseCompression(o =>
-            {
-                o.EnableForHttps = true;
-                o.Providers.Add<BrotliCompressionProvider>();
-                o.Providers.Add<GzipCompressionProvider>();
-                o.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(new[]
-                {
-                    "application/javascript",
-                    "application/wasm",
-                    "image/svg+xml",
-                });
-            });
-            services.Configure<BrotliCompressionProviderOptions>(o => o.Level = CompressionLevel.Fastest);
-            services.Configure<GzipCompressionProviderOptions>(o => o.Level = CompressionLevel.Fastest);
-        }
+            o.TextEncoderSettings = new TextEncoderSettings(UnicodeRanges.All);
+        });
 
-        // Forwarded headers (reverse proxy)
-        if (opts.Proxy)
+        services.AddHsts(o =>
         {
-            services.Configure<ForwardedHeadersOptions>(o =>
+            // Conservative production defaults — consumers can re-Configure<HstsOptions> to override.
+            o.Preload = false;
+            o.IncludeSubDomains = false;
+            o.MaxAge = TimeSpan.FromDays(30);
+        });
+
+        services.AddResponseCompression(o =>
+        {
+            o.EnableForHttps = true;
+            o.Providers.Add<BrotliCompressionProvider>();
+            o.Providers.Add<GzipCompressionProvider>();
+            o.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(new[]
             {
-                o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-                o.KnownIPNetworks.Clear();
-                o.KnownProxies.Clear();
+                "application/javascript",
+                "application/wasm",
+                "image/svg+xml",
             });
+        });
+        services.Configure<BrotliCompressionProviderOptions>(o => o.Level = CompressionLevel.Fastest);
+        services.Configure<GzipCompressionProviderOptions>(o => o.Level = CompressionLevel.Fastest);
+
+        services.Configure<ForwardedHeadersOptions>(o =>
+        {
+            o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+            o.KnownIPNetworks.Clear();
+            o.KnownProxies.Clear();
+        });
+
+        // ─── Pure-service toggles (no middleware counterpart). ───
+
+        if (opts.MemoryCache)
+            services.AddMemoryCache();
+
+        if (opts.Controllers)
+            services.AddControllers();
+
+        if (opts.RazorPages)
+            services.AddRazorPages();
+
+        // Razor Components host (top-level — branches re-use the same service registrations).
+        // WebAssembly bits require an extra package and are wired by the consumer manually.
+        if (opts.RazorComponents)
+        {
+            services.AddRazorComponents().AddInteractiveServerComponents();
         }
 
         return services;
     }
 
     /// <summary>
-    /// Wires the runtime middleware pieces shipped by Zonit.Extensions.Website. Call
-    /// <b>before</b> <c>app.UseAntiforgery()</c> / <c>app.MapRazorComponents&lt;App&gt;()</c>.
+    /// Mounts a Site at <see cref="SiteOptions.Directory"/> with the supplied set of
+    /// Areas. Each call to <c>UseWebsite&lt;TApp&gt;</c> creates an isolated
+    /// <c>MapWhen</c> branch with its own <c>UsePathBase</c>, full middleware pipeline,
+    /// and a dedicated <c>MapRazorComponents&lt;TApp&gt;</c>. May be called any number
+    /// of times — each Site can mount any subset of registered Areas, including the
+    /// same Area at multiple paths (e.g. Auth at <c>/</c> and at <c>/admin</c>).
     /// </summary>
-    /// <remarks>
-    /// <para>Pipeline order (ASP.NET Core idioms first, Zonit hydrators last):</para>
-    /// <list type="number">
-    ///   <item><c>UseForwardedHeaders</c> when running behind a reverse proxy.</item>
-    ///   <item><c>UseResponseCompression</c> when compression is enabled.</item>
-    ///   <item><c>UseAuthentication</c> + <c>UseAuthorization</c> — required for the
-    ///         Zonit auth scheme to participate in <c>[Authorize]</c>.</item>
-    ///   <item><see cref="SessionMiddleware"/> — hydrates <see cref="IAuthenticatedRepository"/>
-    ///         from the <c>Session</c> cookie on the first request of the scope.</item>
-    ///   <item><see cref="CultureMiddleware"/> — resolves culture from URL / cookie /
-    ///         Accept-Language and rewrites the path.</item>
-    ///   <item><see cref="WorkspaceMiddleware"/> + <see cref="ProjectMiddleware"/> — lazily
-    ///         initialise the per-scope workspace / catalog state if the consumer didn't
-    ///         already touch them.</item>
-    /// </list>
-    ///
-    /// <para>SessionMiddleware runs <em>after</em> UseAuthentication so the cookie path
-    /// and the Zonit hydration share the same authenticated principal — duplication is
-    /// avoided by guarding against <c>repository.Current.HasValue</c>.</para>
-    /// </remarks>
-    public static IApplicationBuilder UseWebsite(this IApplicationBuilder app)
+    /// <typeparam name="TApp">
+    /// Root Razor component (typically <c>App.razor</c>). Different Sites may use
+    /// different root components — useful when a sub-site needs a distinct layout
+    /// or <c>&lt;base href&gt;</c>.
+    /// </typeparam>
+    public static WebApplication UseWebsite<TApp>(
+        this WebApplication app,
+        UrlPath directory,
+        Action<SiteOptions> configure)
+        where TApp : IComponent
     {
-        var opts = app.ApplicationServices.GetService<Zonit.Extensions.Website.WebsiteOptions>();
-        if (opts is null) return app;
+        ArgumentNullException.ThrowIfNull(configure);
 
-        if (opts.Proxy) app.UseForwardedHeaders();
-        if (opts.Compression) app.UseResponseCompression();
+        var opts = app.Services.GetRequiredService<WebsiteOptions>();
+        var registry = app.Services.GetRequiredService<WebsiteAreaRegistry>();
 
-        app.UseAuthentication();
-        app.UseAuthorization();
+        var site = new SiteOptions(registry, directory);
+        configure(site);
 
-        app.UseMiddleware<SessionMiddleware>();
-        app.UseMiddleware<CultureMiddleware>();
-        app.UseMiddleware<WorkspaceMiddleware>();
-        app.UseMiddleware<ProjectMiddleware>();
-        // TenantMiddleware runs last; tenant resolution is independent of auth and
-        // the per-user workspace, but downstream pages might want all of them already
-        // populated by the time @inject ITenantProvider is consulted.
-        app.UseMiddleware<TenantMiddleware>();
+        EnsureGlobalPipeline(app);
+
+        var pathBase = site.NormalizedPathBase;
+        var matchPath = string.IsNullOrEmpty(pathBase) ? null : pathBase;
+
+        // Build the per-Site branch. When Directory == "" the branch is the catch-all
+        // (executed only when no other Site matched first — order of UseWebsite calls
+        // is therefore meaningful: declare the root Site last to avoid swallowing
+        // sub-mounts).
+        if (matchPath is null)
+        {
+            BuildBranch<TApp>(app, site, opts);
+        }
+        else
+        {
+            app.MapWhen(
+                ctx => ctx.Request.Path.StartsWithSegments(matchPath, StringComparison.OrdinalIgnoreCase),
+                branch => BuildBranch<TApp>(branch, site, opts));
+        }
 
         return app;
+    }
+
+    private static void EnsureGlobalPipeline(WebApplication app)
+    {
+        // Idempotent — first UseWebsite<> call wires the only truly global piece:
+        // MapStaticAssets (endpoint data source, must register pre-branch). Every other
+        // middleware (compression / HSTS / proxy / antiforgery / exception handler /
+        // HTTPS redirection) is per-Site and lives in BuildBranch.
+        IApplicationBuilder ab = app;
+        if (ab.Properties.ContainsKey(GlobalPipelineFlag)) return;
+        ab.Properties[GlobalPipelineFlag] = true;
+
+        // Static assets (blazor.web.js, _content/, *.css, *.js) — host-wide.
+        app.MapStaticAssets();
+    }
+
+    private static void BuildBranch<TApp>(IApplicationBuilder branch, SiteOptions site, WebsiteOptions opts)
+        where TApp : IComponent
+    {
+        var env = branch.ApplicationServices.GetRequiredService<IWebHostEnvironment>();
+        var isDev = env.IsDevelopment();
+
+        var pathBase = site.NormalizedPathBase;
+        if (!string.IsNullOrEmpty(pathBase))
+            branch.UsePathBase(pathBase);
+
+        // Stamp the active Site onto the request scope BEFORE anything reads it.
+        // INavigationProvider, breadcrumbs and consumer code rely on ICurrentSite to
+        // filter their output to the current mount-point.
+        branch.Use(async (ctx, next) =>
+        {
+            var current = ctx.RequestServices.GetRequiredService<ICurrentSite>();
+            current.Set(site);
+            await next();
+        });
+
+        // Exception handling — must come BEFORE every middleware that could throw.
+        // Dev: DeveloperExceptionPage (always, regardless of site.ExceptionHandlerPath).
+        // Prod: site.ExceptionHandlerPath (null disables).
+        if (isDev)
+        {
+            branch.UseDeveloperExceptionPage();
+        }
+        else if (!string.IsNullOrEmpty(site.ExceptionHandlerPath))
+        {
+            branch.UseExceptionHandler(site.ExceptionHandlerPath);
+            branch.UseStatusCodePagesWithReExecute(site.ExceptionHandlerPath + "/{0}");
+        }
+
+        // Production-only edge middleware (matches ASP.NET template order).
+        if (!isDev)
+        {
+            if (site.Proxy) branch.UseForwardedHeaders();
+            if (site.Hsts) branch.UseHsts();
+        }
+
+        if (site.HttpsRedirection) branch.UseHttpsRedirection();
+        if (site.Compression) branch.UseResponseCompression();
+
+        // Security response headers — cheap, idempotent, recommended by OWASP.
+        if (site.SecurityHeaders)
+        {
+            branch.Use(async (ctx, next) =>
+            {
+                var h = ctx.Response.Headers;
+                h["X-Content-Type-Options"] = "nosniff";
+                h["X-Frame-Options"] = "SAMEORIGIN";
+                h["X-XSS-Protection"] = "1; mode=block";
+                h["Referrer-Policy"] = "strict-origin-when-cross-origin";
+                h["Server"] = "web"; // mask Kestrel/IIS fingerprint
+                await next();
+            });
+        }
+
+        // Early-pipeline hooks — ImageSharp, custom static-files, request rewriters.
+        // These run BEFORE routing so they can short-circuit / wrap every request.
+        foreach (var area in site.Areas) area.App(branch);
+        foreach (var hook in site.AppHooks) hook(branch);
+
+        branch.UseRouting();
+
+        // Auth must come AFTER UseRouting in endpoint-routing model.
+        branch.UseAuthentication();
+        branch.UseAuthorization();
+        if (site.AntiForgery) branch.UseAntiforgery();
+
+        // Zonit hydrators — order matters:
+        //   Session → identity into the request scope
+        //   Culture → resolves UI culture (consumes auth identity for per-user prefs)
+        //   Workspace/Project → consume identity to populate org/project state
+        //   Tenant → independent of auth, last so downstream sees fully populated scope.
+        branch.UseMiddleware<SessionMiddleware>();
+        branch.UseMiddleware<CultureMiddleware>();
+        branch.UseMiddleware<WorkspaceMiddleware>();
+        branch.UseMiddleware<ProjectMiddleware>();
+        branch.UseMiddleware<TenantMiddleware>();
+
+        // Late-pipeline hooks — per-area then per-Site (signed-URL guards consuming
+        // identity, audit logging tied to authenticated principal).
+        foreach (var area in site.Areas) area.Use(branch);
+        foreach (var hook in site.UseHooks) hook(branch);
+
+        // Endpoints — Razor Components host + per-area / per-Site minimal-API endpoints.
+        // Filter out TApp's own assembly: MapRazorComponents<TApp>() already treats it as
+        // the default, and AddAdditionalAssemblies rejects duplicates with
+        // "Assembly already defined". This naturally handles the case where the host's
+        // own area (e.g. HomeArea) lives in the same assembly as App.razor.
+        var hostAssembly = typeof(TApp).Assembly;
+        var assemblies = site.Areas
+            .Select(a => a.ComponentsAssembly)
+            .Where(a => a is not null && a != hostAssembly)
+            .Distinct()
+            .ToArray();
+
+        branch.UseEndpoints(ep =>
+        {
+            if (opts.RazorComponents)
+            {
+                var razor = ep.MapRazorComponents<TApp>();
+
+                // Per-Site render mode. Server is always wired (cheap, idempotent at the
+                // services layer). WebAssembly bits require the consumer to reference
+                // "Microsoft.AspNetCore.Components.WebAssembly.Server" and call
+                // AddInteractiveWebAssemblyRenderMode() themselves via SiteOptions.MapEndpoints.
+                if (site.Mode is WebsiteMode.Server or WebsiteMode.Auto)
+                    razor.AddInteractiveServerRenderMode();
+
+                if (assemblies.Length > 0)
+                    razor.AddAdditionalAssemblies(assemblies);
+
+                if (!string.IsNullOrEmpty(site.Permission))
+                    razor.RequireAuthorization(site.Permission);
+            }
+
+            if (opts.Controllers)
+                ep.MapControllers();
+
+            if (opts.RazorPages)
+                ep.MapRazorPages();
+
+            foreach (var area in site.Areas) area.MapEndpoints(ep);
+            foreach (var hook in site.EndpointHooks) hook(ep);
+        });
     }
 }

@@ -7,10 +7,9 @@ using Zonit.Extensions.Website;
 
 namespace Example.Projects;
 
-public sealed class ProjectsArea : IWebsiteArea
+public sealed class ProjectsArea : IWebsiteArea, IWebsiteServices
 {
     public string Key => "projects";
-    public Title DisplayName => new("Projects");
 
     public void ConfigureServices(IServiceCollection services)
     {

@@ -11,7 +11,6 @@ namespace Example.Cultures;
 public sealed class CulturesArea : IWebsiteArea
 {
     public string Key => "cultures";
-    public Title DisplayName => new("Cultures");
 
     public IReadOnlyList<NavGroup> Navigation { get; } = new[]
     {

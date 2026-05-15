@@ -11,7 +11,6 @@ namespace Example.Components;
 public sealed class HomeArea : IWebsiteArea
 {
     public string Key => "home";
-    public Title DisplayName => new("Home");
 
     public IReadOnlyList<NavGroup> Navigation { get; } = new[]
     {

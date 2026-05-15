@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Microsoft.AspNetCore.Http;
 
 namespace Zonit.Extensions.Website.Navigations.Services;
 
@@ -19,12 +20,14 @@ internal sealed class NavigationService : INavigationProvider
 {
     private readonly IReadOnlyDictionary<string, IReadOnlyList<NavGroup>> _staticByArea;
     private readonly ConcurrentDictionary<string, List<NavGroup>> _runtime = new(StringComparer.OrdinalIgnoreCase);
+    private readonly IHttpContextAccessor _httpContext;
 
     public event Action<string?>? OnChanged;
 
-    public NavigationService(IEnumerable<IWebsiteArea> areas)
+    public NavigationService(WebsiteAreaRegistry registry, IHttpContextAccessor httpContext)
     {
-        _staticByArea = areas
+        _httpContext = httpContext;
+        _staticByArea = registry.AsAreas()
             .GroupBy(a => a.Key, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(
                 g => g.Key,
@@ -51,6 +54,14 @@ internal sealed class NavigationService : INavigationProvider
     public IReadOnlyList<NavGroup> Get(string areaKey, string? position = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(areaKey);
+
+        // Per-Site filtering: if a request is being served from a Site branch (the
+        // branch middleware called ICurrentSite.Set), hide nav for areas that aren't
+        // mounted on the active Site. Outside a Site (e.g. a global endpoint) every
+        // area's nav is visible — same behaviour as before the per-Site split.
+        var currentSite = _httpContext.HttpContext?.RequestServices.GetService(typeof(ICurrentSite)) as ICurrentSite;
+        if (currentSite is { IsSet: true } && !currentSite.AreaKeys.Contains(areaKey))
+            return Array.Empty<NavGroup>();
 
         IEnumerable<NavGroup> source = Array.Empty<NavGroup>();
 

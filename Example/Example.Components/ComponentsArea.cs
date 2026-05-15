@@ -6,7 +6,6 @@ namespace Example.Components;
 public sealed class ComponentsArea : IWebsiteArea
 {
     public string Key => "components";
-    public Title DisplayName => new("Components");
 
     public IReadOnlyList<NavGroup> Navigation { get; } = new[]
     {

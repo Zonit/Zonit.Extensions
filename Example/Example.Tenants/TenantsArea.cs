@@ -7,10 +7,9 @@ using Zonit.Extensions.Website;
 
 namespace Example.Tenants;
 
-public sealed class TenantsArea : IWebsiteArea
+public sealed class TenantsArea : IWebsiteArea, IWebsiteServices
 {
     public string Key => "tenants";
-    public Title DisplayName => new("Tenants");
 
     /// <summary>
     /// <para>Registers an in-memory <see cref="ITenantSource"/>. This is intentionally
