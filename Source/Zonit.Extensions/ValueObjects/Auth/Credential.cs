@@ -28,7 +28,7 @@ namespace Zonit.Extensions;
 /// </remarks>
 [TypeConverter(typeof(ValueObjectTypeConverter<Credential>))]
 [JsonConverter(typeof(CredentialJsonConverter))]
-public readonly struct Credential : IEquatable<Credential>, IComparable<Credential>, IParsable<Credential>, ISpanParsable<Credential>
+public readonly partial struct Credential : IEquatable<Credential>, IComparable<Credential>, IParsable<Credential>, ISpanParsable<Credential>
 {
     /// <summary>Max total length (accommodates long e-mails).</summary>
     public const int MaxLength = 254;
@@ -39,18 +39,17 @@ public readonly struct Credential : IEquatable<Credential>, IComparable<Credenti
     /// <summary>Empty credential (<c>default(Credential)</c>).</summary>
     public static readonly Credential Empty = default;
 
-    private static readonly Regex EmailPattern = new(
-        @"^[^@\s]+@[^@\s]+\.[^@\s]+$",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    // Source-generated regexes — no runtime IL emission (AOT-safe) and faster than the
+    // previously hand-rolled `new Regex(..., Compiled)` initialisation.
+    [GeneratedRegex(@"^[^@\s]+@[^@\s]+\.[^@\s]+$", RegexOptions.CultureInvariant)]
+    private static partial Regex EmailPattern();
 
     // E.164-friendly: optional leading '+', then 7-15 digits (spaces/dashes allowed in input, stripped on detection).
-    private static readonly Regex PhonePattern = new(
-        @"^\+?[0-9]{7,15}$",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    [GeneratedRegex(@"^\+?[0-9]{7,15}$", RegexOptions.CultureInvariant)]
+    private static partial Regex PhonePattern();
 
-    private static readonly Regex UsernamePattern = new(
-        @"^[a-z0-9][a-z0-9._\-]{2,63}$",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    [GeneratedRegex(@"^[a-z0-9][a-z0-9._\-]{2,63}$", RegexOptions.CultureInvariant)]
+    private static partial Regex UsernamePattern();
 
     private readonly string? _value;
     private readonly CredentialKind _kind;
@@ -92,6 +91,13 @@ public readonly struct Credential : IEquatable<Credential>, IComparable<Credenti
     public Credential(string value)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(value, nameof(value));
+
+        // Cheap length gate before the expensive Normalize path. A 1 MB blob would
+        // otherwise go through ToLowerInvariant + Regex.IsMatch — that's an unbounded
+        // CPU / allocation sink and a DoS vector on any public credential endpoint
+        // (audit AUDIT_2026_05 §2.9 + Quick win §8.14).
+        if (value.Length > MaxLength)
+            throw new ArgumentException($"Credential cannot exceed {MaxLength} characters (got {value.Length}).", nameof(value));
 
         var (normalized, kind, id) = Normalize(value);
 
@@ -141,17 +147,17 @@ public readonly struct Credential : IEquatable<Credential>, IComparable<Credenti
 
         // 2. Phone: strip formatting characters, then validate.
         var digitsOnly = StripPhoneFormatting(trimmed);
-        if (PhonePattern.IsMatch(digitsOnly))
+        if (PhonePattern().IsMatch(digitsOnly))
             return (digitsOnly, CredentialKind.Phone, Guid.Empty);
 
         var lower = trimmed.ToLowerInvariant();
 
         // 3. Email.
-        if (EmailPattern.IsMatch(lower))
+        if (EmailPattern().IsMatch(lower))
             return (lower, CredentialKind.Email, Guid.Empty);
 
         // 4. Username (last resort).
-        if (UsernamePattern.IsMatch(lower))
+        if (UsernamePattern().IsMatch(lower))
             return (lower, CredentialKind.Username, Guid.Empty);
 
         return (lower, CredentialKind.Unknown, Guid.Empty);
@@ -193,6 +199,13 @@ public readonly struct Credential : IEquatable<Credential>, IComparable<Credenti
     public static bool TryCreate(string? value, out Credential credential)
     {
         if (string.IsNullOrWhiteSpace(value))
+        {
+            credential = Empty;
+            return false;
+        }
+
+        // See ctor: avoid running Normalize on attacker-controlled megabyte payloads.
+        if (value.Length > MaxLength)
         {
             credential = Empty;
             return false;

@@ -9,15 +9,23 @@ namespace Zonit.Extensions.Website;
 /// między prerenderem a interactive renderem (Blazor SSR → WebAssembly/Server).
 /// </summary>
 /// <remarks>
-/// <para><strong>AOT/Trimming:</strong> trimmer zachowuje publiczne pola, właściwości i konstruktory
-/// <typeparamref name="TViewModel"/> dzięki adnotacji <c>[DynamicallyAccessedMembers]</c> na
-/// parametrze generycznym — wszystkie wymagane przez <see cref="PersistentComponentState.PersistAsJson{T}"/>.
-/// Wewnętrzne wywołania JSON są lokalnie supresowane (IL2026/IL3050) z uzasadnieniem, że trimmer
-/// ma pełną informację o członkach <typeparamref name="TViewModel"/>.</para>
-/// <para>Gdy konsument referuje <c>Zonit.Extensions.Website.SourceGenerators</c> (domyślnie via paczka NuGet),
-/// generator emituje statyczne metadane (accesory właściwości) zastępujące refleksję w
-/// <c>PageEditBase</c>. JSON-owa persystencja wciąż chodzi przez <see cref="PersistentComponentState"/>
-/// (do .NET 10 brak przeciążenia z <c>JsonTypeInfo</c>; planowane na .NET 11).</para>
+/// <para><strong>Trimming (IL2026).</strong> <c>PersistAsJson</c> / <c>TryTakeFromJson</c> w
+/// .NET 10 to wyłącznie refleksyjny serializator <c>System.Text.Json</c>. Adnotacja
+/// <c>[DynamicallyAccessedMembers(PublicProperties | PublicFields | PublicConstructors)]</c>
+/// na <typeparamref name="TViewModel"/> zachowuje wszystkie składowe wymagane przez STJ
+/// — IL2026 jest realnie złagodzony i lokalna supresja jest uczciwa.</para>
+///
+/// <para><strong>NativeAOT (IL3050).</strong> Refleksyjny STJ <em>nie działa</em> pod
+/// pełnym Native AOT (rzuca <see cref="NotSupportedException"/>). Konsumenci publikujący
+/// AOT muszą albo nadpisać <see cref="PersistentModel"/> na <c>false</c>, albo zaczekać
+/// na overload <c>PersistAsJson(string, T, JsonTypeInfo&lt;T&gt;)</c> obiecywany w .NET 11.</para>
+///
+/// <para><strong>Stan na .NET 11 ready.</strong> Generator
+/// <c>Zonit.Extensions.Website.SourceGenerators</c> emituje per-VM
+/// <c>JsonSerializerContext</c> i nadpisuje <see cref="ViewModelMetadata{T}.JsonTypeInfo"/>
+/// — gdy framework doda overload akceptujący <c>JsonTypeInfo</c>, wystarczy zmienić wywołania
+/// w <c>PersistState</c> / <c>TryTakeModelFromState</c> i obie supresje znikają.
+/// Patrz <c>Docs/NET11-Migration.md</c>.</para>
 /// </remarks>
 /// <typeparam name="TViewModel">Typ modelu danych.</typeparam>
 public class PageViewBase<[DynamicallyAccessedMembers(
@@ -138,13 +146,11 @@ public class PageViewBase<[DynamicallyAccessedMembers(
     protected async Task RefreshAsync(CancellationToken cancellationToken = default)
         => await LoadDataAsync(cancellationToken);
 
-    /// <summary>
-    /// Zapisuje aktualny <see cref="Model"/> w <see cref="PersistentComponentState"/>.
-    /// </summary>
+    /// <summary>Zapisuje aktualny <see cref="Model"/> w <see cref="PersistentComponentState"/>.</summary>
     [UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode",
-        Justification = "TViewModel ma adnotacje DynamicallyAccessedMembers (PublicProperties | PublicFields | PublicConstructors) wystarczające dla System.Text.Json. .NET 11 doda przeciążenie PersistAsJson(JsonTypeInfo) i wtedy supresję można usunąć.")]
+        Justification = "Faktyczne złagodzenie: [DynamicallyAccessedMembers(PublicProperties | PublicFields | PublicConstructors)] na TViewModel gwarantuje, że trimmer zachowa wszystkie składowe wymagane przez refleksyjny System.Text.Json. Pod pełnym AOT pozostaje IL3050 — patrz adnotacja niżej.")]
     [UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode",
-        Justification = "Reflection-based serializer używany dla prostego DTO; trimmer zachowuje publicznych członków via DAM. AOT-safe wariant z JsonTypeInfo będzie użyty w .NET 11.")]
+        Justification = "Świadomy kompromis: w .NET 10 PersistentComponentState ma wyłącznie refleksyjne PersistAsJson/TryTakeFromJson. Pod Native AOT operacja rzuci NotSupportedException — konsumenci AOT mają ustawić PersistentModel=false. Generator Zonit.Extensions.Website.SourceGenerators emituje już JsonSerializerContext per VM (ViewModelMetadata<T>.JsonTypeInfo), więc gdy .NET 11 doda PersistAsJson(JsonTypeInfo<T>) overload, ta supresja znika jednym refactorem — patrz Docs/NET11-Migration.md.")]
     private Task PersistState()
     {
         if (PersistentModel && Model is not null)
@@ -153,13 +159,11 @@ public class PageViewBase<[DynamicallyAccessedMembers(
         return Task.CompletedTask;
     }
 
-    /// <summary>
-    /// Próbuje odtworzyć <see cref="Model"/> z <see cref="PersistentComponentState"/>.
-    /// </summary>
+    /// <summary>Próbuje odtworzyć <see cref="Model"/> z <see cref="PersistentComponentState"/>.</summary>
     [UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode",
-        Justification = "TViewModel ma adnotacje DynamicallyAccessedMembers (PublicProperties | PublicFields | PublicConstructors) wystarczające dla System.Text.Json. .NET 11 doda przeciążenie TryTakeFromJson(JsonTypeInfo) i wtedy supresję można usunąć.")]
+        Justification = "Faktyczne złagodzenie: [DynamicallyAccessedMembers(PublicProperties | PublicFields | PublicConstructors)] na TViewModel gwarantuje, że trimmer zachowa wszystkie składowe wymagane przez refleksyjny System.Text.Json. Pod pełnym AOT pozostaje IL3050 — patrz adnotacja niżej.")]
     [UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode",
-        Justification = "Reflection-based serializer używany dla prostego DTO; trimmer zachowuje publicznych członków via DAM. AOT-safe wariant z JsonTypeInfo będzie użyty w .NET 11.")]
+        Justification = "Świadomy kompromis: w .NET 10 PersistentComponentState ma wyłącznie refleksyjne PersistAsJson/TryTakeFromJson. Pod Native AOT operacja rzuci NotSupportedException — konsumenci AOT mają ustawić PersistentModel=false. Generator Zonit.Extensions.Website.SourceGenerators emituje już JsonSerializerContext per VM (ViewModelMetadata<T>.JsonTypeInfo), więc gdy .NET 11 doda TryTakeFromJson(JsonTypeInfo<T>) overload, ta supresja znika jednym refactorem — patrz Docs/NET11-Migration.md.")]
     private bool TryTakeModelFromState(out TViewModel? value)
         => PersistentComponentState.TryTakeFromJson(StateKey, out value);
 

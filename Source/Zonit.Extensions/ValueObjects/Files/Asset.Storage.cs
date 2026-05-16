@@ -41,7 +41,9 @@ public readonly partial struct Asset
         var mimeTypeBytes = Encoding.UTF8.GetBytes(MediaType.Value);
         var nameBytes = Encoding.UTF8.GetBytes(OriginalName.Value);
         var sha256Bytes = Encoding.UTF8.GetBytes(Sha256);
+#pragma warning disable ZONIT0001 // Reading the obsolete Md5 property for binary storage format compatibility.
         var md5Bytes = Encoding.UTF8.GetBytes(Md5);
+#pragma warning restore ZONIT0001
 
         // Calculate header size
         var headerSize = 1 + 16 + 1 + 8 + 2 + mimeTypeBytes.Length + 2 + nameBytes.Length + 44 + 24;

@@ -19,14 +19,24 @@ namespace Zonit.Extensions;
 /// </remarks>
 [TypeConverter(typeof(ValueObjectTypeConverter<Url>))]
 [JsonConverter(typeof(UrlJsonConverter))]
-public readonly struct Url : IEquatable<Url>, IComparable<Url>, IParsable<Url>, ISpanParsable<Url>
+public struct Url : IEquatable<Url>, IComparable<Url>, IParsable<Url>, ISpanParsable<Url>
 {
+    // NOTE: This struct is intentionally NOT `readonly`. The `_uri` field is a lazy
+    // cache populated on first access of any URI-derived property (Scheme, Host, …).
+    // Holding a Url instance in a `readonly` field on the caller side will trigger
+    // defensive copies and defeat the cache — store Url in a mutable field / variable
+    // when repeated URI-property access matters (audit AUDIT_2026_05 §2.4 — revised).
+    //
+    // All public APIs still treat Url as a value object: equality, hash code and JSON
+    // serialisation depend only on the canonical string value, never on the cached Uri.
+
     /// <summary>
     /// Empty URL instance. Equivalent to default(Url).
     /// </summary>
     public static readonly Url Empty = default;
 
     private readonly string? _value;
+    private Uri? _uri;
 
     /// <summary>
     /// The URL value. Never null - returns empty string for default/Empty.
@@ -35,47 +45,51 @@ public readonly struct Url : IEquatable<Url>, IComparable<Url>, IParsable<Url>, 
     /// This ensures that <c>default(Url).Value</c> returns <see cref="string.Empty"/> instead of null,
     /// making it safe to use in EF Core and other scenarios without null checks.
     /// </remarks>
-    public string Value => _value ?? string.Empty;
+    public readonly string Value => _value ?? string.Empty;
 
     /// <summary>
     /// Indicates whether the URL has a meaningful value (not empty or whitespace).
     /// </summary>
-    public bool HasValue => !string.IsNullOrWhiteSpace(_value);
+    public readonly bool HasValue => !string.IsNullOrWhiteSpace(_value);
 
     /// <summary>
-    /// Gets the Uri object representing this URL.
+    /// Gets the <see cref="System.Uri"/> representation of this URL. Lazily parsed on first
+    /// access and cached on the instance — subsequent calls return the same reference.
     /// </summary>
-    public Uri? Uri => HasValue ? new Uri(Value) : null;
+    public Uri? Uri => _uri ??= HasValue
+        ? new Uri(_value!, _value!.Contains("://", StringComparison.Ordinal) ? UriKind.Absolute : UriKind.RelativeOrAbsolute)
+        : null;
 
     /// <summary>
     /// Gets the URL scheme (http, https, ftp, etc.).
     /// </summary>
-    public string? Scheme => Uri?.Scheme;
+    public string? Scheme => Uri is { IsAbsoluteUri: true } u ? u.Scheme : null;
 
     /// <summary>
     /// Gets the URL host.
     /// </summary>
-    public string? Host => Uri?.Host;
+    public string? Host => Uri is { IsAbsoluteUri: true } u ? u.Host : null;
 
     /// <summary>
     /// Gets the URL port.
     /// </summary>
-    public int Port => Uri?.Port ?? 0;
+    public int Port => Uri is { IsAbsoluteUri: true } u ? u.Port : 0;
 
     /// <summary>
     /// Gets the URL path.
     /// </summary>
-    public string? Path => Uri?.AbsolutePath;
+    public string? Path => Uri is { IsAbsoluteUri: true } u ? u.AbsolutePath : null;
 
     /// <summary>
     /// Gets the URL query string.
     /// </summary>
-    public string? Query => Uri?.Query;
+    public string? Query => Uri is { IsAbsoluteUri: true } u ? u.Query : null;
 
     /// <summary>
     /// Checks if the URL uses HTTPS.
     /// </summary>
-    public bool IsHttps => Uri?.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase) ?? false;
+    public bool IsHttps => Uri is { IsAbsoluteUri: true } u
+        && u.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Checks if the URL is absolute.
@@ -100,6 +114,7 @@ public readonly struct Url : IEquatable<Url>, IComparable<Url>, IParsable<Url>, 
         }
 
         _value = uri.AbsoluteUri;
+        _uri = uri; // ctor already paid for parsing — prime the lazy cache.
     }
 
     /// <summary>
@@ -122,6 +137,7 @@ public readonly struct Url : IEquatable<Url>, IComparable<Url>, IParsable<Url>, 
         }
 
         _value = uri.IsAbsoluteUri ? uri.AbsoluteUri : uri.OriginalString;
+        _uri = uri; // ctor already paid for parsing — prime the lazy cache.
     }
 
     /// <summary>
@@ -133,6 +149,7 @@ public readonly struct Url : IEquatable<Url>, IComparable<Url>, IParsable<Url>, 
     {
         ArgumentNullException.ThrowIfNull(uri, nameof(uri));
         _value = uri.IsAbsoluteUri ? uri.AbsoluteUri : uri.OriginalString;
+        _uri = uri; // caller already produced the Uri — reuse it.
     }
 
     /// <summary>
@@ -216,16 +233,16 @@ public readonly struct Url : IEquatable<Url>, IComparable<Url>, IParsable<Url>, 
         url.Uri ?? throw new InvalidOperationException("Cannot convert empty Url to Uri.");
 
     /// <inheritdoc />
-    public bool Equals(Url other)
+    public readonly bool Equals(Url other)
     {
         return string.Equals(Value, other.Value, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <inheritdoc />
-    public override bool Equals(object? obj) => obj is Url other && Equals(other);
+    public override readonly bool Equals(object? obj) => obj is Url other && Equals(other);
 
     /// <inheritdoc />
-    public override int GetHashCode() => StringComparer.OrdinalIgnoreCase.GetHashCode(Value);
+    public override readonly int GetHashCode() => StringComparer.OrdinalIgnoreCase.GetHashCode(Value);
 
     /// <summary>
     /// Compares two URLs for equality.
@@ -238,7 +255,7 @@ public readonly struct Url : IEquatable<Url>, IComparable<Url>, IParsable<Url>, 
     public static bool operator !=(Url left, Url right) => !left.Equals(right);
 
     /// <inheritdoc />
-    public int CompareTo(Url other) => string.Compare(Value, other.Value, StringComparison.OrdinalIgnoreCase);
+    public readonly int CompareTo(Url other) => string.Compare(Value, other.Value, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Compares two URLs for less than.
@@ -261,7 +278,7 @@ public readonly struct Url : IEquatable<Url>, IComparable<Url>, IParsable<Url>, 
     public static bool operator >=(Url left, Url right) => left.CompareTo(right) >= 0;
 
     /// <inheritdoc />
-    public override string ToString() => Value;
+    public override readonly string ToString() => Value;
 
     /// <summary>
     /// Creates a URL from the specified address.

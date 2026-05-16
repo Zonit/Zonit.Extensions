@@ -23,7 +23,7 @@ public sealed class AuthenticationSchemeService(
 
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
-        var sessionValue = Request.Cookies["Session"];
+        var sessionValue = Request.Cookies[AuthExtensions.SessionCookieName];
         if (string.IsNullOrEmpty(sessionValue))
             return AuthenticateResult.NoResult();
 

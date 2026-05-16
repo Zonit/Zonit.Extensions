@@ -16,4 +16,11 @@ public interface IAuthenticatedProvider
 
     /// <summary><c>true</c> when <see cref="Current"/> is a non-empty identity.</summary>
     bool IsAuthenticated => Current.HasValue;
+
+    /// <summary>
+    /// Raised when <see cref="Current"/> changes (e.g. after a sign-in or sign-out
+    /// inside the current Blazor circuit). Mirrors the read-side <c>OnChange</c>
+    /// pattern used by the other Zonit providers (workspace / catalog / culture).
+    /// </summary>
+    event Action? OnChange;
 }

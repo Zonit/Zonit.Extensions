@@ -19,6 +19,7 @@ using Microsoft.Extensions.Hosting;
 using Zonit.Extensions.Auth;
 using Zonit.Extensions.Website;
 using Zonit.Extensions.Website.Authentication;
+using Zonit.Extensions.Website.Cookies.Middlewares;
 using Zonit.Extensions.Website.Middlewares;
 
 namespace Zonit.Extensions;
@@ -192,7 +193,8 @@ public static class WebsiteServiceCollectionExtensions
     /// different root components — useful when a sub-site needs a distinct layout
     /// or <c>&lt;base href&gt;</c>.
     /// </typeparam>
-    public static WebApplication UseWebsite<TApp>(
+    public static WebApplication UseWebsite<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TApp>(
         this WebApplication app,
         UrlPath directory,
         Action<SiteOptions> configure)
@@ -243,7 +245,9 @@ public static class WebsiteServiceCollectionExtensions
         app.MapStaticAssets();
     }
 
-    private static void BuildBranch<TApp>(IApplicationBuilder branch, SiteOptions site, WebsiteOptions opts)
+    private static void BuildBranch<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TApp>(
+        IApplicationBuilder branch, SiteOptions site, WebsiteOptions opts)
         where TApp : IComponent
     {
         var env = branch.ApplicationServices.GetRequiredService<IWebHostEnvironment>();
@@ -306,6 +310,13 @@ public static class WebsiteServiceCollectionExtensions
         foreach (var area in site.Areas) area.App(branch);
         foreach (var hook in site.AppHooks) hook(branch);
 
+        // Culture detection runs BEFORE UseRouting on purpose: the URL prefix path
+        // (/pl/home → /home) must be rewritten before EndpointRoutingMiddleware
+        // selects an endpoint, otherwise routes never match the prefixed form.
+        // CultureMiddleware does not read RouteValues / HttpContext.GetEndpoint(),
+        // so it is safe to place here — see audit §1.4 for the rationale.
+        branch.UseMiddleware<CultureMiddleware>();
+
         branch.UseRouting();
 
         // Auth must come AFTER UseRouting in endpoint-routing model.
@@ -314,12 +325,15 @@ public static class WebsiteServiceCollectionExtensions
         if (site.AntiForgery) branch.UseAntiforgery();
 
         // Zonit hydrators — order matters:
-        //   Session → identity into the request scope
-        //   Culture → resolves UI culture (consumes auth identity for per-user prefs)
+        //   Cookies   → snapshot of Request.Cookies into the scoped repository so
+        //               ICookieProvider.Get(...) works without an extra round-trip
+        //               (without this, the scoped CookiesRepository stays empty —
+        //               audit AUDIT_2026_05 §8.5).
+        //   Session   → identity into the request scope
         //   Workspace/Project → consume identity to populate org/project state
-        //   Tenant → independent of auth, last so downstream sees fully populated scope.
+        //   Tenant    → independent of auth, last so downstream sees fully populated scope.
+        branch.UseMiddleware<CookieMiddleware>();
         branch.UseMiddleware<SessionMiddleware>();
-        branch.UseMiddleware<CultureMiddleware>();
         branch.UseMiddleware<WorkspaceMiddleware>();
         branch.UseMiddleware<ProjectMiddleware>();
         branch.UseMiddleware<TenantMiddleware>();

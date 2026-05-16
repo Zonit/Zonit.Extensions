@@ -1,0 +1,33 @@
+@namespace Zonit.Extensions.Website
+@using Zonit.Extensions.Website.Toasts.Models
+@using Zonit.Extensions.Website.Toasts.Types
+@inject IToastProvider Toast
+@implements IDisposable
+
+@if (Toast.Toasts.Count > 0)
+{
+    <div class="zonit-toasts" role="status" aria-live="polite">
+        @foreach (var entry in Toast.Toasts)
+        {
+            <div class="zonit-toast zonit-toast--@entry.Type.ToString().ToLowerInvariant()"
+                 role="alert"
+                 @key="entry.Id">
+                <span class="zonit-toast__message">@entry.Message</span>
+                <button type="button"
+                        class="zonit-toast__close"
+                        aria-label="Dismiss"
+                        @onclick="() => Toast.Remove(entry.Id)">×</button>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    protected override void OnInitialized()
+        => Toast.OnChange += HandleChange;
+
+    private void HandleChange() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+        => Toast.OnChange -= HandleChange;
+}

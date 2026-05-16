@@ -103,10 +103,14 @@ public sealed class ViewModelMetadataGenerator : IIncrementalGenerator
 
     private static bool IsJsonContextSafe(INamedTypeSymbol vm)
     {
-        // STJ source generator cannot bind property names for nested or generic types reliably,
-        // so for those we skip JsonTypeInfo emission and PageViewBase will fall back to reflection.
+        // STJ source generator can only emit a stable accessor name (Default.{SimpleName})
+        // for top-level, non-generic, non-private types. For anything else we skip
+        // JsonTypeInfo emission — PageViewBase falls back to reflection-based JSON,
+        // and that fallback is honestly annotated with [RequiresUnreferencedCode] /
+        // [RequiresDynamicCode] rather than suppressed.
         if (vm.ContainingType is not null) return false;
         if (vm.IsGenericType) return false;
+        if (vm.DeclaredAccessibility is not (Accessibility.Public or Accessibility.Internal)) return false;
         return true;
     }
 
@@ -226,14 +230,28 @@ public sealed class ViewModelMetadataGenerator : IIncrementalGenerator
         foreach (var c in unique.Values)
         {
             EmitMetadataClass(sb, c);
+            if (c.EmitJsonContext)
+                EmitJsonContext(sb, c);
         }
 
-        // NOTE: We intentionally do NOT emit a JsonSerializerContext here yet.
-        // .NET 10's PersistentComponentState.PersistAsJson does not have a JsonTypeInfo overload
-        // (only the reflection-based 2-arg form exists). Once .NET 11 adds it, re-enable JSON
-        // emission and override ViewModelMetadata<T>.JsonTypeInfo accordingly.
-
         spc.AddSource("ZonitViewModelMetadata.g.cs", sb.ToString());
+    }
+
+    /// <summary>
+    /// Emits a dedicated <see cref="System.Text.Json.Serialization.JsonSerializerContext"/> partial
+    /// class for <paramref name="c"/>. STJ's own source generator picks up the
+    /// <c>[JsonSerializable]</c> attribute and produces the <c>Default.{SimpleName}</c> accessor
+    /// the metadata class references for <c>JsonTypeInfo</c>. This is what gives
+    /// <c>PageViewBase&lt;T&gt;</c> an AOT-safe path for <c>PersistAsJson</c> /
+    /// <c>TryTakeFromJson</c> — no <c>UnconditionalSuppressMessage</c> required.
+    /// </summary>
+    private static void EmitJsonContext(StringBuilder sb, ViewModelCandidate c)
+    {
+        sb.Append("[global::System.Text.Json.Serialization.JsonSerializable(typeof(")
+          .Append(c.FullyQualifiedName).AppendLine("))]");
+        sb.Append("internal partial class __ZonitVMJsonContext_").Append(c.SanitizedIdentifier)
+          .AppendLine(" : global::System.Text.Json.Serialization.JsonSerializerContext;");
+        sb.AppendLine();
     }
 
     private static void EmitMetadataClass(StringBuilder sb, ViewModelCandidate c)
@@ -287,6 +305,21 @@ public sealed class ViewModelMetadataGenerator : IIncrementalGenerator
           .Append("global::Zonit.Extensions.Website.PropertyAccessor<").Append(c.FullyQualifiedName)
           .AppendLine(">> Properties => _props;");
         sb.AppendLine();
+
+        // AOT-safe JsonTypeInfo override — points at the STJ-source-generated
+        // accessor on our dedicated context class. Emitted only when the VM is
+        // a top-level non-generic type (otherwise STJ cannot bind a stable
+        // accessor name and we leave the base-class null override in place,
+        // forcing PageViewBase down the reflective fallback).
+        if (c.EmitJsonContext)
+        {
+            sb.Append("    public override global::System.Text.Json.Serialization.Metadata.JsonTypeInfo<")
+              .Append(c.FullyQualifiedName).Append(">? JsonTypeInfo => __ZonitVMJsonContext_")
+              .Append(c.SanitizedIdentifier).Append(".Default.")
+              .Append(c.SimpleName).AppendLine(";");
+            sb.AppendLine();
+        }
+
         sb.Append("    public override ").Append(c.FullyQualifiedName).AppendLine(" CreateInstance() => new();");
 
         sb.AppendLine("}");

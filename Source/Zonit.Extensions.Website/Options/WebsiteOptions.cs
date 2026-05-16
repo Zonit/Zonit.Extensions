@@ -63,7 +63,7 @@ public sealed class WebsiteOptions
     /// the singleton instance in <see cref="WebsiteAreaRegistry"/> for later mounting
     /// at <c>app.UseWebsite&lt;TApp&gt;("/", o => o.AddArea&lt;TArea&gt;())</c>.
     /// </summary>
-    public WebsiteOptions AddArea<TArea>() where TArea : class, new()
+    public WebsiteOptions AddArea<TArea>() where TArea : class, IWebsiteArea, new()
     {
         var area = _registry.Register(new TArea());
 

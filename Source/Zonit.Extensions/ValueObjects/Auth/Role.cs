@@ -23,16 +23,16 @@ namespace Zonit.Extensions;
 /// </remarks>
 [TypeConverter(typeof(ValueObjectTypeConverter<Role>))]
 [JsonConverter(typeof(RoleJsonConverter))]
-public readonly struct Role : IEquatable<Role>, IComparable<Role>, IParsable<Role>, ISpanParsable<Role>
+public readonly partial struct Role : IEquatable<Role>, IComparable<Role>, IParsable<Role>, ISpanParsable<Role>
 {
     public const int MaxLength = 64;
     public const int MinLength = 1;
 
     public static readonly Role Empty = default;
 
-    private static readonly Regex Pattern = new(
-        @"^[a-z0-9][a-z0-9_\-]*$",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    // Source-generated regex — AOT-safe, faster than `new Regex(..., Compiled)`.
+    [GeneratedRegex(@"^[a-z0-9][a-z0-9_\-]*$", RegexOptions.CultureInvariant)]
+    private static partial Regex Pattern();
 
     private readonly string? _value;
 
@@ -49,7 +49,7 @@ public readonly struct Role : IEquatable<Role>, IComparable<Role>, IParsable<Rol
         if (normalized.Length > MaxLength)
             throw new ArgumentException($"Role cannot exceed {MaxLength} characters.", nameof(value));
 
-        if (!Pattern.IsMatch(normalized))
+        if (!Pattern().IsMatch(normalized))
             throw new ArgumentException(
                 "Role must consist of [a-z0-9_-] characters starting with a letter or digit (e.g. 'admin', 'super-editor').",
                 nameof(value));
@@ -87,7 +87,7 @@ public readonly struct Role : IEquatable<Role>, IComparable<Role>, IParsable<Rol
         }
 
         var normalized = value.Trim().ToLowerInvariant();
-        if (normalized.Length > MaxLength || !Pattern.IsMatch(normalized))
+        if (normalized.Length > MaxLength || !Pattern().IsMatch(normalized))
         {
             role = Empty;
             return false;

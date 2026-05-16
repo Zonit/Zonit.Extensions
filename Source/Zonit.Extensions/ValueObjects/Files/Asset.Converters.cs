@@ -177,7 +177,9 @@ public sealed class AssetJsonConverter : JsonConverter<Asset>
         writer.WriteString("size", value.Size.ToString());
         writer.WriteString("createdAt", value.CreatedAt.ToString("O"));
         writer.WriteString("sha256", value.Sha256);
+#pragma warning disable ZONIT0001 // Reading the obsolete Md5 property for legacy JSON output.
         writer.WriteString("md5", value.Md5);
+#pragma warning restore ZONIT0001
         writer.WriteString("category", value.Category.ToString());
         writer.WriteString("data", value.Base64);
         writer.WriteEndObject();

@@ -1,4 +1,4 @@
-﻿namespace Zonit.Extensions.Organizations.Abstractions.Entities;
+﻿namespace Zonit.Extensions.Organizations.Entities;
 
 public class Organization
 {

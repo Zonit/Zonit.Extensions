@@ -23,7 +23,7 @@ namespace Zonit.Extensions;
 /// </remarks>
 [TypeConverter(typeof(ValueObjectTypeConverter<Permission>))]
 [JsonConverter(typeof(PermissionJsonConverter))]
-public readonly struct Permission : IEquatable<Permission>, IComparable<Permission>, IParsable<Permission>, ISpanParsable<Permission>
+public readonly partial struct Permission : IEquatable<Permission>, IComparable<Permission>, IParsable<Permission>, ISpanParsable<Permission>
 {
     /// <summary>Maximum total length.</summary>
     public const int MaxLength = 200;
@@ -52,9 +52,14 @@ public readonly struct Permission : IEquatable<Permission>, IComparable<Permissi
     /// <summary>True if this permission contains a wildcard token.</summary>
     public bool HasWildcard => HasValue && Value.Contains('*');
 
-    private static readonly Regex Pattern = new(
-        @"^[a-z0-9_\-\*]+(\.[a-z0-9_\-\*]+)*$",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    // Source-generated regex — AOT-safe, faster than `new Regex(..., Compiled)`.
+    //
+    // Each token is EITHER a literal `[a-z0-9_-]+` OR a bare wildcard `*`. We deliberately
+    // disallow mixed forms like `"a*b"` so the wildcard semantics stay consistent: every
+    // `*` always means "match this whole token" and there is no ambiguity with prefix /
+    // suffix matching (audit AUDIT_2026_05 §3.4).
+    [GeneratedRegex(@"^([a-z0-9_\-]+|\*)(\.([a-z0-9_\-]+|\*))*$", RegexOptions.CultureInvariant)]
+    private static partial Regex Pattern();
 
     /// <summary>
     /// Creates a new Permission. Trims and lowercases the value.
@@ -69,7 +74,7 @@ public readonly struct Permission : IEquatable<Permission>, IComparable<Permissi
         if (normalized.Length > MaxLength)
             throw new ArgumentException($"Permission cannot exceed {MaxLength} characters.", nameof(value));
 
-        if (!Pattern.IsMatch(normalized))
+        if (!Pattern().IsMatch(normalized))
             throw new ArgumentException(
                 "Permission must consist of dot-separated tokens of [a-z0-9_-*] characters (e.g. 'orders.read', 'admin.*').",
                 nameof(value));
@@ -81,24 +86,52 @@ public readonly struct Permission : IEquatable<Permission>, IComparable<Permissi
     /// Checks whether <paramref name="other"/> is granted by this permission, expanding wildcards.
     /// E.g. <c>"orders.*"</c>.Implies(<c>"orders.read"</c>) → true.
     /// </summary>
+    /// <remarks>
+    /// <b>Wildcard semantics</b> (industry-standard, matches AWS IAM / K8s RBAC / Casbin default):
+    /// a trailing <c>*</c> matches zero or more sub-tokens. Therefore
+    /// <c>"admin.*".Implies("admin")</c> returns <see langword="true"/>. See audit AUDIT_2026_05 §1.11.
+    /// <para><b>Performance</b>: the implementation walks both values via <see cref="ReadOnlySpan{T}"/>
+    /// token enumeration — no <c>string.Split</c> allocations, no intermediate arrays. This matters
+    /// because <see cref="Implies"/> sits on the hot path of every <c>[Authorize&lt;RequirePermission&gt;]</c>
+    /// check (called O(granted-permissions) times per request).</para>
+    /// </remarks>
     public bool Implies(Permission other)
     {
         if (!HasValue) return false;
         if (!other.HasValue) return true; // empty permission is universally allowed
         if (Equals(other)) return true;
 
-        var left = Tokens;
-        var right = other.Tokens;
+        var leftValue = Value.AsSpan();
+        var rightValue = other.Value.AsSpan();
 
-        for (int i = 0; i < Math.Max(left.Count, right.Count); i++)
+        var leftSplit = leftValue.Split('.');
+        var rightSplit = rightValue.Split('.');
+
+        bool leftHas = leftSplit.MoveNext();
+        bool rightHas = rightSplit.MoveNext();
+
+        while (leftHas || rightHas)
         {
-            var l = i < left.Count ? left[i] : null;
-            var r = i < right.Count ? right[i] : null;
+            // Wildcard at this position matches anything (including the right side running out
+            // — that is the "trailing *" permissive semantics documented above).
+            if (leftHas)
+            {
+                var lSlice = leftValue[leftSplit.Current];
+                if (lSlice.Length == 1 && lSlice[0] == '*')
+                {
+                    leftHas = leftSplit.MoveNext();
+                    rightHas = rightSplit.MoveNext();
+                    continue;
+                }
+            }
 
-            if (l == Wildcard) continue;       // wildcard matches anything at this position
-            if (l is null) return false;        // left ran out → not implies
-            if (r is null) return false;        // right ran out → left is more specific
-            if (!string.Equals(l, r, StringComparison.Ordinal)) return false;
+            if (!leftHas) return false;   // left ran out → not implies
+            if (!rightHas) return false;  // right ran out → left is more specific
+            if (!leftValue[leftSplit.Current].SequenceEqual(rightValue[rightSplit.Current]))
+                return false;
+
+            leftHas = leftSplit.MoveNext();
+            rightHas = rightSplit.MoveNext();
         }
 
         return true;
@@ -134,7 +167,7 @@ public readonly struct Permission : IEquatable<Permission>, IComparable<Permissi
         }
 
         var normalized = value.Trim().ToLowerInvariant();
-        if (normalized.Length > MaxLength || !Pattern.IsMatch(normalized))
+        if (normalized.Length > MaxLength || !Pattern().IsMatch(normalized))
         {
             permission = Empty;
             return false;

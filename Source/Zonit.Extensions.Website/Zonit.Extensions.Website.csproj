@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk.Razor">
 <PropertyGroup>
   <!-- Package Metadata -->
   <Description>ASP.NET Core and Blazor web extensions providing base components (PageBase, PageEditBase, PageViewBase), navigation services, breadcrumbs management, toast notifications, cookie handling, and data protection utilities for building modern web applications.</Description>

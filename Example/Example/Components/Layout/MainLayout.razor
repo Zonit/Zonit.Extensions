@@ -69,6 +69,14 @@
     </main>
 </div>
 
+@*
+    Toast host. The provider (IToastProvider) is scoped per circuit so a single
+    ZonitToasts instance in the layout renders every toast pushed from any page.
+    Without this host the calls succeed silently — they end up in the queue but
+    nothing in the DOM subscribes.
+*@
+<ZonitToasts />
+
 @code {
     protected override void OnInitialized() => Culture.OnChange += StateHasChanged;
     public void Dispose() => Culture.OnChange -= StateHasChanged;

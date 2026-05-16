@@ -16,7 +16,7 @@ namespace Zonit.Extensions;
 /// <list type="bullet">
 ///   <item>Unique ID (GUID) - always available for safe storage</item>
 ///   <item>Original name preserved + unique name for filesystem</item>
-///   <item>SHA256 and MD5 hashes for integrity and deduplication</item>
+///   <item>SHA256 hash for integrity and deduplication (MD5 retained for legacy interop only — see <see cref="Md5"/>)</item>
 ///   <item>Creation timestamp embedded</item>
 ///   <item>FileSize VO for easy unit conversion (KB, MB, GB)</item>
 ///   <item>Implicit conversions from/to Stream, byte[], Base64</item>
@@ -67,6 +67,8 @@ public readonly partial struct Asset : IEquatable<Asset>
     public static readonly Asset Empty = default;
 
     private readonly byte[]? _data;
+    private readonly string? _sha256;
+    private readonly string? _md5;
 
     #region Core Properties
 
@@ -116,13 +118,22 @@ public readonly partial struct Asset : IEquatable<Asset>
     /// SHA256 hash of the file data (Base64 encoded).
     /// Computed once at creation. Use for integrity verification.
     /// </summary>
-    public string Sha256 { get; }
+    /// <remarks>Never null — returns <see cref="string.Empty"/> for <c>default(Asset)</c>.</remarks>
+    public string Sha256 => _sha256 ?? string.Empty;
 
     /// <summary>
-    /// MD5 hash of the file data (Base64 encoded).
-    /// Computed once at creation. Use for legacy systems, ETags.
+    /// MD5 hash of the file data (Base64 encoded). Computed once at creation.
     /// </summary>
-    public string Md5 { get; }
+    /// <remarks>
+    /// <para><b>Do not use this for integrity or security checks.</b> MD5 is
+    /// cryptographically broken (collision attacks are practical since ~2005,
+    /// formally deprecated by NIST in 2010, RFC 6151). It is retained only for
+    /// interop with legacy ETag / cache systems that hard-require it.</para>
+    /// <para>For any new code, use <see cref="Sha256"/>. This property may be
+    /// removed in a future major version (audit AUDIT_2026_05 §11.1).</para>
+    /// </remarks>
+    [Obsolete("MD5 is cryptographically broken. Use Sha256 for integrity / deduplication; keep Md5 only for legacy interop (e.g. S3 ETag).", error: false, DiagnosticId = "ZONIT0001")]
+    public string Md5 => _md5 ?? string.Empty;
 
     /// <summary>
     /// SHA256 hash alias for backward compatibility.
@@ -247,8 +258,8 @@ public readonly partial struct Asset : IEquatable<Asset>
         Size = size;
 
         // Compute hashes once (small - ~44 bytes each)
-        Sha256 = data.Length > 0 ? Convert.ToBase64String(SHA256.HashData(data)) : string.Empty;
-        Md5 = data.Length > 0 ? Convert.ToBase64String(MD5.HashData(data)) : string.Empty;
+        _sha256 = data.Length > 0 ? Convert.ToBase64String(SHA256.HashData(data)) : string.Empty;
+        _md5 = data.Length > 0 ? Convert.ToBase64String(MD5.HashData(data)) : string.Empty;
 
         // Detect signature from magic bytes (small - enum)
         Signature = DetectSignatureFromData(data);
@@ -306,8 +317,8 @@ public readonly partial struct Asset : IEquatable<Asset>
         Size = new FileSize(data.Length);
 
         // Compute hashes only if not provided (small - ~44 bytes each)
-        Sha256 = sha256 ?? (data.Length > 0 ? Convert.ToBase64String(SHA256.HashData(data)) : string.Empty);
-        Md5 = md5 ?? (data.Length > 0 ? Convert.ToBase64String(MD5.HashData(data)) : string.Empty);
+        _sha256 = sha256 ?? (data.Length > 0 ? Convert.ToBase64String(SHA256.HashData(data)) : string.Empty);
+        _md5 = md5 ?? (data.Length > 0 ? Convert.ToBase64String(MD5.HashData(data)) : string.Empty);
 
         // Detect signature (small - enum)
         Signature = DetectSignatureFromData(data);
@@ -342,8 +353,8 @@ public readonly partial struct Asset : IEquatable<Asset>
         Signature = signature;
         CreatedAt = createdAt;
         Size = new FileSize(data.Length);
-        Sha256 = sha256;
-        Md5 = md5;
+        _sha256 = sha256;
+        _md5 = md5;
         // Note: Base64 and DataUrl are computed on-demand (properties)
     }
 
@@ -483,8 +494,17 @@ public readonly partial struct Asset : IEquatable<Asset>
     /// <summary>
     /// Verifies the file data against a known MD5 hash.
     /// </summary>
-    public bool VerifyMd5(string expectedMd5) =>
-        string.Equals(Md5, expectedMd5, StringComparison.Ordinal);
+    /// <remarks>
+    /// MD5 is cryptographically broken — see <see cref="Md5"/> for the full rationale.
+    /// Use <see cref="VerifyHash(string)"/> (SHA256) for any new integrity check.
+    /// </remarks>
+    [Obsolete("MD5 verification is not a security guarantee. Use VerifyHash (SHA256) instead; keep VerifyMd5 only for legacy interop.", error: false, DiagnosticId = "ZONIT0001")]
+    public bool VerifyMd5(string expectedMd5)
+    {
+#pragma warning disable ZONIT0001 // Reading the obsolete property is intentional here.
+        return string.Equals(Md5, expectedMd5, StringComparison.Ordinal);
+#pragma warning restore ZONIT0001
+    }
 
     #endregion
 

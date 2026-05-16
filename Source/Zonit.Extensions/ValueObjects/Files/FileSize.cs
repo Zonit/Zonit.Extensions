@@ -49,6 +49,17 @@ public readonly struct FileSize : IEquatable<FileSize>, IComparable<FileSize>, I
     /// <summary>Bytes in a terabyte (1,099,511,627,776).</summary>
     public const long BytesPerTerabyte = BytesPerGigabyte * 1024;
 
+    // Order matters: longest suffix first so "MB" never wins for "MB"-ending input
+    // before we reach "GB"/"TB" — also "B" is the catch-all and must be last.
+    private static readonly (string Suffix, long Multiplier)[] TryParseUnits =
+    [
+        ("TB", BytesPerTerabyte),
+        ("GB", BytesPerGigabyte),
+        ("MB", BytesPerMegabyte),
+        ("KB", BytesPerKilobyte),
+        ("B",  1L),
+    ];
+
     /// <summary>Zero file size.</summary>
     public static readonly FileSize Zero = new(0);
 
@@ -351,10 +362,9 @@ public readonly struct FileSize : IEquatable<FileSize>, IComparable<FileSize>, I
             return false;
         }
 
-        // Try with unit suffix
-        var units = new[] { ("TB", BytesPerTerabyte), ("GB", BytesPerGigabyte), ("MB", BytesPerMegabyte), ("KB", BytesPerKilobyte), ("B", 1L) };
-
-        foreach (var (unit, multiplier) in units)
+        // Try with unit suffix. Hoisted to a static so the array isn't reallocated on every
+        // parse call (TryParse is on the hot path for config / form binding).
+        foreach (var (unit, multiplier) in TryParseUnits)
         {
             if (s.EndsWith(unit, StringComparison.Ordinal))
             {

@@ -6,5 +6,15 @@ internal sealed class AuthenticatedRepository : IAuthenticatedRepository
 
     public Identity Current => _current;
 
-    public void Initialize(Identity identity) => _current = identity;
+    /// <inheritdoc />
+    public event Action? OnChange;
+
+    /// <inheritdoc />
+    public void Initialize(Identity identity)
+    {
+        var changed = !_current.Equals(identity);
+        _current = identity;
+        if (changed)
+            OnChange?.Invoke();
+    }
 }

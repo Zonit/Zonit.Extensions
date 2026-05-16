@@ -41,6 +41,14 @@ public readonly struct Title : IEquatable<Title>, IComparable<Title>, IParsable<
 
     private readonly string? _value;
 
+    // Precomputed grapheme count. Caching avoids a fresh `new StringInfo(_value)` walk on
+    // every Length access — relevant because Length is read by validators / UI counters
+    // many times for the same Title instance.
+    //
+    // For default(Title) this field stays 0 (no ctor runs); Length checks _value first
+    // and short-circuits to 0 to keep behaviour identical to the pre-cache version.
+    private readonly int _length;
+
     /// <summary>
     /// The title value. Never null - returns empty string for default/Empty.
     /// </summary>
@@ -58,7 +66,8 @@ public readonly struct Title : IEquatable<Title>, IComparable<Title>, IParsable<
     /// <summary>
     /// Gets the length of the title in text elements (graphemes), correctly handling Unicode.
     /// </summary>
-    public int Length => string.IsNullOrEmpty(_value) ? 0 : new StringInfo(_value).LengthInTextElements;
+    /// <remarks>Precomputed in the constructor — O(1) per call.</remarks>
+    public int Length => _value is null ? 0 : _length;
 
     /// <summary>
     /// Creates a new title with the specified value.
@@ -82,6 +91,17 @@ public readonly struct Title : IEquatable<Title>, IComparable<Title>, IParsable<
             throw new ArgumentException($"Title cannot exceed {MaxLength} characters. Current length: {graphemeLength}.", nameof(value));
 
         _value = normalizedValue;
+        _length = graphemeLength;
+    }
+
+    // Internal trusted-input ctor used by TryCreate / parsing paths that already
+    // produced a normalized value and counted its graphemes — bypasses the
+    // re-normalize + StringInfo walk in the public ctor. Caller MUST guarantee
+    // that the value is already trimmed/normalized and within Min/Max bounds.
+    private Title(string normalizedValue, int graphemeLength, bool _)
+    {
+        _value = normalizedValue;
+        _length = graphemeLength;
     }
 
     /// <summary>
@@ -189,7 +209,8 @@ public readonly struct Title : IEquatable<Title>, IComparable<Title>, IParsable<
             return false;
         }
 
-        title = new Title(normalizedValue);
+        // Trusted-input ctor — value is already normalized and length-checked.
+        title = new Title(normalizedValue, graphemeLength, _: false);
         return true;
     }
 

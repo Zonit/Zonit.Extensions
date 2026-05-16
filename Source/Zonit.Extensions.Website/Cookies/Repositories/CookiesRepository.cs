@@ -11,7 +11,10 @@ internal class CookiesRepository : ICookiesRepository
 
     public CookieModel Add(CookieModel cookie)
     {
-        var existingCookie = Cookies.SingleOrDefault(x => x.Name == cookie.Name);
+        // Cookie names are case-insensitive per RFC 6265 §4.1.2; matching with
+        // OrdinalIgnoreCase here keeps `Set("session", …)` after `Set("Session", …)`
+        // from creating a duplicate slot in the per-request snapshot.
+        var existingCookie = Cookies.SingleOrDefault(x => string.Equals(x.Name, cookie.Name, StringComparison.OrdinalIgnoreCase));
 
         if (existingCookie is not null)
         {

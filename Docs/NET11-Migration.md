@@ -26,35 +26,31 @@ Trimmer/AOT zachowuje członków `TViewModel` przez `[DynamicallyAccessedMembers
 - `PersistAsJson<TValue>(string key, TValue value, JsonTypeInfo<TValue> jsonTypeInfo)`
 - `TryTakeFromJson<TValue>(string key, JsonTypeInfo<TValue> jsonTypeInfo, out TValue? instance)`
 
-Po wydaniu .NET 11 należy:
+### Status na 2026-05 (po audycie AUDIT_2026_05)
 
-1. **Re-enable JsonSerializerContext w generatorze**
-   - Plik: `Source/Zonit.Extensions.Website.SourceGenerators/ViewModelMetadataGenerator.cs`
-   - Sekcja oznaczona komentarzem `// NOTE: We intentionally do NOT emit a JsonSerializerContext here yet.`
-   - Przywrócić `EmitJsonContext(sb, c)` per kandydat (kod był już napisany — patrz historia git).
-   - Każda VM ma już `EmitJsonContext` flag w `ViewModelCandidate` i `IsJsonContextSafe()` filtruje typy nested/generic.
+Generator **już emituje** per-VM `JsonSerializerContext` i nadpisuje `ViewModelMetadata<T>.JsonTypeInfo`:
 
-2. **Override `JsonTypeInfo` w wygenerowanej klasie metadata**
-   - W `EmitMetadataClass` dodać:
-     ```csharp
-     public override global::System.Text.Json.Serialization.Metadata.JsonTypeInfo<{FQN}>? JsonTypeInfo
-         => __ZonitVMJsonContext_{sanitized}.Default.{simpleName};
-     ```
-   - `ViewModelMetadata<T>.JsonTypeInfo` (Abstractions) jest już `virtual` zwracający null — nie wymaga zmian.
+- `ViewModelMetadataGenerator.EmitJsonContext` produkuje `[JsonSerializable(typeof(VM))] internal partial class __ZonitVMJsonContext_X : JsonSerializerContext;` per kandydat.
+- `EmitMetadataClass` nadpisuje `JsonTypeInfo => __ZonitVMJsonContext_X.Default.{SimpleName}` gdy `IsJsonContextSafe(vm)` (top-level, non-generic, public/internal).
+- `PageViewBase<T>` ma jeszcze refleksyjne wywołania (`PersistAsJson(key, model)` / `TryTakeFromJson(key, out value)`) z `[UnconditionalSuppressMessage]` — czekają na overload z `JsonTypeInfo` w .NET 11.
 
-3. **Refactor `PageViewBase<TViewModel>`**
+### Po wydaniu .NET 11
+
+1. **Refactor `PageViewBase<TViewModel>`** — to jedyna zmiana wymagana w runtime'ie:
    - Plik: `Source/Zonit.Extensions.Website/Components/PageViewBase.cs`
    - `PersistState()` i `TryTakeModelFromState(...)`:
      ```csharp
      if (ViewModelMetadata<TViewModel>.Instance?.JsonTypeInfo is { } typeInfo)
          PersistentComponentState.PersistAsJson(StateKey, Model, typeInfo);   // AOT-safe path
      else
-         PersistentComponentState.PersistAsJson(StateKey, Model);              // legacy fallback
+         PersistentComponentState.PersistAsJson(StateKey, Model);              // legacy fallback (top-level Validator etc.)
      ```
-   - **Usunąć** `[UnconditionalSuppressMessage]` na `PersistState`/`TryTakeModelFromState` — gdy generator dostarczy `JsonTypeInfo`, gałąź refleksyjna zamienia się w martwy kod (nadal opatrzony lokalnym suppress jako fallback gdy generatora nie ma).
+   - **Usunąć** obydwie `[UnconditionalSuppressMessage]` z `PersistState`/`TryTakeModelFromState` — gałąź AOT-safe nie wymaga supresji, a refleksyjny fallback przepisujemy na osobną `[RequiresUnreferencedCode]` / `[RequiresDynamicCode]` metodę (`PersistReflective` / `TryTakeReflective`) jak w pierwszej propozycji audytu §3.
    - Można rozważyć całkowite usunięcie gałęzi refleksyjnej, jeśli założymy, że generator zawsze obecny (ale ryzyko: konsument nie referuje pakietu generatora).
 
-4. **Cleanup w PageEditBase**
+2. **Weryfikacja** — `IsJsonContextSafe` w generatorze już filtruje typy nested/generic. Po przerzuceniu PageViewBase na nową ścieżkę zostają tylko legitne supresje na fallback dla typów, których STJ nie umie obsłużyć przez source-gen.
+
+3. **Cleanup w PageEditBase**
    - Plik: `Source/Zonit.Extensions.Website/Components/PageEditBase.cs`
    - Pozostałe supresje `IL2026/IL3050` na `*Reflective` metodach **zostają** — dotyczą reflection-based fallbacku poza JSON (DataAnnotations Validator, property accessors).
    - Można rozważyć migrację `Validator.TryValidateObject` na `Microsoft.Extensions.Validation` (source-generated walidacja) w .NET 10.x/11 — wtedy zniknie potrzeba `[UnconditionalSuppressMessage]` na `TryValidate`/`CreateValidationContext`.
@@ -90,7 +86,7 @@ Sprawdzić wygenerowany kod w `obj/Release/net11.0/generated/Zonit.Extensions.We
 
 | Cel | Plik | Sekcja |
 |---|---|---|
-| Generator JSON | `Source/Zonit.Extensions.Website.SourceGenerators/ViewModelMetadataGenerator.cs` | komentarz `NOTE: We intentionally do NOT emit a JsonSerializerContext here yet` |
-| `JsonTypeInfo` virtual | `Source/Zonit.Extensions.Website.Abstractions/ViewModels/ViewModelMetadata.cs` | property `JsonTypeInfo` |
+| Generator JSON | `Source/Zonit.Extensions.Website.SourceGenerators/ViewModelMetadataGenerator.cs` | metody `EmitJsonContext` / `EmitMetadataClass` (override `JsonTypeInfo`) |
+| `JsonTypeInfo` virtual | `Source/Zonit.Extensions.Website/ViewModels/ViewModelMetadata.cs` | property `JsonTypeInfo` |
 | Persist/restore | `Source/Zonit.Extensions.Website/Components/PageViewBase.cs` | metody `PersistState`, `TryTakeModelFromState` |
 | Validator | `Source/Zonit.Extensions.Website/Components/PageEditBase.cs` | metody `TryValidate`, `CreateValidationContext` |
