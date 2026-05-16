@@ -42,11 +42,11 @@ internal sealed class WorkspaceRepository(IOrganizationSource userWorkspace) : I
         StateChanged();
     }
 
-    public async Task<StateModel> InitializeAsync()
+    public async Task<StateModel> InitializeAsync(CancellationToken cancellationToken = default)
     {
         // Parallelise — two independent reads, no need to serialise them.
-        var workspaceTask = _userWorkspace.InitializeAsync();
-        var organizationsTask = _userWorkspace.GetOrganizationsAsync();
+        var workspaceTask = _userWorkspace.InitializeAsync(cancellationToken);
+        var organizationsTask = _userWorkspace.GetOrganizationsAsync(cancellationToken);
         await Task.WhenAll(workspaceTask, organizationsTask);
 
         _state = new StateModel
@@ -58,12 +58,12 @@ internal sealed class WorkspaceRepository(IOrganizationSource userWorkspace) : I
         return _state;
     }
 
-    public async Task SwitchOrganizationAsync(Guid organizationId)
+    public async Task SwitchOrganizationAsync(Guid organizationId, CancellationToken cancellationToken = default)
     {
         if (_state is null)
             return;
 
-        _state.Workspace = await _userWorkspace.SwitchOrganizationAsync(organizationId);
+        _state.Workspace = await _userWorkspace.SwitchOrganizationAsync(organizationId, cancellationToken);
         StateChanged();
     }
 

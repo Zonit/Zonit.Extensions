@@ -36,8 +36,65 @@ url.IsAbsolute     -> @url.IsAbsolute</pre>
     <pre>UrlSlug.TryCreate("@_slugInput", out var slug) -> @(slug.HasValue ? slug.Value : "(invalid)")</pre>
 </section>
 
+<section class="card">
+    <h2>UrlPath</h2>
+    <p>
+        In-site path — the bit after the host. Rejects absolute-looking inputs
+        (<code>http://...</code>, <code>//cdn/...</code>) so a field typed
+        <code>UrlPath</code> can never accidentally hold an external URL.
+    </p>
+    @{ var pathOk = UrlPath.TryParse(_pathInput, null, out var pathVo); }
+    <input class="input" @bind="_pathInput" @bind:event="oninput" />
+    <pre>UrlPath.TryParse("@_pathInput") -> @(pathOk ? pathVo.Value : "(invalid)")
+  .IsRooted                         -> @(pathOk ? pathVo.IsRooted.ToString() : "—")</pre>
+</section>
+
+<section class="card">
+    <h2>Description (max 160)</h2>
+    <p>
+        Short-form text with a hard cap (typical meta-description / card-subtitle).
+        Whitespace is collapsed; grapheme-correct length so emoji count as 1.
+    </p>
+    @{ Description.TryParse(_descriptionInput, null, out var desc); }
+    <textarea class="input" rows="2" @bind="_descriptionInput" @bind:event="oninput"></textarea>
+    <pre>Description.TryParse(...) -> @(desc.HasValue ? "ok" : "(invalid)")
+  .Length                  -> @desc.Length / @Description.MaxLength
+  .Value                   -> "@desc.Value"</pre>
+</section>
+
+<section class="card">
+    <h2>Content (no length cap)</h2>
+    <p>
+        Long-form text (HTML, markdown). Trims leading/trailing whitespace; preserves
+        everything in between including embedded markup.
+    </p>
+    @{ Content content = _contentInput; }
+    <textarea class="input" rows="4" @bind="_contentInput" @bind:event="oninput"></textarea>
+    <pre>content.HasValue -> @content.HasValue
+content.Length   -> @content.Length</pre>
+</section>
+
+<section class="card">
+    <h2>Credential — auto-detected kind</h2>
+    <p>
+        One field, four kinds: GUID, e-mail, phone, username. The user types once —
+        the VO figures out what they meant.
+    </p>
+    @{ var credOk = Credential.TryParse(_credInput, null, out var cred); }
+    <input class="input" @bind="_credInput" @bind:event="oninput"
+           placeholder="email@example.com / +48600700800 / jkowalski / 00000000-0000-0000-0000-000000000000" />
+    <pre>Credential.TryParse("@_credInput") -> @(credOk ? "ok" : "(unrecognised)")
+  .Kind     -> @cred.Kind
+  .Value    -> "@cred.Value"
+  .Id       -> @(cred.IsId ? cred.Id.ToString() : "—")</pre>
+</section>
+
 @code {
-    string _titleInput = "Hello Zonit";
-    string _urlInput   = "https://zonit.dev";
-    string _slugInput  = "Hello World!";
+    string _titleInput       = "Hello Zonit";
+    string _urlInput         = "https://zonit.dev";
+    string _slugInput        = "Hello World!";
+    string _pathInput        = "/orders?id=42";
+    string _descriptionInput = "A short tagline that fits in a card subtitle.";
+    string _contentInput     = "<p>Long-form <strong>HTML</strong> goes here.</p>";
+    string _credInput        = "jan@example.com";
 }

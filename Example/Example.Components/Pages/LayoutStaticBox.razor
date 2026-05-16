@@ -1,0 +1,23 @@
+@page "/components/layouts/static-box"
+@attribute [LayoutKey("Demo.Box")]
+@inherits PageBase
+
+<h1>[LayoutKey("Demo.Box")] — static</h1>
+
+<p>
+    This page is rendered inside <code>DemoBoxLayout</code> purely because of the
+    <code>[LayoutKey("Demo.Box")]</code> attribute on the class. There is <em>no</em>
+    <code>@@layout</code> directive in this file and the page's compiled type carries
+    no compile-time reference to <code>DemoBoxLayout</code> — the resolver looked the
+    key up in <code>ILayoutRegistry</code> at render time.
+</p>
+
+<p>
+    Note that <strong>none</strong> of the usual chrome (top nav, side menu, footer)
+    is present — that's because the layout-by-key resolution wins over the Site
+    default <code>MainLayout</code>.
+</p>
+
+<p>
+    <a href="/components/layouts">← Back</a>
+</p>

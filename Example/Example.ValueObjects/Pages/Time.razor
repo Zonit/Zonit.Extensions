@@ -1,0 +1,112 @@
+@page "/vo/time"
+@rendermode InteractiveServer
+@using TimeZone = Zonit.Extensions.TimeZone
+
+<h1>Time-shaped value objects</h1>
+
+<p>
+    Two time-domain VOs:
+    <code>TimeZone</code> wraps an IANA / fixed-offset zone identifier with implicit
+    <code>string ↔ VO</code> and <code>int → VO</code> (for fixed offsets); <code>Schedule</code>
+    is a cron-flavoured rule used by background workers and "next run" displays.
+</p>
+
+<section class="card">
+    <h2>TimeZone</h2>
+    @{
+        TimeZone warsaw = "Europe/Warsaw";
+        TimeZone newYork = "America/New_York";
+        TimeZone fixedPlusTwo = 2;          // implicit int -> fixed offset
+        var nowUtc = DateTime.UtcNow;
+    }
+    <pre>TimeZone warsaw = "Europe/Warsaw"
+    .Value                  -> @warsaw.Value
+    .Offset                 -> @warsaw.Offset
+    .IsFixedOffset          -> @warsaw.IsFixedOffset
+    .ConvertFromUtc(now)    -> @warsaw.ConvertFromUtc(nowUtc):u
+
+TimeZone newYork = "America/New_York"
+    .ConvertFromUtc(now)    -> @newYork.ConvertFromUtc(nowUtc):u
+
+TimeZone fixed+2 = 2
+    .Value                  -> @fixedPlusTwo.Value
+    .IsFixedOffset          -> @fixedPlusTwo.IsFixedOffset</pre>
+</section>
+
+<section class="card">
+    <h2>Schedule — calendar mode</h2>
+    <p>
+        Each calendar field defaults to <em>wildcard</em> (<code>null</code>); set the
+        ones you care about and leave the rest alone. The factory helpers cover the
+        common cases without needing to remember which fields to set.
+    </p>
+
+    @{
+        var everyMinute = Schedule.EveryMinute();
+        var nineAm = Schedule.EveryDay(atHour: 9);
+        var fridayEvening = Schedule.EveryWeek(DayOfWeek.Friday, atHour: 22);
+        var firstOfMonth = Schedule.EveryMonth(onDay: 1, atHour: 0);
+        var monthEnd = Schedule.EveryMonth(onDay: -1, atHour: 23, atMinute: 59);
+
+        var refTime = new DateTimeOffset(2026, 5, 15, 12, 0, 0, TimeSpan.Zero);
+    }
+    <pre>// Schedule.EveryMinute()                 — every minute at :00
+//   .GetNextOccurrence(@refTime:u)
+//   ->  @(everyMinute.GetNextOccurrence(refTime)?.ToString("u") ?? "(none)")
+
+// Schedule.EveryDay(atHour: 9)            — daily 09:00
+//   .GetNextOccurrence(@refTime:u)
+//   ->  @(nineAm.GetNextOccurrence(refTime)?.ToString("u") ?? "(none)")
+
+// Schedule.EveryWeek(Friday, atHour: 22)  — Friday 22:00
+//   .GetNextOccurrence(@refTime:u)
+//   ->  @(fridayEvening.GetNextOccurrence(refTime)?.ToString("u") ?? "(none)")
+
+// Schedule.EveryMonth(onDay: 1)           — first of month at midnight
+//   .GetNextOccurrence(@refTime:u)
+//   ->  @(firstOfMonth.GetNextOccurrence(refTime)?.ToString("u") ?? "(none)")
+
+// Schedule.EveryMonth(onDay: -1, 23, 59)  — month-end at 23:59 (-1 = last day)
+//   .GetNextOccurrence(@refTime:u)
+//   ->  @(monthEnd.GetNextOccurrence(refTime)?.ToString("u") ?? "(none)")</pre>
+</section>
+
+<section class="card">
+    <h2>Schedule — interval mode</h2>
+    <p>
+        Set <code>Interval</code> for "run every N seconds/minutes/hours" cadences.
+        Calendar fields are ignored when an interval is present.
+    </p>
+
+    @{
+        var every30s = Schedule.EverySeconds(30);
+        var every5m = Schedule.EveryMinutes(5);
+        var every6h = Schedule.EveryHours(6);
+        var startupBoost = Schedule.Now();        // also-runs-immediately marker
+    }
+    <pre>Schedule.EverySeconds(30).Interval -> @every30s.Interval
+Schedule.EveryMinutes(5).Interval  -> @every5m.Interval
+Schedule.EveryHours(6).Interval    -> @every6h.Interval
+Schedule.Now().IsNow               -> @startupBoost.IsNow</pre>
+</section>
+
+<section class="card">
+    <h2>Try it — pick a time, see the next match</h2>
+    <p>Daily schedule at the time you pick (24h, <code>HH:mm</code>):</p>
+    <input class="input" @bind="_time" @bind:event="oninput" placeholder="09:00" />
+    @{
+        var parts = (_time ?? string.Empty).Split(':');
+        var h = int.TryParse(parts.ElementAtOrDefault(0), out var hv) ? hv : 9;
+        var m = int.TryParse(parts.ElementAtOrDefault(1), out var mv) ? mv : 0;
+        if (h < 0 || h > 23) h = 9;
+        if (m < 0 || m > 59) m = 0;
+        var custom = Schedule.EveryDay(h, m);
+        var next = custom.GetNextOccurrence(DateTimeOffset.UtcNow);
+    }
+    <pre>Schedule.EveryDay(@h, @m).GetNextOccurrence(now)
+  ->  @(next?.ToString("u") ?? "(none)")</pre>
+</section>
+
+@code {
+    string _time = "09:00";
+}

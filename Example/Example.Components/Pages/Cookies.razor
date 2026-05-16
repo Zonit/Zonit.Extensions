@@ -5,9 +5,13 @@
 <h1>Cookies</h1>
 
 <p>
-    <code>ICookieProvider</code> is a thin wrapper over <code>HttpContext.Response.Cookies</code>
-    + <code>HttpContext.Request.Cookies</code>. Lifetime overloads accept a
-    <code>TimeSpan</code> (preferred), a <code>DateTime</code>, or a full <code>CookieModel</code>.
+    <code>ICookieProvider</code> wraps two completely different worlds:
+    <strong>HttpOnly</strong> cookies issued server-side by middleware (e.g. the auth
+    <code>Session</code> cookie), and <strong>JS-visible</strong> cookies set from the
+    interactive circuit via <code>document.cookie</code>. Reads pass through a
+    per-circuit snapshot — call <code>RefreshAsync()</code> once on first interactive
+    render to populate it (HTTP-request scope ≠ circuit scope in Blazor Server, so the
+    server-side seed never reaches the circuit on its own).
 </p>
 
 <section class="card stack">
@@ -19,25 +23,52 @@
     </label>
 
     <div class="row">
-        <button class="btn-primary" @onclick="Save">Save (1 day)</button>
-        <button @onclick="Load">Load</button>
-        <button @onclick="Delete">Delete</button>
+        <button class="btn-primary" type="button" @onclick="Save">Save (1 day)</button>
+        <button type="button" @onclick="Load">Load</button>
+        <button type="button" @onclick="Delete">Delete</button>
     </div>
 
     @if (_loaded is not null)
     {
-        <p class="muted">Last read: <code>@_loaded</code></p>
+        <p class="muted">Last <code>Get("@Key")</code>: <strong>@_loaded</strong></p>
     }
 </section>
 
 <section class="card">
-    <h2>All cookies</h2>
-    <ul>
-        @foreach (var c in Cookie.GetCookies())
-        {
-            <li><code>@c.Name</code> = <code>@c.Value</code></li>
-        }
-    </ul>
+    <h2>Cookies visible to JavaScript</h2>
+    <p class="muted">
+        Hydrated by <code>Cookie.RefreshAsync()</code> on first interactive render.
+        <strong>HttpOnly</strong> cookies (the auth session cookie among them) are
+        <em>not</em> listed here — browsers hide them from
+        <code>document.cookie</code> on purpose. That is a feature, not a bug:
+        HttpOnly is exactly how the session cookie defends itself against XSS.
+    </p>
+
+    @if (Cookie.GetCookies() is { Count: > 0 } cookies)
+    {
+        <table class="creds">
+            <thead><tr><th>Name</th><th>Value</th></tr></thead>
+            <tbody>
+                @foreach (var c in cookies)
+                {
+                    <tr>
+                        <td><code>@c.Name</code></td>
+                        <td><code>@c.Value</code></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+    else
+    {
+        <p class="muted">
+            (none visible to JS — log in first or click <em>Save</em> above to seed one).
+        </p>
+    }
+
+    <p class="muted">
+        <button type="button" @onclick="Refresh">Refresh from browser</button>
+    </p>
 </section>
 
 @code {
@@ -45,23 +76,46 @@
     string _value = "hello";
     string? _loaded;
 
-    void Save()
+    // Hydrate the cookie snapshot from `document.cookie` once the JS interop is live.
+    // The HTTP request that prerendered this page already ran CookieMiddleware, but
+    // we are now in the circuit DI scope which is fresh and empty — without this
+    // refresh, every Get() would return null until the user clicks Save in this very
+    // circuit.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        Cookie.Set(Key, _value, TimeSpan.FromDays(1));
+        if (firstRender)
+        {
+            await Cookie.RefreshAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    async Task Save()
+    {
+        await Cookie.SetAsync(Key, _value, TimeSpan.FromDays(1));
+        await Cookie.RefreshAsync();          // pull the just-written cookie back so the table updates
         Toast.AddSuccess("Saved cookie {0}", Key);
     }
 
     void Load()
     {
-        _loaded = Cookie.Get(Key)?.Value;
-        if (_loaded is null) Toast.AddWarning("Cookie {0} is not set", Key);
+        _loaded = Cookie.Get(Key)?.Value ?? "(not set)";
+        if (Cookie.Get(Key) is null) Toast.AddWarning("Cookie {0} is not set", Key);
     }
 
-    void Delete()
+    async Task Delete()
     {
-        // Convention: set an expired cookie to delete it.
-        Cookie.Set(Key, string.Empty, DateTime.UtcNow.AddDays(-1));
+        // Convention: set an expired cookie to delete it. Async overload so JS actually
+        // emits `document.cookie = …; Max-Age=0`.
+        await Cookie.SetAsync(Key, string.Empty, DateTime.UtcNow.AddDays(-1));
+        await Cookie.RefreshAsync();          // the deleted cookie should no longer appear
         _loaded = null;
         Toast.AddInfo("Deleted {0}", Key);
+    }
+
+    async Task Refresh()
+    {
+        await Cookie.RefreshAsync();
+        Toast.AddInfo("Refreshed cookie snapshot");
     }
 }

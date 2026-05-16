@@ -1,0 +1,70 @@
+@page "/components/layouts"
+@rendermode InteractiveServer
+@inherits PageBase
+
+<h1>Layout system</h1>
+
+<p>
+    Zonit exposes a <strong>string-keyed layout registry</strong>. A plug-in declares
+    its layout choice via attribute (<code>[LayoutKey("...")]</code> or
+    <code>[NoLayout]</code>) <em>or</em> sets <code>LayoutKey</code> dynamically at
+    runtime via <code>PageBase</code>. The host wires concrete <code>LayoutComponentBase</code>
+    types to those keys with <code>services.AddWebsiteLayout&lt;T&gt;("key")</code> —
+    so a plug-in never needs an assembly reference to the layout that wraps it.
+</p>
+
+<section class="card stack">
+    <h2>Static — <code>[LayoutKey("Demo.Box")]</code></h2>
+    <p>
+        This page is wrapped by the framework default (<code>MainLayout</code>). The
+        link below opens a sibling page declared <em>only</em> with
+        <code>@@attribute [LayoutKey("Demo.Box")]</code> — it has no
+        <code>@@layout</code> directive and no reference to the layout class.
+    </p>
+    <p>
+        <a href="/components/layouts/static-box" class="btn-primary">Open static [LayoutKey] demo</a>
+    </p>
+</section>
+
+<section class="card stack">
+    <h2>Static — <code>[NoLayout]</code></h2>
+    <p>
+        Opts out of <em>every</em> layout — even <code>MainLayout</code> won't wrap it.
+        Useful for embeddable widgets, OAuth popups, brand-new full-bleed landing pages,
+        or error pages that must render even when the main layout is broken.
+    </p>
+    <p>
+        <a href="/components/layouts/no-layout">Open [NoLayout] demo</a>
+    </p>
+</section>
+
+<section class="card stack">
+    <h2>Dynamic — <code>PageBase.LayoutKey</code></h2>
+    <p>
+        Sometimes the layout choice depends on data only known at runtime. Click below
+        to flip <em>this very page</em> into the <code>Demo.Box</code> layout without
+        navigating. The first render uses the default; the second render reflects the
+        new context.
+    </p>
+    <div class="row">
+        <button class="btn-primary" type="button" @onclick="UseBox">Switch to Demo.Box</button>
+        <button type="button" @onclick="UseNone">Switch to no layout</button>
+        <button type="button" @onclick="Reset">Reset to default</button>
+    </div>
+    <p class="muted">Current dynamic override: <strong>@CurrentState</strong></p>
+    <p class="muted">Navigating to a different page automatically clears the override.</p>
+</section>
+
+@code {
+    string CurrentState => LayoutKey switch
+    {
+        null when LayoutContext.IsNoLayout => "(none — render raw)",
+        null => "(no override — using static / default)",
+        ""   => "(empty — Site default)",
+        var k => $"\"{k}\"",
+    };
+
+    void UseBox()  => LayoutKey = "Demo.Box";
+    void UseNone() => LayoutKey = null; // null => render with no layout (like [NoLayout])
+    void Reset()   => LayoutContext.ClearOverride();
+}

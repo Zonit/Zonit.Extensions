@@ -1,7 +1,6 @@
-using Zonit.Extensions;
 using Zonit.Extensions.Website;
 
-namespace Example.Cultures;
+namespace Example;
 
 /// <summary>
 /// Demo area exercising <see cref="Zonit.Extensions.Cultures.ICultureProvider"/>

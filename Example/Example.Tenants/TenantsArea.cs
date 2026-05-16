@@ -1,11 +1,10 @@
 using Example.Tenants.Stubs;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Zonit.Extensions;
 using Zonit.Extensions.Tenants;
 using Zonit.Extensions.Website;
 
-namespace Example.Tenants;
+namespace Example;
 
 public sealed class TenantsArea : IWebsiteArea, IWebsiteServices
 {

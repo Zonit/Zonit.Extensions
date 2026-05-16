@@ -7,6 +7,7 @@ using Zonit.Extensions.Cultures;
 using Zonit.Extensions.Auth;
 using Zonit.Extensions.Organizations;
 using Zonit.Extensions.Projects;
+using Zonit.Extensions.Tenants;
 
 namespace Zonit.Extensions.Website;
 
@@ -55,6 +56,24 @@ public abstract class ExtensionsBase : Base, IDisposable
     private readonly Lazy<ICookieProvider> _cookie;
     protected ICookieProvider Cookie => _cookie.Value;
 
+    private readonly Lazy<ITenantProvider> _tenant;
+    /// <summary>
+    /// Current tenant + per-domain settings (Site, Theme, Maintenance, etc.).
+    /// Subscribes to <see cref="ITenantProvider.OnChange"/> so a tenant switch (e.g.
+    /// admin impersonation in multi-site mode) re-runs the component's data load.
+    /// </summary>
+    protected ITenantProvider Tenant => _tenant.Value;
+
+    private readonly Lazy<ILayoutContext> _layoutContext;
+    /// <summary>
+    /// Per-circuit dynamic layout-override channel. Exposed as <c>protected</c> so
+    /// <see cref="PageBase"/> can surface a typed <c>LayoutKey</c> property without
+    /// reaching back into the DI container. No <c>OnChange</c> subscription here:
+    /// the layout transition is consumed by <c>ZonitRouteView</c>, not by the page
+    /// itself.
+    /// </summary>
+    protected ILayoutContext LayoutContext => _layoutContext.Value;
+
     protected ExtensionsBase()
     {
         _culture = new Lazy<ICultureProvider>(() =>
@@ -99,6 +118,17 @@ public abstract class ExtensionsBase : Base, IDisposable
         {
             return GetService<ICookieProvider>();
         });
+
+        _tenant = new Lazy<ITenantProvider>(() =>
+        {
+            var service = GetService<ITenantProvider>();
+            // Treat tenant changes the same as Workspace/Catalog — re-run data load,
+            // since per-domain settings often parameterise what data even gets fetched.
+            service.OnChange += OnRefreshChangeAsync;
+            return service;
+        });
+
+        _layoutContext = new Lazy<ILayoutContext>(GetService<ILayoutContext>);
     }
 
     protected override void OnInitialized()
@@ -185,6 +215,9 @@ public abstract class ExtensionsBase : Base, IDisposable
 
             if (_breadcrumbs.IsValueCreated)
                 _breadcrumbs.Value.OnChange -= OnUIRefreshChangeAsync;
+
+            if (_tenant.IsValueCreated)
+                _tenant.Value.OnChange -= OnRefreshChangeAsync;
 
             // Dispose wszystkich subskrypcji IOptionsMonitor
             foreach (var subscription in _optionsMonitorSubscriptions.Values)

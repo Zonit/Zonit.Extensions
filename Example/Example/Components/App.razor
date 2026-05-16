@@ -34,6 +34,18 @@
     </style>
 </head>
 <body>
+    @* Persistence bridges. Each of these is an invisible component that grabs
+       request-scoped state (Identity / Workspace / Catalog / Culture) during the
+       SSR prerender pass via `PersistentComponentState.PersistAsJson`, and restores
+       it into the circuit's scoped repository on the interactive pass. Without
+       them every Blazor circuit starts with an empty IAuthenticatedRepository
+       (the request scope that ran the auth middleware is long gone) and the user
+       appears anonymous despite a valid Session cookie. *@
+    <ZonitIdentityExtension      @rendermode="InteractiveServer" />
+    <ZonitCulturesExtension      @rendermode="InteractiveServer" />
+    <ZonitOrganizationsExtension @rendermode="InteractiveServer" />
+    <ZonitProjectsExtension      @rendermode="InteractiveServer" />
+
     <Routes @rendermode="InteractiveServer" />
     <script src="_framework/blazor.web.js"></script>
 </body>

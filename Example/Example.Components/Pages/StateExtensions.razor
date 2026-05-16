@@ -1,0 +1,91 @@
+@page "/components/state-extensions"
+@rendermode InteractiveServer
+@inherits PageBase
+
+@*
+    Auth / Culture / Workspace / Catalog are already exposed by ExtensionsBase as
+    `Authenticated` / `Culture` / `Workspace` / `Catalog` protected properties — no
+    @inject needed (and re-injecting them would shadow the base hooks that subscribe
+    to OnChange for auto re-render).
+*@
+
+<h1>State extensions — prerender ↔ interactive bridge</h1>
+
+<p>
+    Blazor renders interactive pages twice — once on the server (SSR / prerender) and
+    again after the circuit is established. Identity, organisation, project and culture
+    are all <em>request-scoped</em> on the server but vanish when the circuit reconnects.
+    The four <code>Zonit*Extension</code> components persist that state through
+    <code>PersistentComponentState</code> so the second render sees exactly what the
+    first one saw — no flicker, no extra round-trip, no JSInterop dance.
+</p>
+
+<p class="muted">
+    <code>UseWebsite&lt;App&gt;()</code> already injects these into <code>App.razor</code>;
+    the page below just <em>reads</em> the providers they hydrate, so reloading shows the
+    same values immediately on both render passes.
+</p>
+
+<section class="card">
+    <h2>ZonitIdentityExtension → IAuthenticatedProvider</h2>
+    @if (!Authenticated.Current.HasValue)
+    {
+        <p class="muted">Anonymous — log in via <a href="/login">/login</a>.</p>
+    }
+    else
+    {
+        <pre>Authenticated.Current.Id    -> @Authenticated.Current.Id
+Authenticated.Current.Name  -> @Authenticated.Current.Name.Value
+Authenticated.Current.Roles -> @string.Join(", ", Authenticated.Current.Roles.Select(r => r.Value))</pre>
+    }
+</section>
+
+<section class="card">
+    <h2>ZonitCulturesExtension → ICultureProvider</h2>
+    <pre>Culture.Current.Value         -> @Culture.Current.Value
+Culture.Current.NativeName    -> @Culture.Current.NativeName</pre>
+    <p class="muted">
+        Switch the culture in the top-bar — both the prerender and the interactive
+        circuit will land on the value you picked, persisted via this extension.
+    </p>
+</section>
+
+<section class="card">
+    <h2>ZonitOrganizationsExtension → IWorkspaceProvider</h2>
+    @if (!Workspace.Organization.HasValue)
+    {
+        <p class="muted">No active organisation. Pick one at <a href="/organizations">/organizations</a>.</p>
+    }
+    else
+    {
+        <pre>Workspace.Organization.Id    -> @Workspace.Organization.Id
+Workspace.Organization.Name  -> @Workspace.Organization.Name.Value</pre>
+    }
+</section>
+
+<section class="card">
+    <h2>ZonitProjectsExtension → ICatalogProvider</h2>
+    @if (!Catalog.Project.HasValue)
+    {
+        <p class="muted">No active project. Pick one at <a href="/projects">/projects</a>.</p>
+    }
+    else
+    {
+        <pre>Catalog.Project.Id    -> @Catalog.Project.Id
+Catalog.Project.Name  -> @Catalog.Project.Name.Value
+Catalog.Visible.Length-> @Catalog.Visible.Length</pre>
+    }
+</section>
+
+<section class="card">
+    <h2>How they wire up</h2>
+    <p>
+        These four components are mounted by <code>UseWebsite&lt;App&gt;()</code> via the
+        source-generated <code>HeadOutlet</code>-style insertion. You only see them in
+        DOM as <code>&lt;persistent-component-state&gt;</code> entries in the prerender
+        markup — <em>no visible UI</em>. The pattern works for any request-scoped state:
+        write your own <code>Zonit*Extension</code> against
+        <code>PersistentComponentState.PersistAsJson(JsonTypeInfo, …)</code> and you stay
+        AOT-safe (see <code>OrganizationsStateJsonContext.cs</code> for the recipe).
+    </p>
+</section>

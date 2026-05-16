@@ -61,6 +61,27 @@ public class CookieService : ICookieProvider
                     if (path)   { p.push('path='   + path);   }
                     if (domain) { p.push('domain=' + domain); }
                     document.cookie = p.join('; ');
+                },
+                // Returns the current document.cookie as a "name\tvalue\nname\tvalue" string.
+                // String form keeps the JSInterop boundary primitive (AOT-friendly) — no
+                // dynamic JSON deserialisation on the .NET side.
+                all: function () {
+                    var raw = document.cookie || '';
+                    if (raw.length === 0) { return ''; }
+                    var parts = raw.split(';');
+                    var lines = [];
+                    for (var i = 0; i < parts.length; i++) {
+                        var s = parts[i];
+                        var eq = s.indexOf('=');
+                        if (eq < 0) { continue; }
+                        var n = s.substring(0, eq).trim();
+                        var v = s.substring(eq + 1);
+                        if (n.length === 0) { continue; }
+                        try { n = decodeURIComponent(n); } catch (e) {}
+                        try { v = decodeURIComponent(v); } catch (e) {}
+                        lines.push(n + '\t' + v);
+                    }
+                    return lines.join('\n');
                 }
             };
         })();
@@ -88,6 +109,53 @@ public class CookieService : ICookieProvider
             .SingleOrDefault(x => x.Name.Equals(key, StringComparison.OrdinalIgnoreCase));
 
     public List<CookieModel> GetCookies() => this.Cookies;
+
+    public async Task RefreshAsync()
+    {
+        if (_runtime is null)
+            return;
+
+        try
+        {
+            if (!_bootstrapped)
+            {
+                await _runtime.InvokeVoidAsync("eval", BootstrapScript).ConfigureAwait(false);
+                _bootstrapped = true;
+            }
+
+            var raw = await _runtime.InvokeAsync<string>("__zonitCookies.all").ConfigureAwait(false);
+
+            // Wipe the per-circuit snapshot and rebuild it from the authoritative
+            // browser state. Any prior `Set` in this circuit that the browser
+            // accepted will reappear here; expired cookies will not, which keeps
+            // the snapshot honest after a Delete.
+            Cookies.Clear();
+
+            if (string.IsNullOrEmpty(raw))
+                return;
+
+            foreach (var line in raw.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var tab = line.IndexOf('\t');
+                if (tab < 0)
+                    continue;
+
+                var name = line[..tab];
+                var value = line[(tab + 1)..];
+
+                _cookieRepository.Add(new CookieModel { Name = name, Value = value });
+            }
+        }
+        catch (InvalidOperationException)
+        {
+            // Prerender / static SSR — JSInterop not yet available. Caller should
+            // retry from OnAfterRenderAsync(firstRender: true).
+        }
+        catch (JSDisconnectedException)
+        {
+            // Circuit was disposed mid-call. Nothing to do.
+        }
+    }
 
     public CookieModel Set(string key, string value, TimeSpan lifetime)
         => Set(key, value, DateTime.UtcNow + lifetime);

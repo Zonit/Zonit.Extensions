@@ -22,10 +22,10 @@ internal sealed class CatalogRepository(IProjectSource organizationProject) : IC
         StateChanged();
     }
 
-    public async Task<StateModel> InitializeAsync()
+    public async Task<StateModel> InitializeAsync(CancellationToken cancellationToken = default)
     {
-        var catalogTask = _organizationProject.InitializeAsync();
-        var projectsTask = _organizationProject.GetProjectsAsync();
+        var catalogTask = _organizationProject.InitializeAsync(cancellationToken);
+        var projectsTask = _organizationProject.GetProjectsAsync(cancellationToken);
         await Task.WhenAll(catalogTask, projectsTask);
 
         _state = new StateModel
@@ -37,12 +37,12 @@ internal sealed class CatalogRepository(IProjectSource organizationProject) : IC
         return _state;
     }
 
-    public async Task SwitchProjectAsync(Guid projectId)
+    public async Task SwitchProjectAsync(Guid projectId, CancellationToken cancellationToken = default)
     {
         if (_state is null)
             return;
 
-        _state.Catalog = await _organizationProject.SwitchProjectAsync(projectId);
+        _state.Catalog = await _organizationProject.SwitchProjectAsync(projectId, cancellationToken);
         StateChanged();
     }
 

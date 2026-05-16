@@ -1,0 +1,13 @@
+@*
+    Default chrome-less layout shipped by the framework so that plug-ins always have a
+    safe fallback key to point at ("Zonit.Minimal"). Hosts can — and should — overwrite
+    this registration with their own minimal layout via
+    `services.AddWebsiteLayout<HostMinimalLayout>("Zonit.Minimal")` to brand error /
+    auth pages without forking each plug-in.
+*@
+@inherits LayoutComponentBase
+@namespace Zonit.Extensions.Website.Layouts.Components
+
+<div class="zonit-minimal-layout">
+    @Body
+</div>

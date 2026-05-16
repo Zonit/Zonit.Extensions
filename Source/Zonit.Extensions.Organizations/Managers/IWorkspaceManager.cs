@@ -12,16 +12,20 @@ public interface IWorkspaceManager
     public void Initialize(StateModel model);
 
     /// <summary>
-    /// Retrieves details of the user's organization
+    /// Retrieves details of the user's organization.
     /// </summary>
-    public Task<StateModel> InitializeAsync();
+    /// <param name="cancellationToken">Cancellation forwarded to the
+    /// <c>IOrganizationSource</c> implementation. Pass
+    /// <c>HttpContext.RequestAborted</c> from middleware so an aborted request
+    /// stops the underlying database / HTTP work.</param>
+    public Task<StateModel> InitializeAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Change the default user organization
+    /// Change the default user organization.
     /// </summary>
     /// <param name="organizationId"></param>
-    /// <returns></returns>
-    public Task SwitchOrganizationAsync(Guid organizationId);
+    /// <param name="cancellationToken">Forwarded to the underlying source.</param>
+    public Task SwitchOrganizationAsync(Guid organizationId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Workspace data

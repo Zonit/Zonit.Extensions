@@ -37,7 +37,7 @@ internal sealed class WorkspaceMiddleware(RequestDelegate next)
         // Anonymous request — workspace state has no meaning for it. Defer hydration
         // until the first request after sign-in.
         if (auth.Current.HasValue && workspace.State is null)
-            await workspace.InitializeAsync();
+            await workspace.InitializeAsync(httpContext.RequestAborted);
 
         await next(httpContext);
     }

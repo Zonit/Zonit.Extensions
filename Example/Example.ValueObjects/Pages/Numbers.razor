@@ -25,6 +25,31 @@ new FileSize(15_000_000_000).ToString() -> @(new FileSize(15_000_000_000).ToStri
 </section>
 
 <section class="card">
+    <h2>Currency — ISO 4217 + crypto</h2>
+    <p>
+        ~30 fiat predefined as static fields (<code>Currency.USD</code>,
+        <code>Currency.EUR</code>, <code>Currency.PLN</code>, …) plus crypto
+        (<code>Currency.BTC</code>, <code>Currency.ETH</code>, …). Unknown but
+        well-formed codes parse too — just without metadata.
+    </p>
+    @{
+        var pln = Currency.PLN;
+        var btc = Currency.BTC;
+        var jpy = Currency.JPY;
+        Currency.TryParse(_currencyInput.ToUpperInvariant(), null, out var picked);
+    }
+    <pre>Currency.PLN -> code=@pln.Code symbol=@pln.Symbol name="@pln.Name" digits=@pln.DecimalDigits crypto=@pln.IsCrypto
+Currency.BTC -> code=@btc.Code symbol=@btc.Symbol name="@btc.Name" digits=@btc.DecimalDigits crypto=@btc.IsCrypto
+Currency.JPY -> code=@jpy.Code symbol=@jpy.Symbol name="@jpy.Name" digits=@jpy.DecimalDigits crypto=@jpy.IsCrypto</pre>
+
+    <input class="input" @bind="_currencyInput" @bind:event="oninput" placeholder="USD / EUR / BTC / DOGE / FOO" />
+    <pre>Currency.TryParse("@_currencyInput.ToUpperInvariant()") ->
+    Code   = @picked.Code
+    Symbol = "@picked.Symbol"
+    Name   = "@picked.Name"</pre>
+</section>
+
+<section class="card">
     <h2>Color — hex roundtrip</h2>
     @{ Color.TryParse(_color, null, out var c); }
     <input class="input" @bind="_color" @bind:event="oninput" />
@@ -34,8 +59,9 @@ new FileSize(15_000_000_000).ToString() -> @(new FileSize(15_000_000_000).ToStri
 </section>
 
 @code {
-    string _input = "1.234,56";
-    string _color = "#2563EB";
+    string _input          = "1.234,56";
+    string _color          = "#2563EB";
+    string _currencyInput  = "USD";
 
     Money? _money => Money.TryParse(_input, null, out var v) ? v : null;
     Price? _price => Price.TryParse(_input, null, out var v) ? v : null;

@@ -1,11 +1,10 @@
 using Example.Projects.Stubs;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Zonit.Extensions;
 using Zonit.Extensions.Projects;
 using Zonit.Extensions.Website;
 
-namespace Example.Projects;
+namespace Example;
 
 public sealed class ProjectsArea : IWebsiteArea, IWebsiteServices
 {

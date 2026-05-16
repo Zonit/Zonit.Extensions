@@ -14,15 +14,18 @@ public interface ICatalogManager
     /// <summary>
     /// Initializes the project manager.
     /// </summary>
-    /// <returns></returns>
-    public Task<StateModel> InitializeAsync();
+    /// <param name="cancellationToken">Cancellation forwarded to the
+    /// <c>IProjectSource</c> implementation. Pass
+    /// <c>HttpContext.RequestAborted</c> from middleware so an aborted request
+    /// stops the underlying work.</param>
+    public Task<StateModel> InitializeAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Switches the current project.
     /// </summary>
     /// <param name="projectId">Project ID</param>
-    /// <returns></returns>
-    public Task SwitchProjectAsync(Guid projectId);
+    /// <param name="cancellationToken">Forwarded to the underlying source.</param>
+    public Task SwitchProjectAsync(Guid projectId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets the current project.

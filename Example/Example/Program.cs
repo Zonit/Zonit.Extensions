@@ -1,3 +1,4 @@
+using Example;
 using Example.Components;
 using Zonit.Extensions;
 using Zonit.Extensions.Cultures.Options;
@@ -14,13 +15,14 @@ builder.Services.AddWebsite(opts =>
     // MemoryCache / RazorComponents are services-only flags and default to true.
     // Set opts.Controllers = true if your areas need [ApiController] endpoints.
     opts.AddArea<HomeArea>();
-    opts.AddArea<Example.Cultures.CulturesArea>();
-    opts.AddArea<Example.Auth.AuthArea>();
-    opts.AddArea<Example.Organizations.OrganizationsArea>();
-    opts.AddArea<Example.Projects.ProjectsArea>();
-    opts.AddArea<Example.Tenants.TenantsArea>();
-    opts.AddArea<Example.Components.ComponentsArea>();
-    opts.AddArea<Example.ValueObjects.ValueObjectsArea>();
+    opts.AddArea<CulturesArea>();
+    opts.AddArea<AuthArea>();
+    opts.AddArea<OrganizationsArea>();
+    opts.AddArea<ProjectsArea>();
+    opts.AddArea<TenantsArea>();
+    opts.AddArea<ComponentsArea>();
+    opts.AddArea<ValueObjectsArea>();
+    opts.AddArea<MudBlazorArea>();
 });
 
 // ─── Cultures: supported list drives the language switcher and Accept-Language fallback.
@@ -53,14 +55,16 @@ app.UseWebsite<App>("/", o =>
     o.Compression = !builder.Environment.IsDevelopment();
     // dev demo runs HTTP-only on a random port — opt out of HTTPS redirect.
     o.HttpsRedirection = !builder.Environment.IsDevelopment();
+
     o.AddArea<HomeArea>();
-    o.AddArea<Example.Cultures.CulturesArea>();
-    o.AddArea<Example.Auth.AuthArea>();
-    o.AddArea<Example.Organizations.OrganizationsArea>();
-    o.AddArea<Example.Projects.ProjectsArea>();
-    o.AddArea<Example.Tenants.TenantsArea>();
-    o.AddArea<Example.Components.ComponentsArea>();
-    o.AddArea<Example.ValueObjects.ValueObjectsArea>();
+    o.AddArea<CulturesArea>();
+    o.AddArea<AuthArea>();
+    o.AddArea<OrganizationsArea>();
+    o.AddArea<ProjectsArea>();
+    o.AddArea<TenantsArea>();
+    o.AddArea<ComponentsArea>();
+    o.AddArea<ValueObjectsArea>();
+    o.AddArea<MudBlazorArea>();
 });
 
 app.Run();

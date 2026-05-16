@@ -6,22 +6,27 @@
 <Router AppAssembly="@typeof(Program).Assembly"
         AdditionalAssemblies="@(new[]
         {
-            typeof(Example.Cultures.CulturesArea).Assembly,
-            typeof(Example.Auth.AuthArea).Assembly,
-            typeof(Example.Organizations.OrganizationsArea).Assembly,
-            typeof(Example.Projects.ProjectsArea).Assembly,
-            typeof(Example.Tenants.TenantsArea).Assembly,
-            typeof(Example.Components.ComponentsArea).Assembly,
-            typeof(Example.ValueObjects.ValueObjectsArea).Assembly,
+            typeof(CulturesArea).Assembly,
+            typeof(AuthArea).Assembly,
+            typeof(OrganizationsArea).Assembly,
+            typeof(ProjectsArea).Assembly,
+            typeof(TenantsArea).Assembly,
+            typeof(ComponentsArea).Assembly,
+            typeof(ValueObjectsArea).Assembly,
+            typeof(MudBlazorArea).Assembly,
         })">
     <Found Context="routeData">
-        <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
+        @* ZonitRouteView — drop-in replacement that honours [LayoutKey("...")] /
+           [NoLayout] / runtime ILayoutContext alongside Blazor's standard [Layout]. *@
+        <Zonit.Extensions.Website.Layouts.Components.ZonitRouteView
+            RouteData="@routeData"
+            DefaultLayout="@typeof(MainLayout)">
             <NotAuthorized>
                 <h1>403 — not authorized</h1>
                 <p>You need additional roles or permissions for this page.</p>
                 <p><a href="/login">Log in as a different user</a></p>
             </NotAuthorized>
-        </AuthorizeRouteView>
+        </Zonit.Extensions.Website.Layouts.Components.ZonitRouteView>
         <FocusOnNavigate RouteData="@routeData" Selector="h1" />
     </Found>
 </Router>

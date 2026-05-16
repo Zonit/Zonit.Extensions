@@ -15,20 +15,33 @@
 <EditForm EditContext="@EditContext" OnValidSubmit="HandleValidSubmit" FormName="autosave">
     <DataAnnotationsValidator />
 
+    @*
+        Default <InputText> / <InputTextArea> notify EditContext on `onchange` (blur),
+        so the AutoSave debounce only starts once the user leaves the field. For a
+        true "save while typing" experience the inputs must notify on EVERY keystroke.
+        We bypass InputBase here and wire `oninput` -> Model + EditContext.NotifyFieldChanged
+        manually. The framework's HandleFieldAutoSave then ticks its 1500 ms timer on
+        every change and we land at the desired UX without changing PageEditBase.
+    *@
     <section class="card stack">
         <label>
             Title <small class="muted">(no auto-save)</small>
-            <InputText @bind-Value="Model.Title" />
+            <input value="@Model.Title"
+                   @oninput="e => OnFieldInput(nameof(Model.Title), e.Value?.ToString())" />
         </label>
 
         <label>
             Notes <small class="muted">[AutoSave(1500ms)]</small>
-            <InputTextArea @bind-Value="Model.Notes" rows="3" />
+            <textarea rows="3"
+                      value="@Model.Notes"
+                      @oninput="e => OnFieldInput(nameof(Model.Notes), e.Value?.ToString())"></textarea>
         </label>
 
         <label>
             Priority <small class="muted">[AutoSave]</small>
-            <InputNumber @bind-Value="Model.Priority" />
+            <input type="number"
+                   value="@Model.Priority"
+                   @oninput="e => OnPriorityInput(e.Value?.ToString())" />
         </label>
 
         <button type="submit" class="btn-primary">Submit anyway</button>
@@ -54,6 +67,26 @@
 
 @code {
     private readonly List<string> _log = [];
+
+    void OnFieldInput(string fieldName, string? value)
+    {
+        switch (fieldName)
+        {
+            case nameof(TaskViewModel.Title): Model.Title = value ?? string.Empty; break;
+            case nameof(TaskViewModel.Notes): Model.Notes = value ?? string.Empty; break;
+        }
+
+        // Tell EditContext the field changed so AutoSave timers re-arm.
+        EditContext?.NotifyFieldChanged(new FieldIdentifier(Model, fieldName));
+    }
+
+    void OnPriorityInput(string? raw)
+    {
+        if (int.TryParse(raw, out var v))
+            Model.Priority = v;
+
+        EditContext?.NotifyFieldChanged(new FieldIdentifier(Model, nameof(TaskViewModel.Priority)));
+    }
 
     protected override Task AutoSaveAsync(string fieldName, object? oldValue, object? newValue, CancellationToken cancellationToken)
     {

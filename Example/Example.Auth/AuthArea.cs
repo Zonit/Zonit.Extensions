@@ -4,11 +4,10 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Zonit.Extensions;
 using Zonit.Extensions.Auth;
 using Zonit.Extensions.Website;
 
-namespace Example.Auth;
+namespace Example;
 
 public sealed class AuthArea : IWebsiteArea, IWebsiteServices
 {

@@ -83,6 +83,7 @@ public static class WebsiteServiceCollectionExtensions
         services.AddBreadcrumbsExtension();
         services.AddToastsExtension();
         services.AddCookiesExtension();
+        services.AddLayoutsExtension();
 
         // Domain cores (idempotent — TryAdd-based + Null*Source safety net inside).
         services.AddCulturesExtension();

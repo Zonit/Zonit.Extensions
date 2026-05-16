@@ -34,6 +34,7 @@
     <ProjectReference Include="..\Example.Tenants\Example.Tenants.csproj" />
     <ProjectReference Include="..\Example.Components\Example.Components.csproj" />
     <ProjectReference Include="..\Example.ValueObjects\Example.ValueObjects.csproj" />
+    <ProjectReference Include="..\Example.MudBlazor\Example.MudBlazor.csproj" />
     <ProjectReference Include="..\Example.Shared\Example.Shared.csproj" />
   </ItemGroup>
 </Project>

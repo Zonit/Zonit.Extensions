@@ -1,0 +1,77 @@
+@page "/mudblazor/forms"
+@rendermode InteractiveServer
+@inherits PageBase
+
+@*
+    MudBlazor assets and providers are scoped to THIS page only via <HeadContent>
+    + inline providers, so the heavy MudBlazor.min.css reset (which would otherwise
+    repaint <select>, body typography, etc.) doesn't leak into the rest of the demo.
+    Other pages keep their own `site.css`-driven styling untouched.
+*@
+<HeadContent>
+    <link rel="stylesheet" href="_content/MudBlazor/MudBlazor.min.css" />
+    <script src="_content/MudBlazor/MudBlazor.min.js"></script>
+</HeadContent>
+
+<MudThemeProvider />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<h1>MudBlazor + Zonit value objects</h1>
+
+<p>
+    <code>ZonitTextField&lt;T&gt;</code> and <code>ZonitTextArea&lt;T&gt;</code> wrap
+    <code>MudTextField</code> with a Value-Object-aware converter. <code>T</code> is
+    inferred from <code>@@bind-Value</code> — the consumer never spells it out.
+    Construction errors thrown by the VO (e.g. <code>Url("nope")</code>) are caught
+    and rendered as MudBlazor validation messages; the offending text is preserved so
+    the user can fix it in place.
+</p>
+
+<MudPaper Class="pa-6" Elevation="2">
+    <EditForm Model="@_model" OnValidSubmit="OnValid">
+        <DataAnnotationsValidator />
+
+        <ZonitTextField @bind-Value="_model.Title"       Label="Title"       Counter="0" />
+        <ZonitTextField @bind-Value="_model.Slug"        Label="URL slug"    HelperText="Lower-case, hyphens, ASCII." />
+        <ZonitTextField @bind-Value="_model.HomeUrl"     Label="Homepage"    OpenNewTab />
+        <ZonitTextArea  @bind-Value="_model.Description" Label="Description" Counter="0" Lines="3" />
+
+        @* MudBlazor enums are qualified with `global::MudBlazor.` because
+           `@@using Zonit.Extensions` (inherited from _Imports.razor) brings in a
+           `Color` VO that would otherwise shadow `MudBlazor.Color`. The Zonit
+           VO wins on simple-name lookup so we anchor the MudBlazor side. *@
+        <MudButton ButtonType="global::MudBlazor.ButtonType.Submit"
+                   Variant="global::MudBlazor.Variant.Filled"
+                   Color="global::MudBlazor.Color.Primary"
+                   Class="mt-4">
+            Save
+        </MudButton>
+    </EditForm>
+</MudPaper>
+
+<MudPaper Class="pa-6 mt-6" Elevation="1">
+    <MudText Typo="global::MudBlazor.Typo.h6">Current snapshot</MudText>
+    <pre>Title       -> "@_model.Title.Value" (length @_model.Title.Length / @Title.MaxLength)
+Slug        -> "@_model.Slug.Value"
+HomeUrl     -> "@_model.HomeUrl.Value" (abs: @_model.HomeUrl.IsAbsolute)
+Description -> "@_model.Description.Value" (length @_model.Description.Length / @Description.MaxLength)</pre>
+</MudPaper>
+
+@code {
+    sealed class FormModel
+    {
+        public Title       Title       { get; set; } = "Hello Zonit";
+        public UrlSlug     Slug        { get; set; } = "hello-zonit";
+        public Url         HomeUrl     { get; set; } = "https://zonit.dev";
+        public Description Description { get; set; } = "Type something and watch the VO validate live.";
+    }
+
+    readonly FormModel _model = new();
+
+    void OnValid()
+    {
+        Toast.AddSuccess("Saved {0}", _model.Title.Value);
+    }
+}

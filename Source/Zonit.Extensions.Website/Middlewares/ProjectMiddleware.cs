@@ -23,7 +23,7 @@ internal sealed class ProjectMiddleware(RequestDelegate next)
         }
 
         if (auth.Current.HasValue && catalog.State is null)
-            await catalog.InitializeAsync();
+            await catalog.InitializeAsync(httpContext.RequestAborted);
 
         await next(httpContext);
     }
