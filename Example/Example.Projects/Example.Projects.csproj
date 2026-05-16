@@ -1,6 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk.Razor">
-  <ItemGroup>
-    <ProjectReference Include="..\..\Source\Zonit.Extensions.Website\Zonit.Extensions.Website.csproj" />
-    <ProjectReference Include="..\Example.Shared\Example.Shared.csproj" />
-  </ItemGroup>
-</Project>
