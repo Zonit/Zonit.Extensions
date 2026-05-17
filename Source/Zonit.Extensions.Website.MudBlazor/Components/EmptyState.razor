@@ -1,0 +1,52 @@
+@*
+    Standard empty-state placeholder for lists, tables and data grids. Display the
+    icon + title + (optional) description + (optional) action slot. Translation is
+    the caller's responsibility — pass already-translated strings.
+*@
+@namespace Zonit.Extensions.Website.MudBlazor
+@using global::MudBlazor
+
+<div class="d-flex flex-column align-center justify-center pa-8" style="@($"min-height: {MinHeight};")">
+    <MudIcon Icon="@Icon" Size="Size.Large"
+             Style="font-size: 64px; color: var(--mud-palette-text-disabled); margin-bottom: 16px;" />
+
+    <MudText Typo="Typo.h6" Align="Align.Center" Class="mb-2" Style="font-weight: 500;">
+        @Title
+    </MudText>
+
+    @if (!string.IsNullOrEmpty(Description))
+    {
+        <MudText Typo="Typo.body2" Align="Align.Center" Class="mud-text-secondary" Style="max-width: 320px;">
+            @Description
+        </MudText>
+    }
+
+    @if (Actions is not null)
+    {
+        <div class="mt-4">
+            @Actions
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>Icon to display (MudBlazor icon string or inline SVG markup).</summary>
+    [Parameter]
+    public string Icon { get; set; } = Icons.Material.Outlined.Inbox;
+
+    /// <summary>Main title message (pre-translated).</summary>
+    [Parameter]
+    public string Title { get; set; } = "No data";
+
+    /// <summary>Optional description (pre-translated).</summary>
+    [Parameter]
+    public string? Description { get; set; }
+
+    /// <summary>Minimum height of the container (CSS length).</summary>
+    [Parameter]
+    public string MinHeight { get; set; } = "300px";
+
+    /// <summary>Optional action buttons rendered below the description.</summary>
+    [Parameter]
+    public RenderFragment? Actions { get; set; }
+}

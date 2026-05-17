@@ -1,0 +1,33 @@
+@*
+    Standard page header with title, optional subtitle and an Actions slot. Caller
+    is responsible for translating the Title/Subtitle strings.
+*@
+@namespace Zonit.Extensions.Website.MudBlazor
+@using global::MudBlazor
+
+<div class="page-header d-flex align-center justify-space-between mb-6">
+    <div>
+        <MudText Typo="Typo.h4" Class="mb-1" Style="font-weight: 600;">@Title</MudText>
+        @if (!string.IsNullOrEmpty(Subtitle))
+        {
+            <MudText Typo="Typo.body2" Class="mud-text-secondary">@Subtitle</MudText>
+        }
+    </div>
+    @if (Actions is not null)
+    {
+        <div class="d-flex gap-2">
+            @Actions
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>Page title (pre-translated).</summary>
+    [Parameter, EditorRequired] public string Title { get; set; } = default!;
+
+    /// <summary>Optional subtitle (pre-translated).</summary>
+    [Parameter] public string? Subtitle { get; set; }
+
+    /// <summary>Optional action buttons/controls rendered on the right.</summary>
+    [Parameter] public RenderFragment? Actions { get; set; }
+}

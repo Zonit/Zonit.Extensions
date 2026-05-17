@@ -20,6 +20,7 @@ using Zonit.Extensions.Auth;
 using Zonit.Extensions.Website;
 using Zonit.Extensions.Website.Authentication;
 using Zonit.Extensions.Website.Cookies.Middlewares;
+using Zonit.Extensions.Website.Hydration;
 using Zonit.Extensions.Website.Middlewares;
 
 namespace Zonit.Extensions;
@@ -94,6 +95,23 @@ public static class WebsiteServiceCollectionExtensions
 
         services.TryAddSingleton(opts);
         services.AddHttpContextAccessor();
+
+        // ─── Prerender → interactive state bridges ─────────────────────────────
+        // Each scoped repository the middleware pipeline populates on the HTTP
+        // request scope (Identity / Workspace / Catalog / Culture / Cookies)
+        // would otherwise re-read empty in the SignalR circuit scope, because
+        // the middleware never runs against that scope. The single
+        // <WebsiteHydrator/> component (placed in App.razor / DashboardApp.razor)
+        // resolves IEnumerable<IPersistentStateProvider> and uses
+        // PersistentComponentState to round-trip every bridge's snapshot.
+        // TryAddEnumerable so consumers can stack their own bridges via the same
+        // contract without displacing ours; scoped lifetime so each bridge can
+        // reference the same scoped repository the rest of the framework writes.
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IPersistentStateProvider, AuthStateBridge>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IPersistentStateProvider, CultureStateBridge>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IPersistentStateProvider, WorkspaceStateBridge>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IPersistentStateProvider, CatalogStateBridge>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IPersistentStateProvider, CookieStateBridge>());
 
         // Singleton snapshot of every registered mount. The scoped ICurrentSite
         // below falls back to this map when the per-Site branch middleware has not

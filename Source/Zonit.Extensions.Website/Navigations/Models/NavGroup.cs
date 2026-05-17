@@ -48,4 +48,16 @@ public sealed class NavGroup
     /// data without forcing them into a fixed schema.
     /// </summary>
     public IReadOnlyDictionary<string, object?>? Settings { get; init; }
+
+    /// <summary>Optional badge text rendered on the group header (e.g. "5", "NEW").</summary>
+    public string? Badge { get; init; }
+
+    /// <summary>Badge color hint for the UI layer.</summary>
+    public NavBadgeColor BadgeColor { get; init; } = NavBadgeColor.Default;
+
+    /// <summary>Optional tooltip text displayed on hover over the group header.</summary>
+    public string? Tooltip { get; init; }
+
+    /// <summary>When <c>true</c>, the group header is rendered as non-interactive (greyed out).</summary>
+    public bool Disabled { get; init; }
 }

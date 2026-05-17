@@ -1,0 +1,47 @@
+@*
+    Standard loading spinner that wraps any content with an "is loading" guard.
+    When IsLoading is true, the spinner is shown; otherwise ChildContent renders.
+*@
+@namespace Zonit.Extensions.Website.MudBlazor
+@using global::MudBlazor
+
+@if (IsLoading)
+{
+    <div class="@GetContainerClass()" style="@($"min-height: {MinHeight};")">
+        <MudProgressCircular Color="@Color" Size="@Size" Indeterminate="true" />
+        @if (!string.IsNullOrEmpty(Message))
+        {
+            <MudText Typo="Typo.body2" Class="mt-2 mud-text-secondary">@Message</MudText>
+        }
+    </div>
+}
+else
+{
+    @ChildContent
+}
+
+@code {
+    /// <summary>Whether the spinner should be shown.</summary>
+    [Parameter] public bool IsLoading { get; set; } = true;
+
+    /// <summary>Optional loading message (pre-translated).</summary>
+    [Parameter] public string? Message { get; set; }
+
+    /// <summary>Color of the spinner.</summary>
+    [Parameter] public global::MudBlazor.Color Color { get; set; } = global::MudBlazor.Color.Primary;
+
+    /// <summary>Size of the spinner.</summary>
+    [Parameter] public global::MudBlazor.Size Size { get; set; } = global::MudBlazor.Size.Large;
+
+    /// <summary>Whether to center the spinner inside its container.</summary>
+    [Parameter] public bool Center { get; set; } = true;
+
+    /// <summary>Minimum height of the loading container (CSS length).</summary>
+    [Parameter] public string MinHeight { get; set; } = "200px";
+
+    /// <summary>Content to render when IsLoading is false.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private string GetContainerClass()
+        => Center ? "d-flex flex-column align-center justify-center" : "d-flex flex-column";
+}

@@ -1,0 +1,59 @@
+@*
+    Single host component that drives the prerender → interactive state handoff.
+    Place it ONCE in your root App.razor (inside <body>, before <Routes/>). The
+    framework's DashboardApp.razor already includes it.
+
+    Lifecycle:
+      • SSR pass         : every IPersistentStateProvider.RegisterPersist(state) is
+                           called; the bridge installs its own RegisterOnPersisting
+                           callback using its concrete generic type (.NET 10's
+                           PersistAsJson<T> has no Type overload, so the bridge —
+                           not the aggregator — knows the T).
+      • Interactive pass : every IPersistentStateProvider.Restore(state) is called;
+                           the bridge calls TryTakeFromJson<T> and re-seeds its
+                           scoped repository before the page body renders.
+
+    Why a component (not a hosted service / circuit handler):
+      • PersistentComponentState is a component-scoped service. RegisterOnPersisting
+        returns a subscription handle whose semantics are tied to the component's
+        lifetime — circuit handlers can't see PersistentComponentState at all.
+      • A single component placed in App.razor renders on BOTH SSR and interactive,
+        so the same code path serves both ends of the round trip.
+
+    Lifetime: subscriptions are disposed on component teardown so a hot-reload
+    doesn't stack callbacks (each reload would otherwise install new bridges +
+    leave the old ones registered → state captured twice).
+*@
+@using Microsoft.AspNetCore.Components
+@namespace Zonit.Extensions.Website.Hydration
+@implements IDisposable
+@inject PersistentComponentState State
+@inject IEnumerable<IPersistentStateProvider> Bridges
+
+@code {
+    // Subscription handles returned by each bridge's RegisterPersist call.
+    // Stored so they can be released on Dispose.
+    private readonly List<PersistingComponentStateSubscription> _subscriptions = new();
+
+    protected override void OnInitialized()
+    {
+        foreach (var bridge in Bridges)
+        {
+            // Restore first — interactive circuit reads the SSR snapshot before
+            // the page body initialises, so every @inject in a Razor component
+            // sees a fully populated scoped repository on its very first render.
+            bridge.Restore(State);
+
+            // Then wire SSR persisting — bridge installs its own RegisterOnPersisting
+            // hook with its known generic T (since PersistentComponentState has no
+            // Type-accepting overload in .NET 10).
+            _subscriptions.Add(bridge.RegisterPersist(State));
+        }
+    }
+
+    public void Dispose()
+    {
+        foreach (var sub in _subscriptions) sub.Dispose();
+        _subscriptions.Clear();
+    }
+}
