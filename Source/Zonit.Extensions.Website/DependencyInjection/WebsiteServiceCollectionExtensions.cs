@@ -26,11 +26,33 @@ namespace Zonit.Extensions;
 
 /// <summary>
 /// Top-level entry points for the Website host: <c>AddWebsite</c> (services-time) and
-/// <c>UseWebsite&lt;TApp&gt;</c> (middleware-time, multi-Site).
+/// <c>UseWebsite&lt;TApp&gt;</c> / <c>UseWebsite&lt;TApp, TSiteOptions&gt;</c>
+/// (middleware-time, multi-Site).
 /// </summary>
 public static class WebsiteServiceCollectionExtensions
 {
-    private const string GlobalPipelineFlag = "Zonit.Extensions.Website.GlobalPipelineWired";
+    /// <summary>
+    /// Per-app marker placed onto <see cref="IApplicationBuilder.Properties"/> the first
+    /// time the root mount (<see cref="SiteOptions.Directory"/> == <see cref="UrlPath.Empty"/>)
+    /// is registered. Any subsequent non-root <c>UseWebsite</c> call after this flag is set
+    /// fails fast with a developer-actionable exception — because <c>app.UseEndpoints</c>
+    /// inside <c>BuildBranch(app, ...)</c> is a <em>terminal</em> middleware, every
+    /// <c>app.MapWhen(...)</c> branch registered AFTER it is unreachable and silently
+    /// swallowed by the root site's endpoint matcher. The user-visible symptom is
+    /// "HTTP 405 / 404 on /sub/_blazor/negotiate" because the root site's catch-all
+    /// razor endpoint claims the path before the sub-mount branch ever runs.
+    /// </summary>
+    private const string RootMountRegisteredFlag = "Zonit.Extensions.Website.RootMountRegistered";
+
+    /// <summary>
+    /// Normalises the user-supplied mount path so <c>"/"</c> and the empty
+    /// <see cref="UrlPath"/> both map to the root site
+    /// (<see cref="UrlPath.Empty"/>). Used by every <c>UseWebsite</c> overload so
+    /// <see cref="SiteOptions.Directory"/> stays in sync with the actual branch
+    /// path-base regardless of the entry point.
+    /// </summary>
+    private static UrlPath NormalizeDirectory(UrlPath directory)
+        => directory.Value == "/" ? UrlPath.Empty : directory;
 
     /// <summary>
     /// Registers the Website framework (Razor Components hosting, auth scheme,
@@ -73,9 +95,19 @@ public static class WebsiteServiceCollectionExtensions
         services.TryAddSingleton(opts);
         services.AddHttpContextAccessor();
 
+        // Singleton snapshot of every registered mount. The scoped ICurrentSite
+        // below falls back to this map when the per-Site branch middleware has not
+        // run on the current scope (most notably: SignalR circuit scope owning
+        // interactive Blazor components). See WebsiteMountRegistry remarks for the
+        // full rationale and the mirror in DashboardMountRegistry.
+        services.TryAddSingleton<WebsiteMountRegistry>();
+
         // Per-request marker for the active Site mount. Set by the branch middleware
         // installed inside UseWebsite<TApp>(o => …) — read by INavigationProvider /
-        // any consumer that needs to scope output to the current mount-point.
+        // any consumer that needs to scope output to the current mount-point. The
+        // implementation self-hydrates from WebsiteMountRegistry when the scope's
+        // middleware never ran (Blazor circuit scope), so consumers see a populated
+        // Site in both SSR and interactive render passes without per-host bridges.
         services.TryAddScoped<ICurrentSite, CurrentSite>();
 
         // Built-in providers
@@ -182,11 +214,11 @@ public static class WebsiteServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Mounts a Site at <see cref="SiteOptions.Directory"/> with the supplied set of
-    /// Areas. Each call to <c>UseWebsite&lt;TApp&gt;</c> creates an isolated
-    /// <c>MapWhen</c> branch with its own <c>UsePathBase</c>, full middleware pipeline,
-    /// and a dedicated <c>MapRazorComponents&lt;TApp&gt;</c>. May be called any number
-    /// of times — each Site can mount any subset of registered Areas, including the
+    /// Mounts a Site at <paramref name="directory"/> with the supplied set of Areas.
+    /// Each call to <c>UseWebsite&lt;TApp&gt;</c> creates an isolated <c>MapWhen</c>
+    /// branch with its own <c>UsePathBase</c>, full middleware pipeline, and a
+    /// dedicated <c>MapRazorComponents&lt;TApp&gt;</c>. May be called any number of
+    /// times — each Site can mount any subset of registered Areas, including the
     /// same Area at multiple paths (e.g. Auth at <c>/</c> and at <c>/admin</c>).
     /// </summary>
     /// <typeparam name="TApp">
@@ -203,16 +235,136 @@ public static class WebsiteServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(configure);
 
-        var opts = app.Services.GetRequiredService<WebsiteOptions>();
+        // Manually run the same OnConfiguring → configure → OnConfigured lifecycle as
+        // the generic overload below. Cannot delegate to `UseWebsite<TApp, SiteOptions>`
+        // because the `new()` constraint requires a public parameterless ctor, and
+        // SiteOptions intentionally hides its parameterless ctor behind `protected` —
+        // consumers must always reach a configured instance through the framework's
+        // entry points (or via a derived class with its own public ctor).
         var registry = app.Services.GetRequiredService<WebsiteAreaRegistry>();
+        var site = new SiteOptions(registry);
+        site.Directory = NormalizeDirectory(directory);
 
-        var site = new SiteOptions(registry, directory);
+        site.InvokeOnConfiguring(app.Services);
         configure(site);
+        site.InvokeOnConfigured(app.Services);
 
-        EnsureGlobalPipeline(app);
+        return app.UseWebsite<TApp>(directory, site);
+    }
+
+    /// <summary>
+    /// Inheritance-friendly entry point — mounts a Site at <paramref name="directory"/>
+    /// using <typeparamref name="TSiteOptions"/> as the per-Site configuration type.
+    /// Specialised hosts (e.g. <c>Zonit.Dashboard</c>) ship a <see cref="SiteOptions"/>
+    /// subclass with extra knobs + <see cref="SiteOptions.OnConfiguring"/> /
+    /// <see cref="SiteOptions.OnConfigured"/> overrides; consumers then mount with a
+    /// one-liner like <c>app.UseDashboard("/admin", o =&gt; …)</c> that forwards to this
+    /// overload.
+    /// </summary>
+    /// <typeparam name="TApp">Root Razor component (typically <c>App.razor</c>).</typeparam>
+    /// <typeparam name="TSiteOptions">
+    /// <see cref="SiteOptions"/> subclass exposing the per-Site configuration surface.
+    /// Must have a public parameterless constructor.
+    /// </typeparam>
+    /// <remarks>
+    /// <para><b>Lifecycle</b> (in order):</para>
+    /// <list type="number">
+    ///   <item><c>new TSiteOptions()</c> — derived ctor sets defaults.</item>
+    ///   <item><c>AttachRegistry(registry)</c> — so <c>AddArea&lt;TArea&gt;()</c> works inside hooks.</item>
+    ///   <item><c>Directory = </c><paramref name="directory"/> (normalised) — so hooks can read it.</item>
+    ///   <item><c>OnConfiguring(services)</c> — derived seeds implicit areas / always-on hooks.</item>
+    ///   <item><paramref name="configure"/>(site) — consumer customisation.</item>
+    ///   <item><c>OnConfigured(services)</c> — derived snapshots final state into singletons / late hooks.</item>
+    ///   <item>Mount via the low-level <c>UseWebsite&lt;TApp&gt;(directory, site)</c>.</item>
+    /// </list>
+    /// </remarks>
+    public static WebApplication UseWebsite<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TApp,
+        TSiteOptions>(
+        this WebApplication app,
+        UrlPath directory,
+        Action<TSiteOptions>? configure = null)
+        where TApp : IComponent
+        where TSiteOptions : SiteOptions, new()
+    {
+        ArgumentNullException.ThrowIfNull(app);
+
+        var registry = app.Services.GetRequiredService<WebsiteAreaRegistry>();
+        var site = new TSiteOptions();
+        site.AttachRegistry(registry);
+
+        // Directory is assigned BEFORE OnConfiguring so derived overrides may read it
+        // (e.g. DashboardSiteOptions.OnConfigured uses Directory to key the mount
+        // registry). The low-level UseWebsite<TApp>(directory, site) below assigns
+        // it again with the same value — idempotent.
+        site.Directory = NormalizeDirectory(directory);
+
+        site.InvokeOnConfiguring(app.Services);
+        configure?.Invoke(site);
+        site.InvokeOnConfigured(app.Services);
+
+        return app.UseWebsite<TApp>(directory, site);
+    }
+
+    /// <summary>
+    /// Low-level "pre-built" overload — mounts an already-configured
+    /// <see cref="SiteOptions"/> at <paramref name="directory"/>. Use the higher-level
+    /// <see cref="UseWebsite{TApp, TSiteOptions}"/> overload unless you need to bypass
+    /// the <see cref="SiteOptions.OnConfiguring"/> / <see cref="SiteOptions.OnConfigured"/>
+    /// template-method lifecycle (e.g. when wiring a fully-instanced
+    /// <see cref="SiteOptions"/> from a non-standard composition root).
+    /// </summary>
+    public static WebApplication UseWebsite<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TApp>(
+        this WebApplication app,
+        UrlPath directory,
+        SiteOptions site)
+        where TApp : IComponent
+    {
+        ArgumentNullException.ThrowIfNull(site);
+
+        // "/" and "" both mean root — normalise to UrlPath.Empty so Directory.HasValue
+        // unambiguously indicates a non-root mount.
+        site.Directory = NormalizeDirectory(directory);
+
+        var opts = app.Services.GetRequiredService<WebsiteOptions>();
+
+        // Snapshot this mount into the singleton registry. The scoped ICurrentSite
+        // reads back from it whenever its per-Site branch middleware has not run
+        // (Blazor circuit scope, hosted services). Mirror of how UseDashboard
+        // populates DashboardMountRegistry — same survival contract, applies to
+        // every UseWebsite mount including the root.
+        var mounts = app.Services.GetRequiredService<WebsiteMountRegistry>();
+        mounts.Register(site);
 
         var pathBase = site.NormalizedPathBase;
         var matchPath = string.IsNullOrEmpty(pathBase) ? null : pathBase;
+
+        // Order guard. `BuildBranch(app, ...)` for the root mount finishes with
+        // `app.UseEndpoints(...)`, which is a TERMINAL middleware — every middleware
+        // (and every `app.MapWhen(...)` branch) registered AFTER it is unreachable.
+        // Declaring a non-root mount after the root mount therefore SILENTLY breaks
+        // sub-site routing: sub-mount requests fall through to the root site's
+        // catch-all razor endpoint, which then returns 405 for hub negotiate POSTs
+        // and 404 for sub-site pages. The failure mode is opaque, so we fail fast
+        // here with a developer-actionable message.
+        IApplicationBuilder ab = app;
+        if (matchPath is null)
+        {
+            // Registering the root mount — flag it so future calls can detect the order.
+            ab.Properties[RootMountRegisteredFlag] = true;
+        }
+        else if (ab.Properties.ContainsKey(RootMountRegisteredFlag))
+        {
+            throw new InvalidOperationException(
+                $"app.UseWebsite<{typeof(TApp).Name}>(\"{directory.Value}\", ...) cannot be called " +
+                "after the root mount (Directory == \"/\") has been registered. The root mount " +
+                "finishes with a terminal UseEndpoints, so any later MapWhen branch is unreachable " +
+                "and the sub-mount silently fails (typical symptom: HTTP 405 on /<sub>/_blazor/negotiate). " +
+                "Declare every non-root mount BEFORE the root mount, e.g.:\n" +
+                "    app.UseDashboard(\"/dashboard\", ...);   // sub-mounts first\n" +
+                "    app.UseWebsite<App>(\"/\", ...);          // root mount last");
+        }
 
         // Build the per-Site branch. When Directory == "" the branch is the catch-all
         // (executed only when no other Site matched first — order of UseWebsite calls
@@ -230,20 +382,6 @@ public static class WebsiteServiceCollectionExtensions
         }
 
         return app;
-    }
-
-    private static void EnsureGlobalPipeline(WebApplication app)
-    {
-        // Idempotent — first UseWebsite<> call wires the only truly global piece:
-        // MapStaticAssets (endpoint data source, must register pre-branch). Every other
-        // middleware (compression / HSTS / proxy / antiforgery / exception handler /
-        // HTTPS redirection) is per-Site and lives in BuildBranch.
-        IApplicationBuilder ab = app;
-        if (ab.Properties.ContainsKey(GlobalPipelineFlag)) return;
-        ab.Properties[GlobalPipelineFlag] = true;
-
-        // Static assets (blazor.web.js, _content/, *.css, *.js) — host-wide.
-        app.MapStaticAssets();
     }
 
     private static void BuildBranch<
@@ -358,6 +496,30 @@ public static class WebsiteServiceCollectionExtensions
 
         branch.UseEndpoints(ep =>
         {
+            // Static assets (blazor.web.js, _framework/, _content/, *.css, *.js) MUST
+            // be mapped INSIDE the branch — never globally on the parent app. Reason:
+            //
+            // For a non-root mount such as "/dashboard" the request "/dashboard/_content/
+            // MudBlazor/MudBlazor.min.css" is matched by app.MapWhen(StartsWith("/dashboard"))
+            // and routed into this branch, where UsePathBase("/dashboard") strips the
+            // prefix and Request.Path becomes "/_content/MudBlazor/MudBlazor.min.css".
+            // The branch has its OWN endpoint route builder (independent of the parent
+            // app's), so the only way the StaticAssetsEndpointDataSource can resolve
+            // the stripped path is if MapStaticAssets() is registered HERE — registering
+            // it on the parent app means the branch's UseEndpoints sees zero static-
+            // asset endpoints and every "/<mount>/_content/..." request 404s. See
+            // https://github.com/dotnet/aspnetcore/issues/62249 for the same scenario.
+            //
+            // For the root mount (Directory == "") `branch == app`, so MapStaticAssets
+            // ends up on the parent endpoint route builder anyway — same behaviour as
+            // the previous global registration, just driven through the per-Site path.
+            // The fingerprinted @Assets[...] resolutions in App.razor / DashboardApp.razor
+            // are then resolved against the same endpoint set, so URLs like
+            // "/dashboard/_content/MudBlazor/MudBlazor.min.css#[<fingerprint>]" route
+            // back to this branch and hit the static-assets endpoint after path-base
+            // stripping.
+            ep.MapStaticAssets();
+
             if (opts.RazorComponents)
             {
                 var razor = ep.MapRazorComponents<TApp>();

@@ -16,30 +16,97 @@ namespace Zonit.Extensions.Website;
 /// same <c>AuthArea</c> instance can be mounted at <c>/</c> and <c>/admin</c> to
 /// surface login/register pages under both paths.</para>
 /// </remarks>
-public sealed class SiteOptions
+public class SiteOptions
 {
-    private readonly WebsiteAreaRegistry _registry;
+    private WebsiteAreaRegistry? _registry;
     private readonly List<IWebsiteArea> _areas = [];
     private readonly List<Action<IApplicationBuilder>> _appHooks = [];
     private readonly List<Action<IApplicationBuilder>> _useHooks = [];
     private readonly List<Action<IEndpointRouteBuilder>> _endpointHooks = [];
 
-    internal SiteOptions(WebsiteAreaRegistry registry, UrlPath directory)
+    internal SiteOptions(WebsiteAreaRegistry registry)
     {
         _registry = registry;
-        // "/" and "" both mean root — normalise to UrlPath.Empty so Directory.HasValue
-        // unambiguously indicates a non-root mount.
-        Directory = directory.Value == "/" ? UrlPath.Empty : directory;
     }
+
+    /// <summary>
+    /// Derivation ctor. Subclasses (e.g. <c>DashboardSiteOptions</c>) call this base
+    /// without arguments — <see cref="Directory"/> is assigned by the framework when
+    /// <c>UseWebsite&lt;TApp, TSiteOptions&gt;(directory, ...)</c> mounts the instance,
+    /// so callers cannot accidentally fork the mount path away from the actual branch
+    /// path-base. The registry is attached automatically by the same generic overload
+    /// before <see cref="OnConfiguring"/> runs, so <see cref="AddArea{TArea}"/> is
+    /// usable from the very first override hook.
+    /// </summary>
+    protected SiteOptions()
+    {
+    }
+
+    /// <summary>
+    /// Attaches the area registry to a <see cref="SiteOptions"/> instance built outside
+    /// the framework (e.g. <c>DashboardSiteOptions</c> instantiated by <c>UseDashboard</c>).
+    /// Idempotent — only the first registry sticks, so a derived host wiring the registry
+    /// upfront can't be silently overwritten later. <see cref="AddArea{TArea}"/> needs
+    /// the registry, so call this BEFORE running any configuration that touches areas.
+    /// </summary>
+    public void AttachRegistry(WebsiteAreaRegistry registry)
+    {
+        ArgumentNullException.ThrowIfNull(registry);
+        _registry ??= registry;
+    }
+
+    /// <summary>
+    /// Template-method hook — runs once, AFTER <see cref="Directory"/> + registry are
+    /// attached but BEFORE the consumer's <c>configure</c> lambda. Override in derived
+    /// classes to seed implicit areas, install always-on hooks, or any other setup
+    /// that must precede consumer customisation. The default is a no-op.
+    /// </summary>
+    /// <param name="services">
+    /// Application-level <see cref="IServiceProvider"/> — typically used to resolve
+    /// singletons that the override needs to populate (e.g. mount registries).
+    /// </param>
+    /// <remarks>
+    /// <para>Only invoked through <see cref="WebsiteServiceCollectionExtensions.UseWebsite{TApp, TSiteOptions}"/>.
+    /// Manual <c>new</c> + low-level <c>UseWebsite&lt;TApp&gt;(directory, site)</c>
+    /// callers bypass this entry point and are expected to perform their own setup.</para>
+    /// </remarks>
+    protected virtual void OnConfiguring(IServiceProvider services)
+    {
+    }
+
+    /// <summary>
+    /// Template-method hook — runs once, AFTER the consumer's <c>configure</c> lambda.
+    /// Override in derived classes to snapshot consumer-supplied state (e.g. final
+    /// <see cref="Areas"/> list) into singletons or to add late hooks that must
+    /// observe the fully-built configuration. The default is a no-op.
+    /// </summary>
+    /// <param name="services">
+    /// Application-level <see cref="IServiceProvider"/> — same instance as
+    /// <see cref="OnConfiguring"/>; typically used to resolve singletons that need a
+    /// post-configuration write (e.g. <c>DashboardMountRegistry</c>).
+    /// </param>
+    protected virtual void OnConfigured(IServiceProvider services)
+    {
+    }
+
+    /// <summary>Friend-only entry point used by <c>WebsiteServiceCollectionExtensions</c>.</summary>
+    internal void InvokeOnConfiguring(IServiceProvider services) => OnConfiguring(services);
+
+    /// <summary>Friend-only entry point used by <c>WebsiteServiceCollectionExtensions</c>.</summary>
+    internal void InvokeOnConfigured(IServiceProvider services) => OnConfigured(services);
 
     /// <summary>
     /// URL prefix at which this Site is mounted as a strongly-typed
     /// <see cref="UrlPath"/> value object. <c>"/"</c> or <see cref="UrlPath.Empty"/>
     /// = root; otherwise a rooted segment such as <c>"/admin"</c>. Set via the first
     /// argument to <c>app.UseWebsite&lt;TApp&gt;("/", o => …)</c> — the string is
-    /// implicitly converted to <see cref="UrlPath"/>.
+    /// implicitly converted to <see cref="UrlPath"/>. The setter is <c>internal</c>
+    /// on purpose: only <c>UseWebsite&lt;TApp&gt;</c> assigns the mount path, so a
+    /// consumer who hands a pre-built <see cref="SiteOptions"/> to
+    /// <see cref="WebsiteServiceCollectionExtensions.UseWebsite{TApp}(WebApplication, UrlPath, SiteOptions)"/>
+    /// can never desync <see cref="Directory"/> from the branch path-base.
     /// </summary>
-    public UrlPath Directory { get; }
+    public UrlPath Directory { get; internal set; }
 
     /// <summary>
     /// Optional authorization policy required for any page rendered under
@@ -125,6 +192,10 @@ public sealed class SiteOptions
     /// </summary>
     public SiteOptions AddArea<TArea>() where TArea : class, IWebsiteArea
     {
+        if (_registry is null)
+            throw new InvalidOperationException(
+                "SiteOptions has no attached WebsiteAreaRegistry. Construct it via the framework " +
+                "(UseWebsite<TApp> / UseWebsite<TApp, TOptions>) rather than manually.");
         var area = _registry.Resolve<TArea>();
         if (_areas.Any(a => a.Key.Equals(area.Key, StringComparison.OrdinalIgnoreCase)))
             throw new InvalidOperationException(
