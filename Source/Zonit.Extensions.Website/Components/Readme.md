@@ -1,239 +1,177 @@
-# Zonit.Extensions.Website – Base Classes for Blazor Components
+# Razor base components
 
-This repository provides a Blazor-focused set of base classes that help manage:
+The five classes in this folder. Namespace: `Zonit.Extensions.Website`.
 
-• Data loading and persistence (PageViewBase<T>).  
-• Form editing, validation, and auto-saving (PageEditBase<TViewModel>).  
-• Common behaviors and services for user interfaces, breadcrumbs, culture providers, etc. (ExtensionsBase).  
+```
+ComponentBase
+ └─ Base                    cancellation + logger
+     └─ ExtensionsBase      injected providers, T()/TM(), breadcrumbs
+         └─ PageBase        + runtime LayoutKey            ← inherit this by default
+             └─ PageViewBase<T>    + Model / LoadAsync / persistence
+                 └─ PageEditBase<T>  + EditContext / validation / auto-save
+```
 
-These classes are intended to streamline writing Blazor components by minimizing boilerplate code and enforcing best practices for data binding, state persistence, and user interactions.
+The consumer-facing version of this document — with the traps, the tables and the full snippets —
+ships in the package as `.zonit/extensions/website/pages.md`. This file is the source-tree summary.
 
---------------------------------------------------------------------------------
+## `Base`
 
-## Table of Contents
+Owns a `CancellationTokenSource` created in the constructor. `Dispose(bool)` **cancels** it before
+disposing (this was inert up to 10.0.0-preview.9), and `ComponentToken` returns an already-cancelled
+token afterwards instead of throwing `ObjectDisposedException`.
 
-1. [Overview](#overview)  
-2. [PageViewBase<T>](#pageviewbaset)  
-    - [Key Features](#key-features)  
-    - [Usage Example](#usage-example)  
-3. [PageEditBase<TViewModel>](#pageeditbasetviewmodel)  
-    - [Key Features](#key-features-1)  
-    - [Usage Example](#usage-example-1)  
-4. [ExtensionsBase](#extensionsbase)  
-    - [Key Features](#key-features-2)  
-    - [Usage Example](#usage-example-2)  
-5. [Additional Notes](#additional-notes)  
-
---------------------------------------------------------------------------------
-
-## Overview
-
-This code provides an opinionated infrastructure for building robust Blazor components with:
-
-• Automatic state persistence using Microsoft.AspNetCore.Components.PersistentComponentState.  
-• A consistent approach to data handling, loading, and refreshing.  
-• Simplified form editing with validation, change-tracking, and auto-save functionality.  
-• Easy integration with dependency injection for services like culture providers, workspace providers, and more.  
-• Breadcrumb management for improved site navigation.
-
---------------------------------------------------------------------------------
-
-## PageViewBase<T>
-
-Generic base class for components that need to load and display data of type T. It automatically persists and restores state, handles loading flags, and supports data refreshes.
-
-### Key Features
-
-• Generic Model property (T? Model) for reading data.  
-• Automatic state persistence (PersistentComponentState).  
-• IsLoading flag set while data is being fetched.  
-• Async loading logic via LoadAsync().  
-• RefreshAsync() method for manual data refresh.  
-• OnRefreshChangeAsync() override for reacting to external refresh events.  
-
-### Usage Example
-
-Suppose you have a data model called “Product” that you want to display:
+It overrides the framework's parameterless `OnInitializedAsync()`, `OnParametersSetAsync()` and
+`OnAfterRenderAsync(bool)` and forwards each to a `CancellationToken` overload:
 
 ```csharp
-@code {
-    // Example of a model
-    public class Product
-    {
-        public int Id { get; set; }
-        public string? Name { get; set; }
-    }
-
-    public class ProductPage : PageViewBase<Product>
-    {
-        protected override async Task<Product?> LoadAsync()
-        {
-            // Simulate data loading
-            await Task.Delay(500);
-
-            // For demonstration, returning a new product
-            return new Product { Id = 1, Name = "Sample Product" };
-        }
-
-        // Optionally override if needed
-        protected override async void OnRefreshChangeAsync()
-        {
-            // First call base logic for reloading
-            await RefreshAsync();
-
-            // Then handle any additional logic
-            Console.WriteLine("Data refreshed from external event!");
-        }
-    }
-}
+protected virtual Task OnInitializedAsync(CancellationToken cancellationToken);
+protected virtual Task OnParametersSetAsync(CancellationToken cancellationToken);
+protected virtual Task OnAfterRenderAsync(bool firstRender, CancellationToken cancellationToken);
 ```
 
-Key points in the above example:
+**Derived components must override the token overload.** Overriding the parameterless one compiles
+and silently unhooks everything below it in the chain.
 
-• Model is defined by the generic parameter Product.  
-• LoadAsync() is overridden to fetch data (your custom logic here).  
-• The component automatically shows a loading indicator if you choose to reference IsLoading in the Razor markup.  
-• State is automatically persisted and restored the next time the component is visited (if you configure Blazor’s Prerendering and PersistentComponentState properly).  
+`Logger` is an `ILogger` categorised by the concrete component's `FullName`, backed by an injected
+`ILoggerFactory`. It is a null logger until `OnInitialized` has run. No finalizer — the class holds
+only managed state, and a finalizer on every Blazor component was pure GC cost.
 
---------------------------------------------------------------------------------
+## `ExtensionsBase`
 
-## PageEditBase<TViewModel>
+Resolves nine providers lazily from the scope's `IServiceProvider`; **the `OnChange` subscription
+is installed on first property access**, so a component that never reads `Workspace` will not
+refresh when it changes.
 
-A base class for building Blazor forms and editing data. It manages validation, auto-saving, change tracking, and duplication prevention.
+| Property | Type | Reaction to `OnChange` |
+| --- | --- | --- |
+| `Culture` | `ICultureProvider` | `OnUIRefreshChangeAsync` |
+| `Workspace` | `IWorkspaceProvider` | `OnRefreshChangeAsync` |
+| `Catalog` | `ICatalogProvider` | `OnRefreshChangeAsync` |
+| `Tenant` | `ITenantProvider` | `OnRefreshChangeAsync` |
+| `BreadcrumbsProvider` | `IBreadcrumbsProvider` | `OnUIRefreshChangeAsync` |
+| `Authenticated` | `IAuthenticatedProvider` | not subscribed |
+| `Toast` | `IToastProvider` | not subscribed |
+| `Cookie` | `ICookieProvider` | not subscribed |
+| `LayoutContext` | `ILayoutContext` | not subscribed |
 
-### Key Features
+Plus `[Inject] NavigationManager Navigation`.
 
-• EditContext for validation and form handling.  
-• A TViewModel instance as the data context (Model).  
-• ValidationMessageStore for dynamic error display.  
-• AutoTrimStrings and AutoNormalizeWhitespace options to sanitize user input.  
-• TrackChanges to detect if the user has unsaved changes.  
-• Auto-save support for fields marked with a custom [AutoSave] attribute.  
-• HandleValidSubmit and HandleInvalidSubmit overrides for improved form submission control.  
+- `OnUIRefreshChangeAsync()` — `InvokeAsync(StateHasChanged)`.
+- `OnRefreshChangeAsync()` — re-runs `OnInitializedAsync(ComponentToken)` then re-renders. Returns
+  immediately when the token is already cancelled, so a provider event racing with teardown does
+  not restart a load.
 
-### Usage Example
+Translation helpers: `T(string, params object[])` → `string`,
+`TM(string, params object[])` → `MarkupString` (raw HTML, unencoded),
+`Translate(string, params object[])` → the `Translation` value object.
 
-Imagine you have a simple view model for editing user data:
+`Options<TModel>()` reads `IOptionsMonitor<TModel>.CurrentValue` and subscribes the component to
+`OnChange`. It is annotated `[RequiresUnreferencedCode]` / `[RequiresDynamicCode]`.
+
+Breadcrumbs are declarative: `ShowBreadcrumbs` is a tri-state (`true` = publish `Breadcrumbs`,
+`false` = leave the current trail alone, `null` = clear it), read in `OnInitialized` — i.e. *before*
+`LoadAsync`. Crumbs that name loaded data must be published imperatively through
+`BreadcrumbsProvider.Initialize(...)`.
+
+## `PageBase`
+
+Adds `protected string? LayoutKey` over `ILayoutContext`. `null` = no layout, `""` = fall back to
+the Site default (overriding a static `[LayoutKey]`), any other string = a key in `ILayoutRegistry`.
+Prefer the class attributes `[LayoutKey("…")]` / `[NoLayout]`, which `ZonitRouteView` reads before
+the page is instantiated — the runtime property costs one extra render.
+
+## `PageViewBase<T>`
 
 ```csharp
-@code {
-    public class UserViewModel
-    {
-        [Required(ErrorMessage = "Username is required.")]
-        public string Username { get; set; } = string.Empty;
+protected virtual TViewModel? Model { get; set; }
+protected bool IsLoading { get; }
+protected virtual bool PersistentModel { get; } = true;
 
-        [EmailAddress(ErrorMessage = "Email is not a valid email address.")]
-        public string Email { get; set; } = string.Empty;
-    }
-
-    public class UserEditPage : PageEditBase<UserViewModel>
-    {
-        protected override async Task SubmitAsync()
-        {
-            // This method is called when the form is valid and user clicks "Submit"
-            // Implement your save logic, e.g., call an API to store the user data
-            await Task.Delay(500);
-            Console.WriteLine("User data has been saved!");
-        }
-
-        protected override void OnAfterSubmit(bool success)
-        {
-            if (success)
-            {
-                // e.g. Show a success message
-                Console.WriteLine("Submission successful!");
-            }
-        }
-
-        protected override bool IsFieldAutoSaveEnabled(string fieldName)
-        {
-            // Optionally decide at runtime if a field should be autosaved
-            // For example, auto-save just the Email field
-            return fieldName == nameof(UserViewModel.Email);
-        }
-    }
-}
+protected virtual Task<TViewModel?> LoadAsync(CancellationToken cancellationToken);
+protected Task RefreshAsync(CancellationToken cancellationToken = default);
 ```
 
-In your Razor file, you’d also have a form:
+`OnInitializedAsync` registers the persistence callback, tries to take the model back from
+`PersistentComponentState` under `$"{GetType().Name}_Model"`, and only calls `LoadAsync` when
+there was no snapshot. `IsLoading` guards against overlapping loads.
 
-```razor
-@page "/user-edit"
+The class deliberately does **not** override `OnRefreshChangeAsync` any more. It used to, and
+because the base is `async void` the `IsLoading` guard had usually not been set when the override's
+second load started — one provider change produced up to two backend calls.
 
-<EditForm EditContext="@EditContext" OnValidSubmit="@HandleValidSubmit" OnInvalidSubmit="@HandleInvalidSubmit">
-    <div>
-        <label>Username</label>
-        <InputText @bind-Value="Model.Username" />
-        <ValidationMessage For="@(() => Model.Username)" />
-    </div>
+Both persistence calls are gated on `JsonSerializer.IsReflectionEnabledByDefault`, which the SDK
+clears for any `PublishTrimmed` publish. Persistence then no-ops with a single `LogDebug` and the
+component re-loads after hydration. There is no `JsonTypeInfo` alternative: in .NET 10
+`PersistentComponentState` exposes only the reflective generic pair, and `PersistAsBytes` /
+`TryTakeBytes` are `internal`.
 
-    <div>
-        <label>Email</label>
-        <InputText @bind-Value="Model.Email" />
-        <ValidationMessage For="@(() => Model.Email)" />
-    </div>
+The `[DynamicallyAccessedMembers]` annotation on `TViewModel` is what makes the two `IL2026`
+suppressions honest. It does **not** recurse — a view model with a nested DTO graph needs its own
+roots in the consumer, or persistence turned off.
 
-    <button type="submit" disabled="@Processing">Save</button>
-</EditForm>
+## `PageEditBase<T>`
 
-@if (HasChanges)
-{
-    <p>You have unsaved changes.</p>
-}
+`where TViewModel : class, new()`. `Model` is re-declared non-nullable with
+`[SupplyParameterFromForm]`, and an `EditContext` + `ValidationMessageStore` are created in
+`OnInitialized` / `OnParametersSet` whenever the model instance changes.
+
+Callbacks (wire these to `EditForm`, they are **not** virtual):
+
+```csharp
+public async Task HandleValidSubmit(EditContext editContext);
+public void HandleInvalidSubmit();
 ```
 
-Key points to notice:  
-• Model is created automatically (new()).  
-• On form submission (OnValidSubmit), the component runs SubmitAsync().  
-• Auto field trimming/whitespace normalization is configurable.  
-• The user can see validation messages from ValidationMessageStore.  
+Hooks (override these):
 
---------------------------------------------------------------------------------
-
-## ExtensionsBase
-
-Common base class that provides services and functionalities used by both PageViewBase<T> and PageEditBase<TViewModel>. Key tasks include managing breadcrumbs, injecting common dependencies (like culture providers), and reacting to service changes.
-
-### Key Features
-
-• ShowBreadcrumbs property for controlling whether breadcrumbs should be displayed, not set, or cleared.  
-• Lazy-loaded providers: ICultureProvider, IWorkspaceProvider, ICatalogProvider, etc.  
-• OnRefreshChangeAsync() as a virtual method to reload data or refresh UI on external changes.  
-• Automatic disposal of event handlers to avoid memory leaks.  
-
-### Usage Example
-
-You typically won’t inherit directly from ExtensionsBase unless you’re creating a specialized base class:
-
-```cs
-public class MyCustomBase : ExtensionsBase
-{
-    protected override void OnInitialized()
-    {
-        base.OnInitialized();
-        // Here you could override or extend the logic from ExtensionsBase
-    }
-
-    protected override async void OnRefreshChangeAsync()
-    {
-        // Do special refresh logic
-        await base.OnInitializedAsync();
-
-        // Then forcibly refresh UI (if needed)
-        StateHasChanged();
-    }
-}
+```csharp
+protected virtual Task SubmitAsync(CancellationToken cancellationToken = default);
+protected virtual void OnBeforeSubmit();
+protected virtual void OnAfterSubmit(bool success);
+protected virtual void HandleInvalidSubmit(string message);        // note: same name, one arg
+protected virtual Task OnModelChanged(string fieldName, object? oldValue, object? newValue, CancellationToken ct = default);
+protected virtual Task AutoSaveAsync(string fieldName, object? oldValue, object? newValue, CancellationToken ct = default);
+protected virtual Task HandleFieldAutoSaveError(string fieldName, Exception exception, CancellationToken ct = default);
+protected virtual bool IsFieldAutoSaveEnabled(string fieldName);
 ```
 
---------------------------------------------------------------------------------
+Validation is installed on `EditContext.OnValidationRequested`: `Validator.TryValidateObject`
+against the model, each `ErrorMessage` translated through `ICultureProvider`, results written into
+the class's own `ValidationMessageStore`. Consumers must **not** add `<DataAnnotationsValidator />`
+on top — a second store over the same rules doubles every message and therefore every toast.
 
-## Additional Notes
+Switches: `AutoTrimStrings` (default `true`), `AutoNormalizeWhitespace` (`true`, collapses `\s+`
+to one space — destroys textarea line breaks), `TrackChanges` (`true`),
+`PreventDuplicateSubmissions` (`true`, fixed 1 s window), `AutoSaveDelay` (800 ms fallback).
+Trimming/normalisation runs once inside `HandleValidSubmit`, immediately before `SubmitAsync` —
+never on keystroke.
 
-1. Make sure breadcrumbs, culture providers, and other dependencies are properly registered in the service container.  
-2. If you have Prerendering enabled on Blazor Server, the PersistentComponentState requires you to configure the system properly in your _Host.cshtml or equivalent to preserve and restore state.  
-3. For auto-save field customizations, you can annotate your TViewModel properties with a custom [AutoSave] attribute (not shown in the code snippet above, but you can easily create one).  
-4. Adjust the _duplicateSubmissionThreshold and AutoSaveDelay according to your preferences.  
+Auto-save fires only for properties carrying `[AutoSave]` (or when `IsFieldAutoSaveEnabled` is
+overridden). The debounce is a `System.Threading.Timer`, so `AutoSaveAsync` runs on a thread-pool
+thread — UI work from there needs `InvokeAsync`.
 
---------------------------------------------------------------------------------
+`OnValueChanged<TValue>(TValue modelValue)` locates the target property by **value equality**
+across all properties of that type; two properties currently holding the same value make it write
+to the wrong one. `IsValid` reads the current message store without running validation.
 
-This codebase is designed to make building data-centric or form-heavy Blazor pages faster and more maintainable. Feel free to extend or modify it to suit your own application requirements and development patterns. If you encounter any issues or have suggestions, please open an issue or submit a pull request. Enjoy coding!
+## The source generator
+
+`Zonit.Extensions.Website.SourceGenerators` emits a `ViewModelMetadata<T>` (compile-time property
+delegates, `StringProperties` subset, `CreateInstance`) plus a `[ModuleInitializer]` registration,
+for every non-generic `T` used as `PageViewBase<T>` / `PageEditBase<T>` in the consuming assembly.
+When registered, `PageEditBase` uses those delegates instead of reflection for `CleanModelData`,
+`GetFieldValue`, `IsFieldAutoSaveEnabled`, `GetFieldAutoSaveDelay` and `OnValueChanged`. Validation
+and persistence stay reflective.
+
+Current gaps, all reproduced against 10.0.0-preview.10:
+
+- `{ get; init; }` properties (classes and records) emit `vm.X = v!` → **`CS8852`** in the
+  consumer's build.
+- `required` members break the emitted `CreateInstance() => new()` → **`CS9035`**.
+- Properties **inherited** from a base class are silently absent — `GetMembers()` is not walked up
+  the chain, so the generated path skips fields the old reflective path handled.
+- The emitted file uses `file` types, so `LangVersion` ≤ 10 gives `CS8936`.
+
+None of these produce a generator diagnostic. `Example/Zonit.Extensions.ConsumerGate` is the
+regression gate; it currently covers one plain-class view model through `PageViewBase` and does not
+exercise any of the shapes above.

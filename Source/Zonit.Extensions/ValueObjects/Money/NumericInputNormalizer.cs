@@ -1,3 +1,5 @@
+using System.Buffers;
+
 namespace Zonit.Extensions;
 
 /// <summary>
@@ -49,21 +51,68 @@ namespace Zonit.Extensions;
 ///   <item><term><c>"1.234"</c> / <c>"1,234"</c></term><description><c>1.234</c> (NOT 1234 — see ambiguity note)</description></item>
 ///   <item><term><c>"-19,99"</c></term><description><c>-19.99</c></description></item>
 /// </list>
+///
+/// <para><b>Input length is hard-capped at <see cref="MaxInputLength"/> characters.</b>
+/// This method is reachable from untrusted data — <c>MoneyJsonConverter.Read</c> /
+/// <c>PriceJsonConverter.Read</c> and every ASP.NET model bind through
+/// <see cref="IParsable{TSelf}"/> — so an unbounded buffer sized from the caller's string is a
+/// remote denial of service. A <see cref="decimal"/> carries at most 29 significant digits, so
+/// no legitimate numeric literal comes close to the cap; anything above it is rejected before a
+/// single character is copied.</para>
 /// </remarks>
 internal static class NumericInputNormalizer
 {
+    /// <summary>
+    /// Longest input accepted. Generous by two orders of magnitude versus the 29 significant
+    /// digits a <see cref="decimal"/> can hold, so it only ever rejects input that could not
+    /// have parsed anyway — but it bounds the buffers below to a constant.
+    /// </summary>
+    private const int MaxInputLength = 512;
+
+    /// <summary>
+    /// Inputs at or below this length are normalized on the stack. Above it we rent, because
+    /// two buffers live in the same frame and <c>StackOverflowException</c> is uncatchable —
+    /// there is no recovering from getting this wrong at runtime.
+    /// </summary>
+    private const int StackAllocThreshold = 128;
+
     public static bool TryNormalize(string? input, out string normalized)
     {
-        if (string.IsNullOrWhiteSpace(input))
-        {
-            normalized = string.Empty;
-            return false;
-        }
+        normalized = string.Empty;
 
-        // Strip whitespace + underscores. Span<char> avoids extra allocations only for
-        // the trivial path, so we just go with a single string allocation here — the
-        // hot path for numeric input is small (< 32 chars) and the JIT collapses it.
-        Span<char> buffer = stackalloc char[input.Length];
+        if (string.IsNullOrWhiteSpace(input))
+            return false;
+
+        // Gate BEFORE any buffer is reserved: a hostile ~400 KB JSON string would otherwise
+        // size the scratch spans and kill the process outright rather than failing the parse.
+        if (input.Length > MaxInputLength)
+            return false;
+
+        // Two scratch spans of input.Length each: one for the whitespace-stripped copy, one for
+        // the separator-normalized output. They are carved out of a single buffer so the rented
+        // path needs only one rent/return pair.
+        char[]? rented = null;
+        try
+        {
+            Span<char> scratch = input.Length <= StackAllocThreshold
+                ? stackalloc char[StackAllocThreshold * 2]
+                : (rented = ArrayPool<char>.Shared.Rent(input.Length * 2));
+
+            return TryNormalizeCore(input, scratch, out normalized);
+        }
+        finally
+        {
+            if (rented is not null)
+                ArrayPool<char>.Shared.Return(rented);
+        }
+    }
+
+    private static bool TryNormalizeCore(string input, Span<char> scratch, out string normalized)
+    {
+        normalized = string.Empty;
+
+        // Strip whitespace + underscores (occasional readability separators).
+        var buffer = scratch[..input.Length];
         int len = 0;
         foreach (var c in input)
         {
@@ -73,10 +122,7 @@ internal static class NumericInputNormalizer
         }
 
         if (len == 0)
-        {
-            normalized = string.Empty;
             return false;
-        }
 
         var trimmed = buffer[..len];
 
@@ -100,8 +146,9 @@ internal static class NumericInputNormalizer
             return true;
         }
 
-        // Build "<digits-without-separators>.<fractional-digits>".
-        Span<char> output = stackalloc char[trimmed.Length];
+        // Build "<digits-without-separators>.<fractional-digits>" in the second half of the
+        // scratch buffer, which is guaranteed to be at least as long as the trimmed input.
+        Span<char> output = scratch.Slice(input.Length, trimmed.Length);
         int o = 0;
         for (int i = 0; i < lastSep; i++)
         {

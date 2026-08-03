@@ -23,12 +23,23 @@
     Lifetime: subscriptions are disposed on component teardown so a hot-reload
     doesn't stack callbacks (each reload would otherwise install new bridges +
     leave the old ones registered → state captured twice).
+
+    Diagnostics: when the runtime cannot serialise persistent state at all
+    (HydrationSerialization.IsAvailable == false — any PublishTrimmed publish), every
+    bridge no-ops. That loss is invisible from the outside — the app renders anonymous
+    with default culture and looks healthy — so this component reports it here, once,
+    instead of leaving five silent returns. HydrationOptions decides how.
 *@
 @using Microsoft.AspNetCore.Components
+@using Microsoft.Extensions.DependencyInjection
+@using Microsoft.Extensions.Logging
+@using Microsoft.Extensions.Options
 @namespace Zonit.Extensions.Website.Hydration
 @implements IDisposable
 @inject PersistentComponentState State
 @inject IEnumerable<IPersistentStateProvider> Bridges
+@inject ILogger<WebsiteHydrator> Logger
+@inject IServiceProvider Services
 
 @code {
     // Subscription handles returned by each bridge's RegisterPersist call.
@@ -37,6 +48,11 @@
 
     protected override void OnInitialized()
     {
+        // Report BEFORE wiring anything: under Throw the app must fail here rather than
+        // render a page whose scoped state silently never arrives.
+        if (!HydrationSerialization.IsAvailable)
+            HydrationSerialization.ReportUnavailable(Bridges, Logger, ResolveBehavior());
+
         foreach (var bridge in Bridges)
         {
             // Restore first — interactive circuit reads the SSR snapshot before
@@ -50,6 +66,14 @@
             _subscriptions.Add(bridge.RegisterPersist(State));
         }
     }
+
+    // Resolved through IServiceProvider rather than [Inject]ed: HydrationOptions is opt-in
+    // configuration, and a host that never calls Configure<HydrationOptions>() must still be
+    // able to render this component. GetService on the open generic IOptions<> is null only
+    // when the options infrastructure itself is absent, and the default is what we want then.
+    private HydrationUnavailableBehavior ResolveBehavior()
+        => Services.GetService<IOptions<HydrationOptions>>()?.Value.WhenSerializationUnavailable
+           ?? new HydrationOptions().WhenSerializationUnavailable;
 
     public void Dispose()
     {

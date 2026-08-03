@@ -1,22 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <Description>Culture, language and translation services for Zonit applications. Provides ICultureProvider, ILanguageProvider, translation repositories, and ASP.NET Core middleware. Built on top of Zonit.Extensions value objects (Culture, Translated).</Description>
-    <Summary>Culture and translation services for Zonit applications.</Summary>
-    <PackageTags>Zonit;Extensions;Cultures;Translation;i18n;Localization;Blazor;AspNetCore</PackageTags>
+    <Description>Culture, time-zone and translation services for Zonit applications. Provides ICultureState/ICultureManager (per-scope culture and time zone), ICultureProvider (translation rendering), ITranslationManager and its process-wide registry, ILanguageProvider with 17 built-in languages, and the Translation value object. Framework-agnostic: no HttpContext and no middleware here — the ASP.NET culture middleware lives in Zonit.Extensions.Website. Built on the Culture and TimeZone value objects from Zonit.Extensions.</Description>
+    <PackageTags>Zonit;Extensions;Cultures;Translation;i18n;Localization;Globalization;TimeZone</PackageTags>
   </PropertyGroup>
 
   <!--
     Framework-agnostic dependencies only — Cultures core has no ASP.NET surface.
-    Web-only pieces (CultureMiddleware, ZonitCulturesExtension Blazor component) live
-    in Zonit.Extensions.Website and are wired by AddWebsite()/UseWebsite().
+    Web-only pieces (CultureMiddleware, the CultureStateBridge prerender bridge driven by
+    <WebsiteHydrator/>, and the T()/TM() helpers on ExtensionsBase) live in
+    Zonit.Extensions.Website and are wired by AddWebsite()/UseWebsite().
   -->
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
-    <PackageReference Include="Microsoft.SourceLink.GitHub">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>

@@ -25,7 +25,7 @@ namespace Zonit.Extensions.Website;
 /// up the canonical (possibly already-fingerprinted) URL through <see cref="ResourceAssetCollection"/>,
 /// and appends <c>?v={assemblyVersion}</c> when the path is in the RCL
 /// <c>_content/{AssemblyName}/...</c> shape. The version is read once per assembly from
-/// the loaded <see cref="Assembly.GetName"/> and memoised in a static cache — no
+/// the loaded <see cref="Assembly.GetName()"/> and memoised in a static cache — no
 /// per-render reflection overhead.</para>
 ///
 /// <para><b>What to call it like.</b></para>

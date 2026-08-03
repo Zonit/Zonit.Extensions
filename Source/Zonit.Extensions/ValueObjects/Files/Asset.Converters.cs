@@ -43,7 +43,7 @@ public sealed class AssetTypeConverter : TypeConverter
         if (value is Asset asset)
         {
             if (destinationType == typeof(byte[]))
-                return asset.Data;
+                return asset.ToArray();
             if (destinationType == typeof(Stream) || destinationType == typeof(MemoryStream))
                 return asset.ToStream();
         }

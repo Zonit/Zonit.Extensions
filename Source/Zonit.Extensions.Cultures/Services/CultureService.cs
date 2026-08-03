@@ -1,5 +1,7 @@
-using System.Globalization;
+﻿using System.Globalization;
+using Microsoft.Extensions.Options;
 using Zonit.Extensions.Cultures.Models;
+using Zonit.Extensions.Cultures.Options;
 using Zonit.Extensions.Cultures.Repositories;
 
 namespace Zonit.Extensions.Cultures.Services;
@@ -7,8 +9,9 @@ namespace Zonit.Extensions.Cultures.Services;
 /// <summary>
 /// Renders translations and time-zone-aware values for the current scope. Reads culture
 /// state from <see cref="ICultureState"/> (no write coupling), translations from the
-/// process-wide <see cref="TranslationRepository"/>, and reports unresolved keys to
-/// <see cref="MissingTranslationRepository"/> for development tooling.
+/// process-wide <see cref="TranslationRepository"/>, and — when
+/// <see cref="CultureOption.TrackMissingTranslations"/> is enabled — reports unresolved keys
+/// to <see cref="MissingTranslationRepository"/> for development tooling.
 /// </summary>
 internal sealed class CultureService : ICultureProvider, IDisposable
 {
@@ -18,16 +21,38 @@ internal sealed class CultureService : ICultureProvider, IDisposable
     private readonly MissingTranslationRepository _missing;
     private readonly ICultureState _state;
 
+    /// <summary>
+    /// Canonical form of <see cref="CultureOption.DefaultCulture"/>, resolved once because the
+    /// option cannot change for the lifetime of a scope. This is the fallback language of the
+    /// lookup and the culture whose misses are NOT worth recording (for it, the source string
+    /// is the translation). Hardcoding "en-US" here — as this service used to — silently
+    /// disabled the fallback for every app whose default language is not English.
+    /// </summary>
+    private readonly string _defaultCulture;
+
+    private readonly bool _trackMissing;
+
     private DateTimeFormatModel _dateTimeFormat = new();
 
     public CultureService(
         TranslationRepository translations,
         MissingTranslationRepository missing,
-        ICultureState state)
+        ICultureState state,
+        IOptions<CultureOption> options)
     {
         _translations = translations ?? throw new ArgumentNullException(nameof(translations));
         _missing = missing ?? throw new ArgumentNullException(nameof(missing));
         _state = state ?? throw new ArgumentNullException(nameof(state));
+        ArgumentNullException.ThrowIfNull(options);
+
+        var option = options.Value;
+
+        // Same fallback ladder CultureStateService uses for the initial culture, so a bogus
+        // configured tag degrades to en-US instead of throwing during scope construction.
+        _defaultCulture = Culture.TryCreate(option.DefaultCulture, out var configured)
+            ? configured.Value
+            : Culture.Default.Value;
+        _trackMissing = option.TrackMissingTranslations;
 
         _state.OnChange += HandleStateChanged;
         UpdateDateTimeFormat();
@@ -43,17 +68,17 @@ internal sealed class CultureService : ICultureProvider, IDisposable
             return Translation.Empty;
 
         var current = _state.Current;
-        var currentCode = current.HasValue ? current.Value : Culture.Default.Value;
+        var currentCode = current.HasValue ? current.Value : _defaultCulture;
 
         // 1. Current culture.
         var hit = FindTranslation(content, currentCode);
         if (hit is not null)
             return Format(hit.Content, args);
 
-        // 2. Default-culture fallback.
+        // 2. Configured-default-culture fallback.
         if (!IsDefault(currentCode))
         {
-            var defHit = FindTranslation(content, Culture.Default.Value);
+            var defHit = FindTranslation(content, _defaultCulture);
             if (defHit is not null)
                 return Format(defHit.Content, args);
         }
@@ -117,8 +142,15 @@ internal sealed class CultureService : ICultureProvider, IDisposable
         return null;
     }
 
-    private static bool IsDefault(string culture) =>
-        string.Equals(culture, Culture.Default.Value, StringComparison.OrdinalIgnoreCase);
+    /// <summary>
+    /// Case-insensitive by necessity, never <c>==</c>: <see cref="ICultureState.Current"/> is
+    /// canonically cased by <see cref="CultureInfo.Name"/> ("pl-PL") while the configured
+    /// option, <see cref="CultureOption.SupportedCultures"/>, the URL prefix and the cookie are
+    /// all conventionally lowercase ("pl-pl"). An ordinal comparison here would report every
+    /// culture as non-default and re-run the fallback pass against itself.
+    /// </summary>
+    private bool IsDefault(string culture) =>
+        string.Equals(culture, _defaultCulture, StringComparison.OrdinalIgnoreCase);
 
     private static Translation Format(string content, params object?[]? args)
     {
@@ -137,6 +169,10 @@ internal sealed class CultureService : ICultureProvider, IDisposable
 
     private void RecordMissing(string content, string culture)
     {
+        // Opt-in: `content` is caller-supplied text, so an always-on recorder turns any dynamic
+        // string reaching Translate() into a permanent entry in a process-wide singleton.
+        if (!_trackMissing) return;
+
         // Skip the default culture; that means the source string itself is the "translation".
         if (IsDefault(culture)) return;
 

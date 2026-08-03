@@ -2,16 +2,30 @@
   <PropertyGroup>
     <!-- Package Metadata -->
     <Description>MudBlazor integration for Zonit.Extensions Value Objects. Provides automatic converters for Value Objects (Title, Description, UrlSlug, Content, Url) with built-in exception handling and localized error messages for MudBlazor form components.</Description>
-    <Summary>MudBlazor converters for Zonit.Extensions Value Objects</Summary>
     <PackageTags>Zonit;Extensions;MudBlazor;Blazor;ValueObjects;Converters;Forms;Validation</PackageTags>
+
+    <!--
+      Overrides the solution-wide IsAotCompatible=true from ../Directory.Build.props.
+
+      This package exists to wrap MudBlazor, and MudBlazor is not Native-AOT safe: ILC reports
+      IL3050 (MakeGenericType) in MudBlazor.Utilities.Converter.Dispatcher.DelegateHelper and
+      IL2075 in MudFormComponent`2. Our own converters never reach AOT-hostile code, so the
+      analysers stay silent here and the inherited flag would have advertised a compatibility
+      this package cannot deliver — the consumer's app is what gets published, and it publishes
+      MudBlazor along with us. Better to say so than to let a green badge carry the lie.
+
+      Deliberately NOT reset:
+        * IsTrimmable stays true — the assembly IS trim-annotated and trimming is a separate,
+          weaker promise than Native AOT.
+        * EnableAotAnalyzer / EnableTrimAnalyzer stay on (set unconditionally in
+          Directory.Build.props, not implied by this flag) so our own code is still held to the
+          AOT rules. Dropping the claim must not mean dropping the discipline.
+    -->
+    <IsAotCompatible>false</IsAotCompatible>
   </PropertyGroup>
   
   <ItemGroup>
     <PackageReference Include="MudBlazor" />
-    <PackageReference Include="Microsoft.SourceLink.GitHub">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
   </ItemGroup>
   
   <ItemGroup>

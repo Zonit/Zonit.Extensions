@@ -1,0 +1,79 @@
+<Project>
+
+  <!--
+    Per-package entry point for Zonit.Extensions.Website. NuGet auto-imports buildTransitive/<PackageId>.targets,
+    so this file runs for every consumer that installs this package directly or transitively.
+
+    It contributes ONLY this package's documentation to the shared installer. Item groups from
+    every installed Zonit.Extensions.* package accumulate before any target runs, so the consumer
+    ends up with docs for exactly what they installed - see Zonit.Extensions.Instructions.targets.
+  -->
+
+  <ItemGroup>
+    <ZonitExtDocRoot Include="$(MSBuildThisFileDirectory)..\Instruction\extensions\website">
+      <Area>website</Area>
+    </ZonitExtDocRoot>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ZonitExtDoc Include="hosting">
+      <Area>website</Area>
+      <Summary>AddWebsite plus UseWebsite&lt;TApp&gt;: the two-phase host model, several Sites in one app, SiteOptions, and mount ordering.</Summary>
+      <Glob>**/Program.cs</Glob>
+      <SourceFile>$(MSBuildThisFileDirectory)..\Instruction\extensions\website\hosting.md</SourceFile>
+    </ZonitExtDoc>
+    <ZonitExtDoc Include="areas">
+      <Area>website</Area>
+      <Summary>Writing a plug-in area: IWebsiteArea, IWebsiteServices, contributing navigation, and the three pipeline hooks.</Summary>
+      <Glob>**/*Area.cs</Glob>
+      <SourceFile>$(MSBuildThisFileDirectory)..\Instruction\extensions\website\areas.md</SourceFile>
+    </ZonitExtDoc>
+    <ZonitExtDoc Include="pages">
+      <Area>website</Area>
+      <Summary>PageBase / PageViewBase&lt;T&gt; / PageEditBase&lt;T&gt;: injected providers, cancellation, EditForm wiring and auto-save.</Summary>
+      <Glob>**/*.razor</Glob>
+      <SourceFile>$(MSBuildThisFileDirectory)..\Instruction\extensions\website\pages.md</SourceFile>
+    </ZonitExtDoc>
+    <ZonitExtDoc Include="layouts">
+      <Area>website</Area>
+      <Summary>String-keyed layouts: AddWebsiteLayout, [LayoutKey], [NoLayout], ZonitRouteView and the precedence order.</Summary>
+      <Glob>**/Routes.razor</Glob>
+      <SourceFile>$(MSBuildThisFileDirectory)..\Instruction\extensions\website\layouts.md</SourceFile>
+    </ZonitExtDoc>
+    <ZonitExtDoc Include="hydration">
+      <Area>website</Area>
+      <Summary>Crossing the SSR-to-circuit scope boundary: WebsiteHydrator, the built-in state bridges, and writing your own IPersistentStateProvider.</Summary>
+      <Glob>**/App.razor</Glob>
+      <SourceFile>$(MSBuildThisFileDirectory)..\Instruction\extensions\website\hydration.md</SourceFile>
+    </ZonitExtDoc>
+    <ZonitExtDoc Include="permissions">
+      <Area>website</Area>
+      <Summary>[RequirePermission] and [RequireRole], the synthetic policy provider, the claim contract, and the session cookie scheme.</Summary>
+      <Glob>**/*Auth*.cs</Glob>
+      <SourceFile>$(MSBuildThisFileDirectory)..\Instruction\extensions\website\permissions.md</SourceFile>
+    </ZonitExtDoc>
+    <ZonitExtDoc Include="ui-services">
+      <Area>website</Area>
+      <Summary>Navigation, breadcrumbs, toasts and cookies, plus UrlPath.ToHref() which is mandatory under a non-root mount.</Summary>
+      <SourceFile>$(MSBuildThisFileDirectory)..\Instruction\extensions\website\ui-services.md</SourceFile>
+    </ZonitExtDoc>
+    <ZonitExtDoc Include="aot">
+      <Area>website</Area>
+      <Summary>What is genuinely trim- and AOT-safe in the web kernel, what is annotated instead, and how the source generator removes reflection.</Summary>
+      <SourceFile>$(MSBuildThisFileDirectory)..\Instruction\extensions\website\aot.md</SourceFile>
+    </ZonitExtDoc>
+  </ItemGroup>
+
+  <!--
+    Guard the IMPORT, not the target. Every Zonit.Extensions.* package ships an identical copy of
+    the shared installer, so without this condition the second package's import would re-run the
+    installer's property block, flip its own "already imported" flag, and silently disable the
+    install target. The stubs above still all contribute their items — only the installer body is
+    imported once, from whichever package NuGet ordered first. That is safe precisely because the
+    installer resolves every path from item metadata (ZonitExtDocRoot / SourceFile) rather than
+    from its own MSBuildThisFileDirectory.
+  -->
+  <Import Project="$(MSBuildThisFileDirectory)Zonit.Extensions.Instructions.targets"
+          Condition="'$(_ZonitExtInstallerSeen)' != 'true'" />
+
+</Project>

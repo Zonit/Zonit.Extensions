@@ -37,13 +37,28 @@ internal sealed class CatalogRepository(IProjectSource organizationProject) : IC
         return _state;
     }
 
-    public async Task SwitchProjectAsync(Guid projectId, CancellationToken cancellationToken = default)
+    public async Task<bool> SwitchProjectAsync(Guid projectId, CancellationToken cancellationToken = default)
     {
-        if (_state is null)
-            return;
+        var catalog = await _organizationProject.SwitchProjectAsync(projectId, cancellationToken);
 
-        _state.Catalog = await _organizationProject.SwitchProjectAsync(projectId, cancellationToken);
+        // null is the source's documented "the user has no access" answer. Writing it through
+        // would clear the project the user is currently working in, so a denied switch would cost
+        // them the project they were allowed to be in. Refuse the switch and report it instead.
+        if (catalog is null)
+            return false;
+
+        // A scope that never went through InitializeAsync (no middleware pass, or an interactive
+        // circuit whose CatalogStateBridge restore did not run) used to make this whole call a
+        // silent no-op. The switch itself needs no prior state, so materialize the snapshot.
+        _state ??= new StateModel();
+        _state.Catalog = catalog;
+
+        // The visible list is scoped to the organization, not to the active project, so it does
+        // not change across a project switch — fetched only when this scope never had one.
+        _state.Projects ??= await _organizationProject.GetProjectsAsync(cancellationToken);
+
         StateChanged();
+        return true;
     }
 
     public void StateChanged()

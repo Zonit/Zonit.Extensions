@@ -25,7 +25,13 @@ public interface ICatalogManager
     /// </summary>
     /// <param name="projectId">Project ID</param>
     /// <param name="cancellationToken">Forwarded to the underlying source.</param>
-    public Task SwitchProjectAsync(Guid projectId, CancellationToken cancellationToken = default);
+    /// <returns>
+    /// <see langword="true"/> when the switch was granted and the catalog snapshot now describes
+    /// <paramref name="projectId"/>; <see langword="false"/> when
+    /// <c>IProjectSource.SwitchProjectAsync</c> answered <see langword="null"/> ("no access"),
+    /// in which case the previously selected project is left untouched.
+    /// </returns>
+    public Task<bool> SwitchProjectAsync(Guid projectId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets the current project.

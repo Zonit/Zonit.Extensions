@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text.Json;
 using Zonit.Extensions.Tenants.Settings;
 
 namespace Zonit.Extensions.Tenants.Services;
@@ -42,6 +43,8 @@ internal sealed class TenantService : ITenantProvider, IDisposable
 
     public event Action? OnChange;
 
+    public event Action<SettingHydrationFailure>? OnSettingHydrationFailed;
+
     public TenantSettings Settings => _settings ??= new TenantSettings(this);
 
     public TSetting GetSetting<TSetting>() where TSetting : ISetting, new()
@@ -62,7 +65,8 @@ internal sealed class TenantService : ITenantProvider, IDisposable
     /// <summary>
     /// Looks the persisted JSON up in <see cref="Tenant.Variables"/> and dispatches
     /// hydration to <see cref="ISettingHydrator.HydrateFromJson(string)"/> on the
-    /// prototype. Falls through to defaults when no override exists or the JSON is bad.
+    /// prototype. Falls through to defaults when no override exists or the JSON is bad —
+    /// but reports the bad-JSON case through <see cref="OnSettingHydrationFailed"/>.
     /// </summary>
     private TSetting HydrateInto<TSetting>(TSetting prototype) where TSetting : ISetting
     {
@@ -79,11 +83,19 @@ internal sealed class TenantService : ITenantProvider, IDisposable
             if (prototype is ISettingHydrator hydrator)
                 hydrator.HydrateFromJson(json);
         }
-        catch
+        catch (JsonException ex)
         {
-            // Malformed JSON must not crash the request — defaults already populated
-            // prototype.Value. Persistent bad blobs are a concern for the consumer's
-            // ITenantSource (which can decide whether to log / replace / surface).
+            // Deliberately narrow. A corrupt blob is a DATA problem: the request survives on
+            // the defaults already sitting in prototype.Value. Everything else — a
+            // NullReferenceException inside a plugin's Hydrate, a bad JsonTypeInfo, an
+            // InvalidOperationException — is a CODE problem, and the previous blanket
+            // `catch { }` turned those into "this tenant has no override", which is
+            // indistinguishable from success and cost real debugging time.
+            //
+            // Even the data case is no longer silent: it surfaces on
+            // OnSettingHydrationFailed. This package has no ILogger to write to (see
+            // SettingHydrationFailure remarks), so the host forwards it to theirs.
+            OnSettingHydrationFailed?.Invoke(new SettingHydrationFailure(tenant.Id, prototype.Key, ex));
         }
 
         return prototype;

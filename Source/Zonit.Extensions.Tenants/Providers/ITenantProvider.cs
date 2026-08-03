@@ -39,4 +39,16 @@ public interface ITenantProvider
 
     /// <summary>Raised when the resolved tenant changes in this scope.</summary>
     event Action? OnChange;
+
+    /// <summary>
+    /// Raised when a persisted blob for a setting could not be hydrated. The setting still
+    /// resolves — to its compile-time defaults — so subscribing is the only way to tell a
+    /// corrupt override apart from "no override".
+    /// </summary>
+    /// <remarks>
+    /// Scoped to the current provider, so a host that wants global coverage subscribes from
+    /// something scoped too (middleware, a circuit-lifetime service). See
+    /// <see cref="SettingHydrationFailure"/> for why this is an event rather than a log call.
+    /// </remarks>
+    event Action<SettingHydrationFailure>? OnSettingHydrationFailed;
 }

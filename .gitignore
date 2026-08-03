@@ -361,3 +361,8 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+# Claude Code agent worktrees / local agent state
+.claude/
+
+# Tool output from Tools/Update-DotNet.ps1 (machine-generated status snapshot)
+dotnet-update-report.json

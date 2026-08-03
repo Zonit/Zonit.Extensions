@@ -2,7 +2,6 @@
 <PropertyGroup>
   <!-- Package Metadata -->
   <Description>ASP.NET Core and Blazor web extensions providing base components (PageBase, PageEditBase, PageViewBase), navigation services, breadcrumbs management, toast notifications, cookie handling, and data protection utilities for building modern web applications.</Description>
-  <Summary>ASP.NET Core and Blazor extensions for navigation, toasts, cookies, and components</Summary>
   <PackageTags>Zonit;Extensions;Blazor;AspNetCore;Navigation;Breadcrumbs;Toasts;Cookies;Components;Web</PackageTags>
 </PropertyGroup>
   <ItemGroup>
@@ -12,10 +11,6 @@
     <!-- All four legacy NuGet *.Abstractions packages have been consolidated (E2-E5)
          into in-tree projects under ../Zonit.Extensions.{Cultures,Auth,Organizations,Projects}.
          The legacy NuGet packages are no longer referenced. -->
-    <PackageReference Include="Microsoft.SourceLink.GitHub">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Zonit.Extensions\Zonit.Extensions.csproj" />
@@ -38,17 +33,10 @@
   </ItemGroup>
 
   <!--
-    Ship the generator DLL inside this package's /analyzers/dotnet/cs folder so that
-    consumers installing Zonit.Extensions.Website via NuGet automatically get the generator.
+    The generator DLL is packed into analyzers/dotnet/cs by the shared
+    ZonitPackAnalyzerFromProjectReference target in ../Directory.Build.targets. The previous
+    local target guarded the hardcoded bin path with Condition="Exists(…)", which meant a
+    missing DLL shipped a package with no analyzer and no error — the shared target resolves
+    the path from the ProjectReference and fails the build instead.
   -->
-  <Target Name="IncludeSourceGeneratorInPackage"
-          BeforeTargets="_GetPackageFiles">
-    <ItemGroup>
-      <None Include="$(MSBuildThisFileDirectory)..\Zonit.Extensions.Website.SourceGenerators\bin\$(Configuration)\netstandard2.0\Zonit.Extensions.Website.SourceGenerators.dll"
-            Condition="Exists('$(MSBuildThisFileDirectory)..\Zonit.Extensions.Website.SourceGenerators\bin\$(Configuration)\netstandard2.0\Zonit.Extensions.Website.SourceGenerators.dll')"
-            Pack="true"
-            PackagePath="analyzers/dotnet/cs"
-            Visible="false" />
-    </ItemGroup>
-  </Target>
 </Project>

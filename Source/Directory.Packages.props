@@ -8,9 +8,16 @@
       Versioning policy: track .NET major version.
       Currently aligned with .NET 10. When .NET 11 ships, drop net10.0 and bump to 11.x.
     -->
-    <Version>10.0.0-preview.9</Version>
+    <Version>10.0.0-preview.10</Version>
+    <!--
+      AssemblyVersion stays frozen at 10.0.0.0 for the whole 10.x line. Website references
+      five siblings, so a moving AssemblyVersion would force binding-redirect churn on every
+      preview for no benefit. FileVersion tracks the preview number instead (binding-neutral),
+      so two preview DLLs are distinguishable to Explorer / inventory tooling / crash triage.
+      The identity that carries the full story is InformationalVersion (version + git sha).
+    -->
     <AssemblyVersion>10.0.0.0</AssemblyVersion>
-    <FileVersion>10.0.0.0</FileVersion>
+    <FileVersion>10.0.0.10</FileVersion>
     <!-- Package Output -->
     <PackageOutputPath>$(MSBuildThisFileDirectory)..\Packages</PackageOutputPath>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
@@ -27,15 +34,38 @@
   <!-- Common Dependencies -->
   <ItemGroup>
     <PackageVersion Include="Diacritics" Version="4.1.8" />
+    <!--
+      Roslyn is PINNED LOW ON PURPOSE — do not "update" these two.
+      Both source generators ship as analyzers inside Zonit.Extensions.Website and
+      Zonit.Extensions.Tenants. An analyzer compiled against Roslyn N refuses to load in a
+      host older than N (CS9057), so this version is the MINIMUM SDK/VS a consumer needs.
+      Roslyn per SDK: 10.0.100 = 5.0, 10.0.2xx = 5.3, 10.0.3xx = 5.6. Staying on 4.14.0 keeps
+      the generators loadable in every SDK that can consume a net10.0 package at all, and the
+      generators use only IIncrementalGenerator + CreateSyntaxProvider, present since 4.x.
+      If a future generator needs a 5.x API, ship version-partitioned analyzer folders
+      (analyzers/dotnet/roslyn4.14/cs + analyzers/dotnet/roslyn5.x/cs) — do not raise the floor.
+    -->
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0" />
-    <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="10.0.203" PrivateAssets="All" />
-    <PackageVersion Include="MudBlazor" Version="9.4.0" />
+    <!--
+      Microsoft.SourceLink.GitHub is deliberately NOT referenced. Since the .NET 8 SDK
+      SourceLink is built in; an explicit PackageReference sets SuppressImplicitGitSourceLink
+      and substitutes an older band for the SDK's own — and silently gives up the SDK's
+      EmbedUntrackedSources=true default. The nuspec <repository> entry comes from the SDK.
+    -->
+    <PackageVersion Include="MudBlazor" Version="9.7.0" />
     <!--
       Framework-agnostic Microsoft.Extensions.* packages used by the pure-core domain
       projects (Cultures / Auth / Organizations / Projects) so they no longer require
       a FrameworkReference on Microsoft.AspNetCore.App and stay consumable from
       console / mobile / WASM-client hosts.
+
+      These are a FLOOR inherited by every consumer, not a choice about what runs: NuGet
+      resolves the highest version in the graph, so an app already on a later servicing band
+      gets it regardless. Held at 10.0.2 on purpose — raising it only excludes apps on an
+      earlier band, and for ASP.NET Core hosts a declared version above the shared framework's
+      copies the standalone assembly into publish output instead of using the framework one.
+      Nothing here uses an API added after 10.0.0.
     -->
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.2" />
     <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.2" />

@@ -23,6 +23,24 @@ namespace Zonit.Extensions.Website.Hydration;
 /// API directly with its own known <c>T</c> — the framework stays AOT-friendly
 /// and the trimmer keeps the exact JSON types each bridge actually uses.</para>
 ///
+/// <para><b>The reflection gate every bridge shares.</b> Those two generic methods are the
+/// <em>only</em> key-addressed persistence surface a third party can reach in .NET 10: the
+/// byte-level <c>PersistAsBytes</c> / <c>TryTakeBytes</c> pair exists but is <c>internal</c>.
+/// Both JSON methods hard-code the framework's own <c>JsonSerializerOptions</c> instance, which
+/// carries no <c>TypeInfoResolver</c>, so when
+/// <c>System.Text.Json.JsonSerializer.IsReflectionEnabledByDefault</c> is off the call throws for
+/// every payload type — a <see cref="string"/> included. The SDK clears that switch for every
+/// <c>PublishTrimmed</c> publish, <c>PublishAot</c> included. Every bridge therefore checks
+/// <see cref="HydrationSerialization.IsAvailable"/> before touching JSON and no-ops when it is
+/// <see langword="false"/>: the circuit re-reads its scoped state the slow way instead of faulting
+/// during the prerender's persist phase. Blazor WebAssembly is unaffected — its SDK explicitly
+/// restores the switch to <c>true</c>. Consumers implementing this interface must follow the same
+/// rule. The loss is <b>not</b> silent: <see cref="WebsiteHydrator"/> reports it once per bridge
+/// type, and <see cref="HydrationOptions"/> lets the host escalate it to an exception or mute it.
+/// See <see cref="HydrationSerialization"/> for the measured evidence and for why
+/// <c>PersistentComponentStateSerializer&lt;T&gt;</c> — public though it is — cannot be used from
+/// here.</para>
+///
 /// <para><b>How <see cref="WebsiteHydrator"/> drives the contract.</b> The
 /// aggregator component resolves <c>IEnumerable&lt;IPersistentStateProvider&gt;</c>
 /// in <c>OnInitialized</c>. For every provider it calls <see cref="Restore"/>

@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Rendering;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using MudBlazor;
@@ -52,8 +53,11 @@ public partial class ZonitTextField<T> : MudTextField<T>
     /// </summary>
     /// <remarks>
     /// <para>The parameter is silently ignored for non-<see cref="Url"/> field types — it
-    /// would be meaningless to "open" a <c>Title</c> or <c>Description</c>. Empty or
-    /// invalid URLs are not clickable either; the icon disables itself.</para>
+    /// would be meaningless to "open" a <c>Title</c> or <c>Description</c>. Only an absolute
+    /// <c>http</c> or <c>https</c> address is openable: while the field is empty, holds text the
+    /// <see cref="Url"/> value object rejects, holds a relative path, or holds any other scheme
+    /// (<c>javascript:</c>, <c>data:</c>, <c>file:</c>, …), the icon disables itself — it renders
+    /// as a plain, non-clickable glyph and nothing is opened.</para>
     ///
     /// <para>When both <see cref="OpenNewTab"/> and <see cref="Copyable"/> are set,
     /// <see cref="OpenNewTab"/> wins (the URL icon is more action-specific). MudBlazor's
@@ -114,17 +118,51 @@ public partial class ZonitTextField<T> : MudTextField<T>
             Counter = _detectedMaxLength.Value;
         }
 
+        ApplyAdornment();
+    }
+
+    /// <summary>
+    /// Refreshes the adornment state, then renders the underlying <c>MudTextField</c>.
+    /// </summary>
+    /// <param name="builder">The render tree builder supplied by the Blazor renderer.</param>
+    /// <remarks>
+    /// The adornment is recomputed here, not only in <see cref="OnParametersSet"/>, because
+    /// OnParametersSet is one render behind the text it has to reflect: MudBlazor runs the
+    /// ParameterState change handlers that refresh Text from Value *after* the base
+    /// SetParametersAsync that raised OnParametersSet, and text edits originating inside the
+    /// input re-render without raising OnParametersSet at all. Rendering is the only moment where
+    /// the text shown to the user and the icon wired next to it are guaranteed to agree.
+    /// </remarks>
+    protected override void BuildRenderTree(RenderTreeBuilder builder)
+    {
+        ApplyAdornment();
+        base.BuildRenderTree(builder);
+    }
+
+    /// <summary>
+    /// Configures the single MudBlazor adornment slot from the current parameters and input text.
+    /// </summary>
+    private void ApplyAdornment()
+    {
         // OpenNewTab takes precedence over Copyable because MudTextField's Adornment slot
         // can hold only one button. The check `_isUrlBoundField` keeps the parameter a
         // no-op for non-URL types (Title, Description, etc.) where opening a tab is
         // nonsense.
         if (OpenNewTab && _isUrlBoundField)
         {
+            var target = ResolveOpenTabTarget();
+
             Adornment = Adornment.End;
             AdornmentIcon = Icons.Material.Filled.OpenInNew;
             AdornmentColor = global::MudBlazor.Color.Default;
             AdornmentAriaLabel = "Open in new tab";
-            OnAdornmentClick = EventCallback.Factory.Create<MouseEventArgs>(this, OpenInNewTabAsync);
+
+            // MudInputAdornment renders a clickable MudIconButton only when the click callback
+            // carries a delegate, and a plain, inert MudIcon otherwise — so dropping the callback
+            // is how the icon "disables itself" for values that must never reach window.open.
+            OnAdornmentClick = target is null
+                ? default
+                : EventCallback.Factory.Create<MouseEventArgs>(this, OpenInNewTabAsync);
         }
         else if (Copyable)
         {
@@ -135,19 +173,47 @@ public partial class ZonitTextField<T> : MudTextField<T>
             OnAdornmentClick = EventCallback.Factory.Create<MouseEventArgs>(this, CopyToClipboardAsync);
         }
     }
-    
+
+    /// <summary>
+    /// Returns the absolute http/https address the adornment would open for the text currently in
+    /// the box, or <c>null</c> when that text must not be opened.
+    /// </summary>
+    private string? ResolveOpenTabTarget()
+    {
+        var text = ReadText;
+
+        // ReadText is MudBaseInput's raw text state, not converter output: this class keeps the
+        // rejected text visible while a conversion error is pending (see UpdateTextPropertyAsync),
+        // so anything the user typed can show up here and must be re-validated every time.
+        if (string.IsNullOrWhiteSpace(text))
+            return null;
+
+        // Parse through the same Url value object the field is bound to instead of hand-rolling —
+        // what we open is then exactly what the model would have accepted.
+        if (!Url.TryCreate(text, out var url))
+            return null;
+
+        // Url itself is deliberately permissive (Uri.TryCreate happily accepts "javascript:alert(1)",
+        // "data:text/html,…" and "file:///c:/…" as valid absolute URIs), so the scheme allow-list is
+        // this component's job: handing any of those to window.open would run attacker-authored
+        // script or open a local file from the host page. Uri normalises the scheme to lower case.
+        // Relative URLs have no scheme at all and are rejected too — the browser would resolve them
+        // against the host app, which is not what an "open external link" affordance promises.
+        return url.Scheme is "http" or "https" ? url.Value : null;
+    }
+
     private async Task OpenInNewTabAsync(MouseEventArgs args)
     {
-        // Don't try to open an empty / failed-conversion field. ReadText round-trips
-        // through the VO converter, so it already gives us the canonical URL string
-        // (or empty when the input is invalid).
-        var text = ReadText;
-        if (string.IsNullOrWhiteSpace(text))
+        // Re-validate on the click rather than trusting the state captured at render time: the
+        // callback can outlive the text it was wired for, and the scheme check is a security
+        // boundary, not a UI nicety.
+        var target = ResolveOpenTabTarget();
+        if (target is null)
             return;
 
         // window.open with noopener avoids tab-nabbing — the new tab cannot drive
         // window.opener back into the host page.
-        await JsRuntime.InvokeVoidAsync("open", text, "_blank", "noopener,noreferrer");
+        await JsRuntime.InvokeVoidAsync("open", target, "_blank", "noopener,noreferrer");
     }
 
     private async Task CopyToClipboardAsync(MouseEventArgs args)

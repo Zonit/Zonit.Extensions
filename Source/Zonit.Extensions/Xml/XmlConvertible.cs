@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.Reflection;
 using System.Text;
 using System.Xml;
@@ -23,21 +24,44 @@ public abstract class XmlConvertible
     /// Converting the model to XML
     /// </summary>
     /// <returns>XML representation of the object</returns>
+    /// <remarks>
+    /// Values are written with <see cref="CultureInfo.InvariantCulture"/> and dates in the
+    /// round-trip "O" format, so a document produced on a comma-decimal host reads back
+    /// identically on a period-decimal one. See <see cref="SetPropertyValue"/> for the
+    /// matching read side.
+    /// </remarks>
     public string Serialize()
     {
-        using var stringWriter = new StringWriter();
-        using var xmlWriter = XmlWriter.Create(stringWriter, new XmlWriterSettings 
-        { 
+        // Utf8StringWriter, not StringWriter: XmlWriterSettings.Encoding is overridden by the
+        // TextWriter's own Encoding, so a plain StringWriter made the declaration announce
+        // utf-16 while every caller persists the result as UTF-8.
+        using var stringWriter = new Utf8StringWriter();
+
+        // Scoped so the writer is disposed - and therefore flushed - before the buffer is read.
+        // Without this the writer's internal buffer was still unflushed at ToString() and
+        // Serialize() returned an empty string for every document short enough to fit in it.
+        using (var xmlWriter = XmlWriter.Create(stringWriter, new XmlWriterSettings
+        {
             Indent = true,
             Encoding = Encoding.UTF8,
             OmitXmlDeclaration = false
-        });
+        }))
+        {
+            xmlWriter.WriteStartDocument();
+            SerializeToXml(xmlWriter);
+            xmlWriter.WriteEndDocument();
+        }
 
-        xmlWriter.WriteStartDocument();
-        SerializeToXml(xmlWriter);
-        xmlWriter.WriteEndDocument();
-        
         return stringWriter.ToString();
+    }
+
+    /// <summary>
+    /// <see cref="StringWriter"/> that reports UTF-8 so the XML declaration matches how the
+    /// resulting string is actually persisted, and formats with the invariant culture.
+    /// </summary>
+    private sealed class Utf8StringWriter() : StringWriter(CultureInfo.InvariantCulture)
+    {
+        public override Encoding Encoding => Encoding.UTF8;
     }
 
     /// <summary>
@@ -98,7 +122,7 @@ public abstract class XmlConvertible
             if (value != null)
             {
                 var elementName = GetElementName(prop);
-                writer.WriteElementString(elementName, value.ToString());
+                writer.WriteElementString(elementName, FormatValue(value));
             }
         }
         
@@ -161,6 +185,25 @@ public abstract class XmlConvertible
         return xmlElementAttr?.ElementName ?? property.Name;
     }
 
+    /// <summary>
+    /// Renders a property value culture-independently.
+    /// </summary>
+    /// <remarks>
+    /// <c>object.ToString()</c> formats through <see cref="CultureInfo.CurrentCulture"/>, so a
+    /// decimal written on a pl-PL host came out as <c>19,99</c> and was read back on an en-US
+    /// host as 1999 - silent data corruption in a "lossless" serializer. Dates use "O" because
+    /// it is the only format that survives a round trip with its <see cref="DateTimeKind"/>.
+    /// </remarks>
+    private static string FormatValue(object value) => value switch
+    {
+        string s => s,
+        DateTime dateTime => dateTime.ToString("O", CultureInfo.InvariantCulture),
+        DateTimeOffset dateTimeOffset => dateTimeOffset.ToString("O", CultureInfo.InvariantCulture),
+        TimeSpan timeSpan => timeSpan.ToString("c", CultureInfo.InvariantCulture),
+        IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
+        _ => value.ToString() ?? string.Empty
+    };
+
     private void SetPropertyValue(PropertyInfo property, string value)
     {
         try
@@ -177,18 +220,23 @@ public abstract class XmlConvertible
                 return;
             }
 
+            // Every parse below is pinned to InvariantCulture to mirror FormatValue. Using the
+            // ambient culture here meant a document written on pl-PL ("19,99") deserialised to
+            // 1999 on en-US, and a date written as "04.03.2026" flipped day and month.
             object? convertedValue = underlyingType.Name switch
             {
                 nameof(String) => value,
-                nameof(Int32) => int.Parse(value),
-                nameof(Int64) => long.Parse(value),
-                nameof(Decimal) => decimal.Parse(value),
-                nameof(Double) => double.Parse(value),
-                nameof(Single) => float.Parse(value),
+                nameof(Int32) => int.Parse(value, CultureInfo.InvariantCulture),
+                nameof(Int64) => long.Parse(value, CultureInfo.InvariantCulture),
+                nameof(Decimal) => decimal.Parse(value, CultureInfo.InvariantCulture),
+                nameof(Double) => double.Parse(value, CultureInfo.InvariantCulture),
+                nameof(Single) => float.Parse(value, CultureInfo.InvariantCulture),
                 nameof(Boolean) => bool.Parse(value),
-                nameof(DateTime) => DateTime.Parse(value),
+                nameof(DateTime) => DateTime.Parse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+                nameof(DateTimeOffset) => DateTimeOffset.Parse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+                nameof(TimeSpan) => TimeSpan.Parse(value, CultureInfo.InvariantCulture),
                 nameof(Guid) => Guid.Parse(value),
-                _ => Convert.ChangeType(value, underlyingType)
+                _ => Convert.ChangeType(value, underlyingType, CultureInfo.InvariantCulture)
             };
 
             property.SetValue(this, convertedValue);

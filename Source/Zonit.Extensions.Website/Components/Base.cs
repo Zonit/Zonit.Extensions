@@ -11,6 +11,36 @@ public class Base : ComponentBase, IDisposable
     protected CancellationTokenSource? CancellationTokenSource { get; private set; }
 
     /// <summary>
+    /// Token życia komponentu. Po <see cref="Dispose()"/> zwraca token już anulowany,
+    /// więc każda praca uruchomiona w wyścigu z niszczeniem komponentu (np. zdarzenie
+    /// <c>OnChange</c> dostawcy, które dotarło tuż po odsubskrybowaniu) natychmiast
+    /// widzi anulowanie zamiast startować od nowa.
+    /// </summary>
+    /// <remarks>
+    /// Odczyt <see cref="CancellationTokenSource.Token"/> na zwolnionym źródle rzuca
+    /// <see cref="ObjectDisposedException"/> — dlatego dostęp jest tu opakowany, a nie
+    /// rozsiany po wszystkich miejscach wywołania.
+    /// </remarks>
+    protected CancellationToken ComponentToken
+    {
+        get
+        {
+            var cts = CancellationTokenSource;
+            if (cts is null)
+                return new CancellationToken(canceled: true);
+
+            try
+            {
+                return cts.Token;
+            }
+            catch (ObjectDisposedException)
+            {
+                return new CancellationToken(canceled: true);
+            }
+        }
+    }
+
+    /// <summary>
     /// Flaga oznaczająca, czy komponent został zniszczony
     /// </summary>
     protected bool IsDisposed { get; private set; }
@@ -48,7 +78,7 @@ public class Base : ComponentBase, IDisposable
     /// Metoda wywoływana przy inicjalizacji komponentu z obsługą CancellationToken
     /// </summary>
     protected override Task OnInitializedAsync()
-        => OnInitializedAsync(CancellationTokenSource?.Token ?? CancellationToken.None);
+        => OnInitializedAsync(ComponentToken);
 
     /// <summary>
     /// Rozszerzona metoda inicjalizacji obsługująca token anulowania
@@ -60,7 +90,7 @@ public class Base : ComponentBase, IDisposable
     /// Metoda wywoływana po ustawieniu parametrów z obsługą CancellationToken
     /// </summary>
     protected override Task OnParametersSetAsync()
-        => OnParametersSetAsync(CancellationTokenSource?.Token ?? CancellationToken.None);
+        => OnParametersSetAsync(ComponentToken);
 
     /// <summary>
     /// Rozszerzona metoda ustawiania parametrów obsługująca token anulowania
@@ -72,7 +102,7 @@ public class Base : ComponentBase, IDisposable
     /// Metoda wywoływana po renderingu z obsługą CancellationToken
     /// </summary>
     protected override Task OnAfterRenderAsync(bool firstRender)
-        => OnAfterRenderAsync(firstRender, CancellationTokenSource?.Token ?? CancellationToken.None);
+        => OnAfterRenderAsync(firstRender, ComponentToken);
 
     /// <summary>
     /// Rozszerzona metoda wywoływana po renderingu obsługująca token anulowania
@@ -99,6 +129,28 @@ public class Base : ComponentBase, IDisposable
         {
             if (disposing)
             {
+                // Kolejność ma znaczenie: bez Cancel() token przekazywany do
+                // OnInitializedAsync/LoadAsync/SubmitAsync nigdy nie przechodzi w stan
+                // anulowany, więc rozpoczęte zapytania do bazy i HTTP biegłyby dalej po
+                // opuszczeniu strony, a wszystkie `if (token.IsCancellationRequested)`
+                // w klasach pochodnych byłyby martwym kodem.
+                try
+                {
+                    CancellationTokenSource?.Cancel();
+                }
+                catch (ObjectDisposedException)
+                {
+                    // Źródło zostało już zwolnione — nie ma czego anulować.
+                }
+                catch (AggregateException ex)
+                {
+                    // Cancel() propaguje wyjątki z callbacków rejestrowanych na tokenie.
+                    // Zniszczenie komponentu nie może się przez nie wywrócić.
+                    Logger.LogDebug(ex,
+                        "Callback anulowania zgłosił wyjątek podczas niszczenia {ComponentType}.",
+                        GetType().Name);
+                }
+
                 try
                 {
                     CancellationTokenSource?.Dispose();
@@ -138,11 +190,9 @@ public class Base : ComponentBase, IDisposable
         }
     }
 
-    /// <summary>
-    /// Finalizator
-    /// </summary>
-    ~Base()
-    {
-        Dispose(false);
-    }
+    // Świadomie BEZ finalizatora. Klasa trzyma wyłącznie zasoby zarządzane
+    // (CancellationTokenSource, subskrypcje), a finalizator na klasie bazowej każdego
+    // komponentu Blazor promowałby każdą jego instancję do kolejki finalizacji —
+    // realny koszt GC bez żadnej korzyści, bo Dispose(false) i tak nie ma czego zwolnić.
+    // Sygnatura Dispose(bool) zostaje, żeby nie łamać klas pochodnych, które ją nadpisują.
 }

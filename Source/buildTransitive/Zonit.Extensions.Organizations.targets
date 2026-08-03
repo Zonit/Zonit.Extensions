@@ -1,0 +1,39 @@
+<Project>
+
+  <!--
+    Per-package entry point for Zonit.Extensions.Organizations. NuGet auto-imports buildTransitive/<PackageId>.targets,
+    so this file runs for every consumer that installs this package directly or transitively.
+
+    It contributes ONLY this package's documentation to the shared installer. Item groups from
+    every installed Zonit.Extensions.* package accumulate before any target runs, so the consumer
+    ends up with docs for exactly what they installed - see Zonit.Extensions.Instructions.targets.
+  -->
+
+  <ItemGroup>
+    <ZonitExtDocRoot Include="$(MSBuildThisFileDirectory)..\Instruction\extensions\organizations">
+      <Area>organizations</Area>
+    </ZonitExtDocRoot>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ZonitExtDoc Include="organizations">
+      <Area>organizations</Area>
+      <Summary>Workspaces: implementing IOrganizationSource, reading IWorkspaceProvider, switching organizations, and what survives prerender.</Summary>
+      <Glob>**/*OrganizationSource.cs</Glob>
+      <SourceFile>$(MSBuildThisFileDirectory)..\Instruction\extensions\organizations\organizations.md</SourceFile>
+    </ZonitExtDoc>
+  </ItemGroup>
+
+  <!--
+    Guard the IMPORT, not the target. Every Zonit.Extensions.* package ships an identical copy of
+    the shared installer, so without this condition the second package's import would re-run the
+    installer's property block, flip its own "already imported" flag, and silently disable the
+    install target. The stubs above still all contribute their items — only the installer body is
+    imported once, from whichever package NuGet ordered first. That is safe precisely because the
+    installer resolves every path from item metadata (ZonitExtDocRoot / SourceFile) rather than
+    from its own MSBuildThisFileDirectory.
+  -->
+  <Import Project="$(MSBuildThisFileDirectory)Zonit.Extensions.Instructions.targets"
+          Condition="'$(_ZonitExtInstallerSeen)' != 'true'" />
+
+</Project>

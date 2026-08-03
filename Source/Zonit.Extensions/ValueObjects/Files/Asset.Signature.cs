@@ -210,12 +210,67 @@ public readonly partial struct Asset
     /// Validates that the file signature was detected successfully.
     /// </summary>
     /// <returns>True if signature was detected (not Unknown).</returns>
+    /// <remarks>
+    /// This answers "did the magic-byte table recognise these bytes", nothing more. Only 21
+    /// formats are in that table, so a false result is the normal outcome for .txt, .csv, .doc,
+    /// .flac and everything else without a signature - it is <b>not</b> evidence of a bad file.
+    /// Use <see cref="IsSignatureConsistent"/> to detect an actual mismatch.
+    /// </remarks>
     public bool IsSignatureValid()
     {
         // MediaType is now always from signature (or fallback), so signature is always "valid"
         // This method now just checks if we could detect the signature
         return Signature != SignatureType.Unknown;
     }
+
+    /// <summary>
+    /// Checks that the detected binary signature does not contradict the file name's extension -
+    /// i.e. that the content is not a different format wearing a misleading name.
+    /// </summary>
+    /// <returns>
+    /// <c>true</c> when no contradiction can be established: no signature was detected, the
+    /// extension claims nothing recognisable, the signature is a generic container, or the
+    /// signature and the extension agree. <c>false</c> only when the two definitely disagree.
+    /// </returns>
+    /// <remarks>
+    /// <para>Deliberately one-sided. The magic-byte table covers 21 formats, so "no signature"
+    /// carries no information and must never be treated as a failure - the previous validation
+    /// did exactly that and rejected every plain .txt, .doc and .flac handed to it.</para>
+    /// <para>Container formats are exempt because one signature legitimately backs many
+    /// extensions: ZIP is also .docx/.xlsx/.pptx, XML is also .svg/.rss, HTML is also .htm,
+    /// GZIP is also .tgz/.svgz. MP4 and MOV are treated as interchangeable because both are
+    /// ISO base media files identified by the same <c>ftyp</c> box.</para>
+    /// </remarks>
+    public bool IsSignatureConsistent()
+    {
+        if (Signature == SignatureType.Unknown)
+            return true; // Nothing detected - nothing to contradict.
+
+        if (IsContainerSignature(Signature))
+            return true; // One container, many legitimate extensions.
+
+        var declared = MimeType.FromPath(OriginalName.Value);
+        if (!declared.HasValue || declared == MimeType.OctetStream)
+            return true; // The extension makes no claim we could disprove.
+
+        var detected = GetMimeTypeFromSignature(Signature);
+        if (detected == declared)
+            return true;
+
+        // ISO base media: an .mov and an .mp4 both start with 'ftyp' and brand sniffing is not
+        // reliable enough to call one a forgery of the other.
+        return IsIsoBaseMedia(detected) && IsIsoBaseMedia(declared);
+    }
+
+    /// <summary>
+    /// Signatures shared by several unrelated extensions, where a name/content difference
+    /// proves nothing.
+    /// </summary>
+    private static bool IsContainerSignature(SignatureType signature) => signature is
+        SignatureType.Zip or SignatureType.Xml or SignatureType.Html or SignatureType.Gzip;
+
+    private static bool IsIsoBaseMedia(MimeType mimeType) =>
+        mimeType == MimeType.VideoMp4 || mimeType == MimeType.VideoMov;
 
     /// <summary>
     /// Gets a warning message if signature could not be detected.

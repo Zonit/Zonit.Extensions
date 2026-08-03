@@ -16,7 +16,16 @@ namespace Zonit.Extensions.Tenants.Settings;
 /// plugin keeps its own AOT-safe <see cref="System.Text.Json.Serialization.JsonSerializerContext"/>
 /// and the core stays clean — no <c>[UnconditionalSuppressMessage]</c> needed here.</para>
 ///
-/// <para><b>Plugin recipe</b> (1 line of JSON code per plugin):</para>
+/// <para><b>The write half is part of the contract too.</b> <see cref="Hydrate"/> defines the
+/// exact JSON shape a persisted blob must have — naming policy, converters, ignore conditions,
+/// all of it. Whoever writes <c>Tenant.Variables[<see cref="Key"/>]</c> must serialise through
+/// the <i>same</i> <c>JsonTypeInfo</c>, because a mismatch is not an error: System.Text.Json
+/// matches property names case-sensitively, finds none, and hands back a model full of
+/// compile-time defaults. So make the context reachable (the built-in
+/// <see cref="TenantsJsonContext"/> is public for exactly this reason) rather than leaving the
+/// persistence layer to guess.</para>
+///
+/// <para><b>Plugin recipe</b> (1 line of JSON code per plugin, plus a public context):</para>
 /// <code>
 /// public class MyPluginSetting : Setting&lt;MyPluginModel&gt;
 /// {
@@ -29,8 +38,10 @@ namespace Zonit.Extensions.Tenants.Settings;
 ///                json, MyPluginJsonContext.Default.MyPluginModel) ?? new();
 /// }
 ///
+/// // Public, so the admin UI / seeder can write the matching shape:
+/// //   JsonSerializer.Serialize(model, MyPluginJsonContext.Default.MyPluginModel)
 /// [JsonSerializable(typeof(MyPluginModel))]
-/// internal partial class MyPluginJsonContext : JsonSerializerContext;
+/// public partial class MyPluginJsonContext : JsonSerializerContext;
 /// </code>
 /// </remarks>
 public abstract class Setting<T> : ISetting<T>, ISettingHydrator where T : class, new()

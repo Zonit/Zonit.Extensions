@@ -231,8 +231,8 @@ public abstract class ExtensionsBase : Base, IDisposable
         base.Dispose(disposing);
     }
 
-    ~ExtensionsBase()
-        => Dispose(false);
+    // Bez finalizatora — patrz komentarz na końcu Base: jedyne zasoby tej klasy to
+    // subskrypcje zdarzeń, których finalizator i tak nie może bezpiecznie zwolnić.
 
     /// <summary>
     /// Metoda do odświeżania tylko interfejsu użytkownika bez przeładowania danych
@@ -241,7 +241,7 @@ public abstract class ExtensionsBase : Base, IDisposable
     {
         try
         {
-            var token = CancellationTokenSource?.Token ?? CancellationToken.None;
+            var token = ComponentToken;
 
             if (token.IsCancellationRequested)
                 return;
@@ -263,7 +263,14 @@ public abstract class ExtensionsBase : Base, IDisposable
     {
         try
         {
-            var token = CancellationTokenSource?.Token ?? CancellationToken.None;
+            var token = ComponentToken;
+
+            // Komponent mógł zostać już zniszczony (zdarzenie dostawcy w wyścigu
+            // z odsubskrybowaniem) — wtedy ComponentToken jest anulowany i nie ma sensu
+            // uruchamiać całego OnInitializedAsync od nowa.
+            if (token.IsCancellationRequested)
+                return;
+
             await OnInitializedAsync(token);
 
             if (token.IsCancellationRequested)

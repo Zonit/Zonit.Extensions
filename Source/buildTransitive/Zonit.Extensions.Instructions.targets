@@ -1,0 +1,344 @@
+<Project>
+
+  <!--
+    ============================================================================
+    Zonit.Extensions AI context installer  (shared by all 8 packages)
+    ============================================================================
+    SINGLE SOURCE, COMPILED PER EDITOR. The authored docs live in the repo's
+    Instruction/extensions/<area>/ folders and are packed into each package under
+    the same relative path. At consumer build time this "compiles" them into each
+    detected editor's native format:
+
+        .zonit/extensions/<area>/*.md            copied as-is (neutral, human + agent readable)
+        .zonit/index.md                          generated map (anchored block)
+        .cursor/rules/zonit-ext*.mdc             generated: frontmatter (globs) + doc content
+        .github/instructions/zonit-ext*.md       generated: frontmatter (applyTo) + doc content
+        .github/copilot-instructions.md          generated umbrella (anchored block)
+        CLAUDE.md                                generated umbrella (anchored block)
+
+    PER-PACKAGE DOC SUBSETS — the difference from the Zonit.Extensions.Ai and
+    Zonit.Messaging installers. Those pack every doc into every package, so installing
+    one small package dumps the whole product's documentation on the consumer. Here each
+    package's own stub (Zonit.Extensions.<Name>.targets, auto-imported by NuGet) declares
+    only ITS docs as <ZonitExtDoc> items and its own content folder as <ZonitExtDocRoot>.
+    MSBuild imports every installed package's stub before any target runs, so this shared
+    installer sees exactly the union of what the consumer actually installed:
+    Cultures alone -> cultures docs; add Website -> website docs appear too.
+
+    Because Zonit.Extensions (the value-object foundation) is a transitive dependency of
+    every other package, its core docs are always present. That is intended — the VO
+    contract is what every other doc builds on.
+
+    REPO-ROOT ANCHORED. Detection and output are anchored at the workspace root (nearest
+    ancestor holding .git / a solution / an editor folder), not at the building project's
+    directory: in a real solution the editor folders live next to .git, several levels above
+    any individual .csproj. Override with <ZonitExtInstructionsAnchor>.
+
+    NO SPAM: a given editor's files are produced ONLY if that editor is detected at the root
+    (or forced via <ZonitExtEditors>). No editor detected -> nothing is written at all.
+
+      Editor   Detected when (at the resolved root)                Gets
+      Claude   .claude/ or CLAUDE.md                               .claude/skills/ Skill + CLAUDE.md pointer
+      Cursor   .cursor/                                            .cursor/rules/*.mdc
+      Copilot  .vscode/ or .github/copilot-instructions.md         .github/instructions/* +
+               or .github/instructions/  (NOT bare .github/ = CI)  copilot-instructions.md block
+
+    Knobs:
+      <ZonitExtEditors>auto|all|none|cursor;claude</ZonitExtEditors>   (default auto)
+      <ZonitExtInstructions>false</ZonitExtInstructions>               master off switch
+      <ZonitExtInstructionsRoot>.zonit</ZonitExtInstructionsRoot>      relocate the tree (under the root)
+      <ZonitExtInstructionsAnchor>path</ZonitExtInstructionsAnchor>    force the workspace root explicitly
+
+    Safety: skipped on CI (ContinuousIntegrationBuild=true) so a build server never writes
+    into the working tree. Generated files are rewritten only when content actually changes,
+    so this does not dirty git on every build. Umbrella blocks are injected between the
+    ZONIT:extensions START / END markers and never touch anything outside them.
+
+    Ships in buildTransitive/ so it fires even when a package arrives transitively (e.g. the
+    consumer references only Zonit.Extensions.Website and gets Auth/Cultures/… underneath).
+    ============================================================================
+  -->
+
+  <!-- Import-once guard: all 8 packages ship this identical installer (each named per package
+       so NuGet auto-imports it). Only the first import defines tasks and the target; the rest
+       still contribute their <ZonitExtDoc>/<ZonitExtDocRoot> items from their own stubs. -->
+  <PropertyGroup>
+    <_ZonitExtPriorImport>$(_ZonitExtInstallerSeen)</_ZonitExtPriorImport>
+    <_ZonitExtInstallerSeen>true</_ZonitExtInstallerSeen>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(_ZonitExtPriorImport)' != 'true'">
+    <ZonitExtInstructions Condition="'$(ZonitExtInstructions)' == ''">true</ZonitExtInstructions>
+    <ZonitExtInstructionsRoot Condition="'$(ZonitExtInstructionsRoot)' == ''">.zonit</ZonitExtInstructionsRoot>
+    <ZonitExtEditors Condition="'$(ZonitExtEditors)' == ''">auto</ZonitExtEditors>
+  </PropertyGroup>
+
+  <!-- Resolve the workspace root by walking up to the nearest .git / solution / editor folder.
+       Done in C# because MSBuild's upward-search intrinsics match files only (they miss the
+       .git *directory*) and cannot loop. -->
+  <UsingTask TaskName="ZonitExtFindRoot" TaskFactory="RoslynCodeTaskFactory"
+             Condition="'$(_ZonitExtPriorImport)' != 'true'"
+             AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <StartDir ParameterType="System.String" Required="true" />
+      <Root ParameterType="System.String" Output="true" />
+    </ParameterGroup>
+    <Task>
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        string Combine(string a, string b) { return System.IO.Path.Combine(a, b); }
+        var dir = new System.IO.DirectoryInfo(StartDir);
+        string repoRoot = null, editorRoot = null;
+        while (dir != null)
+        {
+            string p = dir.FullName;
+            try
+            {
+                if (repoRoot == null &&
+                    (System.IO.Directory.Exists(Combine(p, ".git"))
+                  || System.IO.File.Exists(Combine(p, ".git"))
+                  || System.IO.Directory.GetFiles(p, "*.sln").Length > 0
+                  || System.IO.Directory.GetFiles(p, "*.slnx").Length > 0))
+                    repoRoot = p;
+
+                if (editorRoot == null &&
+                    (System.IO.Directory.Exists(Combine(p, ".claude"))
+                  || System.IO.Directory.Exists(Combine(p, ".cursor"))
+                  || System.IO.Directory.Exists(Combine(p, ".vscode"))
+                  || System.IO.Directory.Exists(Combine(p, ".github"))
+                  || System.IO.File.Exists(Combine(p, "CLAUDE.md"))))
+                    editorRoot = p;
+            }
+            catch { /* unreadable ancestor: keep walking */ }
+
+            if (repoRoot != null) break;  // the repo root is the definitive boundary
+            dir = dir.Parent;
+        }
+        Root = repoRoot ?? editorRoot ?? StartDir;
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
+  <!-- The "compiler": projects the installed docs into one editor's native files. -->
+  <UsingTask TaskName="ZonitExtEmit" TaskFactory="RoslynCodeTaskFactory"
+             Condition="'$(_ZonitExtPriorImport)' != 'true'"
+             AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Editor ParameterType="System.String" Required="true" />
+      <Docs ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
+      <ProjectRoot ParameterType="System.String" Required="true" />
+      <Root ParameterType="System.String" Required="true" />
+      <Changed ParameterType="System.Boolean" Output="true" />
+    </ParameterGroup>
+    <Task>
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        Changed = false;
+        const string NL = "\n";
+        const string BEGIN = "<!-- ZONIT:extensions START -->";
+        const string END = "<!-- ZONIT:extensions END -->";
+
+        bool WriteIfChanged(string path, string text)
+        {
+            string ex = System.IO.File.Exists(path) ? System.IO.File.ReadAllText(path) : null;
+            if (string.Equals(ex, text, System.StringComparison.Ordinal)) return false;
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path));
+            System.IO.File.WriteAllText(path, text);
+            return true;
+        }
+
+        bool Inject(string file, string content, string header)
+        {
+            string block = BEGIN + NL + content.Trim() + NL + END;
+            string ex = System.IO.File.Exists(file) ? System.IO.File.ReadAllText(file) : null;
+            string res;
+            if (ex == null)
+                res = (string.IsNullOrEmpty(header) ? "" : header.Trim() + NL + NL) + block + NL;
+            else
+            {
+                int b = ex.IndexOf(BEGIN, System.StringComparison.Ordinal);
+                int e = ex.IndexOf(END, System.StringComparison.Ordinal);
+                res = (b >= 0 && e > b)
+                    ? ex.Substring(0, b) + block + ex.Substring(e + END.Length)
+                    : ex.TrimEnd() + NL + NL + block + NL;
+            }
+            return WriteIfChanged(file, res);
+        }
+
+        // Docs carry Area + Summary + optional Glob + SourceFile (the packed .md on disk).
+        // Group by area so the umbrella reads as a map of the stack, not a flat pile.
+        var byArea = new System.Collections.Generic.List<string>();
+        var seenArea = new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
+        foreach (var d in Docs)
+        {
+            string a = d.GetMetadata("Area");
+            if (seenArea.Add(a)) byArea.Add(a);
+        }
+
+        var sb = new System.Text.StringBuilder();
+        sb.Append("## Zonit.Extensions (value objects, web kernel, multi-tenancy)" + NL + NL);
+        sb.Append("This repo builds on **Zonit.Extensions**. Two rules that cause most mistakes:" + NL + NL);
+        sb.Append("1. **Value objects are strict.** Constructors and implicit string conversion THROW past " +
+                  "`MaxLength` — there is no truncation. Use `TryCreate`/`Parse` for anything user-supplied. " +
+                  "Most VOs are `readonly struct`, so check `HasValue`, never `!= null`." + NL);
+        sb.Append("2. **The host wires itself.** `services.AddWebsite()` already registers Auth, Cultures, " +
+                  "Organizations, Projects and Tenants; `app.UseWebsite<TApp>(...)` installs every middleware. " +
+                  "Do not add them again by hand." + NL + NL);
+        sb.Append("Guides for what is installed here:" + NL + NL);
+        foreach (var area in byArea)
+        {
+            foreach (var d in Docs)
+            {
+                if (!string.Equals(d.GetMetadata("Area"), area, System.StringComparison.Ordinal)) continue;
+                sb.Append("- `" + Root + "/extensions/" + area + "/" + d.ItemSpec + ".md`: " +
+                          d.GetMetadata("Summary") + NL);
+            }
+        }
+        string umbrella = sb.ToString().Trim();
+
+        bool ch = false;
+        if (Editor == "index")
+        {
+            ch = Inject(System.IO.Path.Combine(ProjectRoot, Root, "index.md"), umbrella,
+                "# Zonit AI assistant instructions (map)" + NL + NL +
+                "> Auto-managed by Zonit packages; each library owns one anchored block.");
+        }
+        else if (Editor == "cursor")
+        {
+            string dir = System.IO.Path.Combine(ProjectRoot, ".cursor", "rules");
+            ch |= WriteIfChanged(System.IO.Path.Combine(dir, "zonit-extensions.mdc"),
+                "---" + NL + "description: Zonit.Extensions: strict value objects; AddWebsite/UseWebsite wire the whole stack" +
+                NL + "alwaysApply: true" + NL + "---" + NL + NL + umbrella + NL);
+            foreach (var d in Docs)
+            {
+                string glob = d.GetMetadata("Glob");
+                if (string.IsNullOrEmpty(glob)) continue;
+                string src = d.GetMetadata("SourceFile");
+                if (!System.IO.File.Exists(src)) continue;
+                string front = "---" + NL + "description: " + d.GetMetadata("Summary") + NL +
+                               "globs: " + glob + NL + "alwaysApply: false" + NL + "---" + NL + NL;
+                ch |= WriteIfChanged(
+                    System.IO.Path.Combine(dir, "zonit-ext-" + d.GetMetadata("Area") + "-" + d.ItemSpec + ".mdc"),
+                    front + System.IO.File.ReadAllText(src));
+            }
+        }
+        else if (Editor == "copilot")
+        {
+            ch |= Inject(System.IO.Path.Combine(ProjectRoot, ".github", "copilot-instructions.md"),
+                         umbrella, "# Copilot instructions");
+            string dir = System.IO.Path.Combine(ProjectRoot, ".github", "instructions");
+            foreach (var d in Docs)
+            {
+                string glob = d.GetMetadata("Glob");
+                if (string.IsNullOrEmpty(glob)) continue;
+                string src = d.GetMetadata("SourceFile");
+                if (!System.IO.File.Exists(src)) continue;
+                string front = "---" + NL + "applyTo: \"" + glob + "\"" + NL + "---" + NL + NL;
+                ch |= WriteIfChanged(
+                    System.IO.Path.Combine(dir, "zonit-ext-" + d.GetMetadata("Area") + "-" + d.ItemSpec + ".instructions.md"),
+                    front + System.IO.File.ReadAllText(src));
+            }
+        }
+        else if (Editor == "claude")
+        {
+            // Claude Code is the priority surface: a Skill (loaded on demand via its description)
+            // plus a thin always-on CLAUDE.md pointer, so Claude knows the library exists even
+            // before the skill triggers.
+            string skillDesc =
+                "Use when working with Zonit.Extensions in this .NET repo. Covers the value objects "
+              + "(Identity, Permission, Role, Title, Url, Asset, Money/Price, Schedule, Culture) and their "
+              + "strict creation rules; the Blazor/ASP.NET Core web kernel (AddWebsite, UseWebsite, areas, "
+              + "layouts, PageBase/PageViewBase/PageEditBase, navigation, breadcrumbs, toasts, cookies); "
+              + "authorization with [RequirePermission]; translations; workspaces, projects and tenants; "
+              + "and what is genuinely trim/AOT-safe.";
+            string skill =
+                "---" + NL + "name: zonit-extensions" + NL + "description: \"" + skillDesc + "\"" + NL + "---" + NL + NL
+              + umbrella + NL;
+            ch |= WriteIfChanged(
+                System.IO.Path.Combine(ProjectRoot, ".claude", "skills", "zonit-extensions", "SKILL.md"), skill);
+
+            string pointer =
+                "## Zonit.Extensions (value objects + web kernel)" + NL + NL
+              + "This repo uses **Zonit.Extensions**. Use the **`zonit-extensions`** skill and the guides "
+              + "under `" + Root + "/extensions/`. Two rules worth holding in mind at all times: value "
+              + "objects are strict (constructors throw past `MaxLength`; use `TryCreate` for user input; "
+              + "they are structs, so test `HasValue`, not `!= null`), and the host wires itself "
+              + "(`AddWebsite()` already registers Auth/Cultures/Organizations/Projects/Tenants and "
+              + "`UseWebsite<TApp>()` installs the middleware — do not add them again).";
+            ch |= Inject(System.IO.Path.Combine(ProjectRoot, "CLAUDE.md"), pointer,
+                "# CLAUDE.md" + NL + NL + "Guidance for Claude Code in this repository.");
+        }
+        Changed = ch;
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
+  <Target Name="ZonitExtInstallInstructions"
+          AfterTargets="Build"
+          Condition="'$(_ZonitExtPriorImport)' != 'true'
+                     and '$(ZonitExtInstructions)' != 'false'
+                     and '$(ZonitExtEditors)' != 'none'
+                     and '$(ContinuousIntegrationBuild)' != 'true'
+                     and '@(ZonitExtDoc)' != ''">
+
+    <!-- 1. Resolve the workspace root (explicit anchor, else upward search). -->
+    <ZonitExtFindRoot Condition="'$(ZonitExtInstructionsAnchor)' == ''" StartDir="$(MSBuildProjectDirectory)">
+      <Output TaskParameter="Root" PropertyName="_ZonitExtRoot" />
+    </ZonitExtFindRoot>
+    <PropertyGroup>
+      <_ZonitExtRoot Condition="'$(ZonitExtInstructionsAnchor)' != ''">$(ZonitExtInstructionsAnchor)</_ZonitExtRoot>
+      <_ZonitExtRoot>$([MSBuild]::EnsureTrailingSlash('$(_ZonitExtRoot)'))</_ZonitExtRoot>
+    </PropertyGroup>
+
+    <!-- 2. Detect editors at that root (override | auto-detect existing editor folders). -->
+    <PropertyGroup>
+      <_ZonitExtClaude>false</_ZonitExtClaude>
+      <_ZonitExtClaude Condition="'$(ZonitExtEditors)' == 'all'
+          or ('$(ZonitExtEditors)' == 'auto' and (Exists('$(_ZonitExtRoot).claude') or Exists('$(_ZonitExtRoot)CLAUDE.md')))
+          or $(ZonitExtEditors.Contains('claude'))">true</_ZonitExtClaude>
+
+      <_ZonitExtCursor>false</_ZonitExtCursor>
+      <_ZonitExtCursor Condition="'$(ZonitExtEditors)' == 'all'
+          or ('$(ZonitExtEditors)' == 'auto' and Exists('$(_ZonitExtRoot).cursor'))
+          or $(ZonitExtEditors.Contains('cursor'))">true</_ZonitExtCursor>
+
+      <_ZonitExtCopilot>false</_ZonitExtCopilot>
+      <_ZonitExtCopilot Condition="'$(ZonitExtEditors)' == 'all'
+          or ('$(ZonitExtEditors)' == 'auto' and (Exists('$(_ZonitExtRoot).vscode') or Exists('$(_ZonitExtRoot).github\copilot-instructions.md') or Exists('$(_ZonitExtRoot).github\instructions')))
+          or $(ZonitExtEditors.Contains('copilot'))">true</_ZonitExtCopilot>
+
+      <_ZonitExtAnyEditor>false</_ZonitExtAnyEditor>
+      <_ZonitExtAnyEditor Condition="'$(_ZonitExtClaude)' == 'true' or '$(_ZonitExtCursor)' == 'true' or '$(_ZonitExtCopilot)' == 'true'">true</_ZonitExtAnyEditor>
+    </PropertyGroup>
+
+    <!-- 3. Materialize the neutral tree from every installed package's content folder.
+            Each <ZonitExtDocRoot> carries an Area, so the areas land side by side under
+            .zonit/extensions/ without one package clobbering another. -->
+    <ItemGroup Condition="'$(_ZonitExtAnyEditor)' == 'true'">
+      <_ZonitExtTreeFile Include="%(ZonitExtDocRoot.FullPath)\**\*.md">
+        <Area>%(ZonitExtDocRoot.Area)</Area>
+      </_ZonitExtTreeFile>
+    </ItemGroup>
+    <Copy Condition="'$(_ZonitExtAnyEditor)' == 'true'"
+          SourceFiles="@(_ZonitExtTreeFile)"
+          DestinationFiles="@(_ZonitExtTreeFile->'$(_ZonitExtRoot)$(ZonitExtInstructionsRoot)\extensions\%(Area)\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" OverwriteReadOnlyFiles="true" />
+
+    <!-- 4. Compile the docs into each surface (index always; editors only when detected). -->
+    <ZonitExtEmit Condition="'$(_ZonitExtAnyEditor)' == 'true'" Editor="index" Docs="@(ZonitExtDoc)" ProjectRoot="$(_ZonitExtRoot)" Root="$(ZonitExtInstructionsRoot)">
+      <Output TaskParameter="Changed" PropertyName="_ZonitExtChIndex" />
+    </ZonitExtEmit>
+    <ZonitExtEmit Condition="'$(_ZonitExtCursor)' == 'true'" Editor="cursor" Docs="@(ZonitExtDoc)" ProjectRoot="$(_ZonitExtRoot)" Root="$(ZonitExtInstructionsRoot)">
+      <Output TaskParameter="Changed" PropertyName="_ZonitExtChCursor" />
+    </ZonitExtEmit>
+    <ZonitExtEmit Condition="'$(_ZonitExtCopilot)' == 'true'" Editor="copilot" Docs="@(ZonitExtDoc)" ProjectRoot="$(_ZonitExtRoot)" Root="$(ZonitExtInstructionsRoot)">
+      <Output TaskParameter="Changed" PropertyName="_ZonitExtChCopilot" />
+    </ZonitExtEmit>
+    <ZonitExtEmit Condition="'$(_ZonitExtClaude)' == 'true'" Editor="claude" Docs="@(ZonitExtDoc)" ProjectRoot="$(_ZonitExtRoot)" Root="$(ZonitExtInstructionsRoot)">
+      <Output TaskParameter="Changed" PropertyName="_ZonitExtChClaude" />
+    </ZonitExtEmit>
+
+    <Message Importance="high"
+             Condition="'$(_ZonitExtChIndex)' == 'true' or '$(_ZonitExtChCursor)' == 'true' or '$(_ZonitExtChCopilot)' == 'true' or '$(_ZonitExtChClaude)' == 'true'"
+             Text="Zonit.Extensions: compiled AI instructions to '$(_ZonitExtRoot)$(ZonitExtInstructionsRoot)/extensions/' for detected editors (Claude=$(_ZonitExtClaude), Cursor=$(_ZonitExtCursor), Copilot=$(_ZonitExtCopilot)). Override root with &lt;ZonitExtInstructionsAnchor&gt; / editors with &lt;ZonitExtEditors&gt; / disable with &lt;ZonitExtInstructions&gt;false&lt;/ZonitExtInstructions&gt;." />
+  </Target>
+
+</Project>

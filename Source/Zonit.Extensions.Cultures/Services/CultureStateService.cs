@@ -1,4 +1,4 @@
-using System.Collections.Immutable;
+﻿using System.Collections.Immutable;
 using Microsoft.Extensions.Options;
 using Zonit.Extensions.Cultures.Options;
 
@@ -15,7 +15,7 @@ internal sealed class CultureStateService : ICultureManager
     private readonly CultureOption _options;
 
     private Culture _culture;
-    private TimeZone _timeZone;
+    private Zone _timeZone;
     private readonly ImmutableArray<LanguageModel> _supported;
 
     public CultureStateService(ILanguageProvider languages, IOptions<CultureOption> options)
@@ -29,7 +29,7 @@ internal sealed class CultureStateService : ICultureManager
     }
 
     public Culture Current => _culture;
-    public TimeZone TimeZone => _timeZone;
+    public Zone TimeZone => _timeZone;
     public ImmutableArray<LanguageModel> Supported => _supported;
 
     public event Action? OnChange;
@@ -43,7 +43,7 @@ internal sealed class CultureStateService : ICultureManager
         OnChange?.Invoke();
     }
 
-    public void SetTimeZone(TimeZone timeZone)
+    public void SetTimeZone(Zone timeZone)
     {
         // Empty / unparseable input → fall back to configured default. This keeps the
         // contract symmetric with SetCulture (which also falls back rather than throws).
@@ -55,12 +55,12 @@ internal sealed class CultureStateService : ICultureManager
     }
 
     /// <summary>
-    /// Resolves the configured default into a usable <see cref="TimeZone"/>. If the
-    /// configuration is bogus we collapse to <see cref="TimeZone.Utc"/> rather than crash
+    /// Resolves the configured default into a usable <see cref="Zone"/>. If the
+    /// configuration is bogus we collapse to <see cref="Zone.Utc"/> rather than crash
     /// at startup — the caller can change the zone later through <see cref="SetTimeZone"/>.
     /// </summary>
-    private static TimeZone ResolveDefaultTimeZone(string configured)
-        => TimeZone.TryCreate(configured, out var tz) ? tz : TimeZone.Utc;
+    private static Zone ResolveDefaultTimeZone(string configured)
+        => Zone.TryCreate(configured, out var tz) ? tz : Zone.Utc;
 
     /// <summary>
     /// Picks a supported culture from <paramref name="requested"/> or falls back to

@@ -21,7 +21,25 @@ namespace Zonit.Extensions.Website;
 /// <para><c>DataAnnotations.Validator.TryValidateObject</c> działa refleksyjnie i wymaga, by
 /// wszystkie używane <see cref="ValidationAttribute"/> były zachowane przez trimmer. Wbudowane atrybuty
 /// (Required, MinLength, ...) są root-owane przez .NET; <strong>własne</strong> atrybuty walidacji powinny
-/// być deklarowane na publicznym typie aby trimmer je zatrzymał.</para>
+/// być deklarowane na publicznym typie aby trimmer je zatrzymał. Gdy atrybut zostanie usunięty, walidacja
+/// nie wybucha — po prostu <em>przechodzi</em>, więc niepoprawny formularz zostanie przyjęty. To jedyna
+/// pozostała cicha ścieżka w tej klasie i jedyna, której framework nie może zamknąć za konsumenta.</para>
+///
+/// <para><strong>Co NIE jest tu tłumione.</strong> W tej klasie zostały dokładnie dwie
+/// <c>[UnconditionalSuppressMessage]</c> — obie IL2026, obie nad realnie
+/// <c>[RequiresUnreferencedCode]</c>-owanym API (<c>Validator.TryValidateObject</c> i
+/// <c>new ValidationContext(object)</c>). Sześć wcześniejszych supresji IL3050 usunięto:
+/// <c>Type.GetProperty</c>/<c>GetProperties</c>, <c>PropertyInfo.Get/SetValue</c>,
+/// <c>Validator.TryValidateObject</c> ani <c>ValidationContext..ctor</c> nie noszą
+/// <c>[RequiresDynamicCode]</c> (sprawdzone w metadanych Microsoft.NETCore.App.Ref 10.0.9),
+/// więc tłumiły diagnostykę, która nigdy nie padała.</para>
+///
+/// <para><strong>Pola modeli zagnieżdżonych.</strong> <c>@bind-Value="Model.Child.Name"</c> zgłasza
+/// <see cref="FieldIdentifier"/> z <c>Model</c> ustawionym na obiekt <em>innego</em> typu niż
+/// <typeparamref name="TViewModel"/>. Odczyt takiej wartości refleksją nie jest dowiedziony dla
+/// trimmera, więc bazowa implementacja <see cref="GetNestedModelFieldValue"/> zwraca
+/// <see langword="null"/> i loguje ostrzeżenie zamiast zgadywać — nadpisz ją, jeśli potrzebujesz
+/// tych wartości w <c>OnModelChanged</c> / <c>AutoSaveAsync</c>.</para>
 /// </remarks>
 public abstract class PageEditBase<[DynamicallyAccessedMembers(
         DynamicallyAccessedMemberTypes.PublicProperties
@@ -52,6 +70,9 @@ public abstract class PageEditBase<[DynamicallyAccessedMembers(
     // Auto-save na polach
     private readonly Dictionary<string, Timer> _fieldAutoSaveTimers = [];
     private readonly Dictionary<string, object?> _lastFieldValues = [];
+
+    // "typ.pole" już zgłoszone przez GetNestedModelFieldValue — patrz tam.
+    private readonly HashSet<string> _reportedNestedFields = [];
     protected virtual TimeSpan AutoSaveDelay => TimeSpan.FromMilliseconds(800);
 
     protected override void OnInitialized()
@@ -104,7 +125,7 @@ public abstract class PageEditBase<[DynamicallyAccessedMembers(
         HandleFieldAutoSave(e.FieldIdentifier);
 
         // Wywołaj OnModelChanged dla każdej zmiany modelu
-        var cancellationToken = CancellationTokenSource?.Token ?? CancellationToken.None;
+        var cancellationToken = ComponentToken;
         await OnModelChanged(fieldName, previousValue, currentValue, cancellationToken);
 
         StateHasChanged();
@@ -149,10 +170,11 @@ public abstract class PageEditBase<[DynamicallyAccessedMembers(
         return IsFieldAutoSaveEnabledReflective(fieldName);
     }
 
-    [UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode",
-        Justification = "TViewModel is annotated with DAM(PublicProperties|PublicFields|PublicConstructors); fallback path used only when source generator is absent.")]
-    [UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode",
-        Justification = "Reflection over TViewModel properties; trimmer/AOT keeps the members via DAM annotations on TViewModel.")]
+    // Bez supresji i bez potrzeby jej: typeof(TViewModel) niesie DAM z parametru typu klasy,
+    // więc wzorzec GetProperty jest dla analizatora dowiedziony. Ani Type.GetProperty, ani
+    // MemberInfo.GetCustomAttribute<T>() nie są oznaczone [RequiresUnreferencedCode] /
+    // [RequiresDynamicCode] (sprawdzone w metadanych Microsoft.NETCore.App.Ref 10.0.9), więc
+    // IL2026/IL3050 nigdy tu nie padają — supresja tłumiłaby diagnostykę, która nie istnieje.
     private static bool IsFieldAutoSaveEnabledReflective(string fieldName)
     {
         var property = typeof(TViewModel).GetProperty(fieldName);
@@ -170,7 +192,7 @@ public abstract class PageEditBase<[DynamicallyAccessedMembers(
 
         Processing = true;
         var success = false;
-        var cancellationToken = CancellationTokenSource?.Token ?? CancellationToken.None;
+        var cancellationToken = ComponentToken;
 
         try
         {
@@ -310,10 +332,9 @@ public abstract class PageEditBase<[DynamicallyAccessedMembers(
         CleanModelDataReflective();
     }
 
-    [UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode",
-        Justification = "TViewModel is annotated with DAM(PublicProperties|PublicFields|PublicConstructors); fallback path used only when source generator is absent.")]
-    [UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode",
-        Justification = "Reflection over TViewModel properties; trimmer/AOT keeps the members via DAM annotations on TViewModel.")]
+    // Patrz komentarz przy IsFieldAutoSaveEnabledReflective — GetProperties(Public|Instance)
+    // wymaga DAM(PublicProperties), które typeof(TViewModel) już ma; żadna z użytych metod
+    // nie jest RUC/RDC, więc nie ma czego tłumić.
     private void CleanModelDataReflective()
     {
         var properties = typeof(TViewModel)
@@ -357,7 +378,7 @@ public abstract class PageEditBase<[DynamicallyAccessedMembers(
         var previousValue = _lastFieldValues.TryGetValue(fieldName, out var prev) ? prev : null;
 
         var delay = GetFieldAutoSaveDelay(fieldName);
-        var cancellationToken = CancellationTokenSource?.Token ?? CancellationToken.None;
+        var cancellationToken = ComponentToken;
 
         _fieldAutoSaveTimers[fieldName] = new Timer(async _ =>
         {
@@ -393,10 +414,7 @@ public abstract class PageEditBase<[DynamicallyAccessedMembers(
         return GetFieldAutoSaveDelayReflective(fieldName);
     }
 
-    [UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode",
-        Justification = "TViewModel is annotated with DAM(PublicProperties|PublicFields|PublicConstructors); fallback path used only when source generator is absent.")]
-    [UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode",
-        Justification = "Reflection over TViewModel properties; trimmer/AOT keeps the members via DAM annotations on TViewModel.")]
+    // Jak wyżej: refleksja po typeof(TViewModel), zero diagnostyk do stłumienia.
     private TimeSpan GetFieldAutoSaveDelayReflective(string fieldName)
     {
         var property = typeof(TViewModel).GetProperty(fieldName);
@@ -410,45 +428,89 @@ public abstract class PageEditBase<[DynamicallyAccessedMembers(
 
     private object? GetFieldValue(FieldIdentifier fieldIdentifier)
     {
-        // Fast path: if the FieldIdentifier's model is our TViewModel and we have metadata.
-        if (fieldIdentifier.Model is TViewModel typed
-            && ViewModelMetadata<TViewModel>.Instance is { } metadata
-            && metadata.Properties.TryGetValue(fieldIdentifier.FieldName, out var accessor))
-        {
-            try
-            {
-                return accessor.Get(typed);
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError(ex, "Błąd podczas pobierania wartości pola {FieldName} w {ComponentType}",
-                    fieldIdentifier.FieldName, GetType().Name);
-                return null;
-            }
-        }
+        // Blazor ustawia FieldIdentifier.Model na obiekt, do którego faktycznie przypięto input.
+        // Dla płaskiego formularza jest to nasz TViewModel; dla @bind-Value="Model.Child.Name"
+        // jest to zagnieżdżony obiekt zupełnie innego typu. Rozdzielenie tych dwóch przypadków
+        // jest tu KLUCZOWE, bo tylko pierwszy da się statycznie udowodnić trimmerowi.
+        if (fieldIdentifier.Model is TViewModel typed)
+            return GetViewModelFieldValue(typed, fieldIdentifier.FieldName);
 
-        return GetFieldValueReflective(fieldIdentifier);
+        return GetNestedModelFieldValue(fieldIdentifier);
     }
 
-    [UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode",
-        Justification = "FieldIdentifier.Model.GetType() may be any type; reflection used to read a property by name. Fallback path used only when source generator is absent.")]
-    [UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode",
-        Justification = "Reflection-based property read; safe because the runtime model is the trimmer-rooted form-bound TViewModel.")]
-    [UnconditionalSuppressMessage("Trimming", "IL2075:UnrecognizedReflectionPattern",
-        Justification = "FieldIdentifier.Model is the form-bound TViewModel whose properties are preserved via DAM annotations on the type parameter.")]
-    private object? GetFieldValueReflective(FieldIdentifier fieldIdentifier)
+    /// <summary>
+    /// Odczyt pola należącego do <typeparamref name="TViewModel"/>: najpierw wygenerowany
+    /// akcesor, potem refleksja po <c>typeof(TViewModel)</c>.
+    /// </summary>
+    /// <remarks>
+    /// Refleksja jest tu bezpieczna <em>strukturalnie</em>, nie przypadkiem: parametr typu
+    /// <typeparamref name="TViewModel"/> klasy niesie
+    /// <c>[DynamicallyAccessedMembers(PublicProperties | PublicFields | PublicConstructors)]</c>,
+    /// więc trimmer zachowuje te składowe przy każdej instancjacji <c>PageEditBase&lt;T&gt;</c>,
+    /// niezależnie od kształtu tej metody. Dlatego nie ma tu żadnej supresji — analizator sam
+    /// dowodzi wzorca.
+    /// </remarks>
+    private object? GetViewModelFieldValue(TViewModel model, string fieldName)
     {
         try
         {
-            var property = fieldIdentifier.Model.GetType().GetProperty(fieldIdentifier.FieldName);
-            return property?.GetValue(fieldIdentifier.Model);
+            // Fast path: source-generated metadata (zero refleksji).
+            if (ViewModelMetadata<TViewModel>.Instance is { } metadata
+                && metadata.Properties.TryGetValue(fieldName, out var accessor))
+            {
+                return accessor.Get(model);
+            }
+
+            // Fallback: generator nieobecny albo właściwość dziedziczona (generator nie schodzi
+            // po klasie bazowej) — GetProperty przeszukuje całą hierarchię.
+            return typeof(TViewModel).GetProperty(fieldName)?.GetValue(model);
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Błąd podczas pobierania wartości pola {FieldName} w {ComponentType}",
-                fieldIdentifier.FieldName, GetType().Name);
+                fieldName, GetType().Name);
             return null;
         }
+    }
+
+    /// <summary>
+    /// Odczyt pola, którego modelem <b>nie</b> jest <typeparamref name="TViewModel"/> — czyli
+    /// pola przypiętego do zagnieżdżonego obiektu (<c>@bind-Value="Model.Child.Name"</c>).
+    /// Bazowa implementacja zwraca <see langword="null"/> i loguje ostrzeżenie.
+    /// </summary>
+    /// <remarks>
+    /// <para><b>Dlaczego nie refleksja.</b> Poprzednia wersja robiła
+    /// <c>fieldIdentifier.Model.GetType().GetProperty(...)</c> pod supresją IL2075
+    /// uzasadnioną słowami „Model jest formularzowym TViewModel”. To zdanie jest fałszywe
+    /// dokładnie wtedy, gdy ta ścieżka się wykonuje — trafia się tu wyłącznie wtedy, gdy test
+    /// <c>Model is TViewModel</c> zawiódł. <see cref="FieldIdentifier.Model"/> nie ma żadnej
+    /// adnotacji <c>[DynamicallyAccessedMembers]</c> (sprawdzone w metadanych
+    /// Microsoft.AspNetCore.Components.Forms 10.0.9), więc nic nie gwarantuje, że składowe tego
+    /// typu przeżyły trimming. Zamiast zostawiać nieprawdziwe uzasadnienie, framework przestaje
+    /// zgadywać i mówi to głośno.</para>
+    /// <para><b>Jak to włączyć z powrotem.</b> Nadpisz tę metodę w swojej stronie i zwróć
+    /// wartość jawnie — najlepiej bez refleksji, np. <c>switch</c> po
+    /// <c>fieldIdentifier.FieldName</c>. Nadpisanie wyłącza też ostrzeżenie.</para>
+    /// </remarks>
+    /// <param name="fieldIdentifier">Pole zgłoszone przez <see cref="EditContext"/>.</param>
+    /// <returns>Wartość pola albo <see langword="null"/>, gdy nie da się jej ustalić bezpiecznie.</returns>
+    protected virtual object? GetNestedModelFieldValue(FieldIdentifier fieldIdentifier)
+    {
+        var modelType = fieldIdentifier.Model.GetType();
+
+        // Deduplikacja per (typ modelu, pole): pojedyncze pole zmienia się przy każdym
+        // naciśnięciu klawisza, a ostrzeżenie niesie informację tylko za pierwszym razem.
+        if (_reportedNestedFields.Add($"{modelType.FullName}.{fieldIdentifier.FieldName}"))
+        {
+            Logger.LogWarning(
+                "Pole {FieldName} należy do modelu {ModelType}, a nie do {ViewModelType} formularza. " +
+                "Wartość nie została odczytana: refleksja po nieznanym typie nie jest bezpieczna dla trimmera " +
+                "(FieldIdentifier.Model nie ma [DynamicallyAccessedMembers]). OnModelChanged i AutoSave dostaną " +
+                "null. Nadpisz GetNestedModelFieldValue w {ComponentType}, aby podać wartość jawnie.",
+                fieldIdentifier.FieldName, modelType.Name, typeof(TViewModel).Name, GetType().Name);
+        }
+
+        return null;
     }
 
     protected virtual async Task HandleFieldAutoSaveError(
@@ -470,7 +532,7 @@ public abstract class PageEditBase<[DynamicallyAccessedMembers(
         var validationResults = new List<ValidationResult>();
         var validationContext = CreateValidationContext(Model);
 
-        bool isValid = TryValidate(Model!, validationContext, validationResults);
+        bool isValid = TryValidate(Model, validationContext, validationResults);
 
         if (!isValid)
         {
@@ -526,10 +588,7 @@ public abstract class PageEditBase<[DynamicallyAccessedMembers(
         });
     }
 
-    [UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode",
-        Justification = "TViewModel is annotated with DAM(PublicProperties|PublicFields|PublicConstructors); fallback path used only when source generator is absent.")]
-    [UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode",
-        Justification = "Reflection over TViewModel properties; trimmer/AOT keeps the members via DAM annotations on TViewModel.")]
+    // Jak pozostałe *Reflective: refleksja wyłącznie po typeof(TViewModel), zero RUC/RDC.
     private void OnValueChangedReflective<T>(T modelValue, T newValue)
     {
         // Znajdź właściwość w modelu, która odpowiada tej wartości
@@ -582,17 +641,24 @@ public abstract class PageEditBase<[DynamicallyAccessedMembers(
         base.Dispose(disposing);
     }
 
+    // Oba parametry są typu TViewModel, a nie object, i to jest istota poprawki: mechanizmem,
+    // który utrzymuje te ścieżki przy życiu po trimmingu, jest DAM na PARAMETRZE TYPU klasy
+    // (PublicProperties | PublicFields | PublicConstructors). Trimmer stosuje tę adnotację przy
+    // każdej instancjacji PageEditBase<T>, więc jest niezależna od kształtu tych metod — ale
+    // tylko dopóki typ przechodzi przez granicę jako TViewModel. Gdy sygnatura brzmiała
+    // `object instance`, związek trzymał się wyłącznie na tym, że sąsiednia metoda przypadkiem
+    // brała TViewModel; refaktor mógł go zerwać bez błędu kompilacji, a Validator po cichu
+    // zwracał `valid = true` dla modelu łamiącego [MinLength]. Teraz zerwanie tego związku to
+    // błąd kompilacji.
     [UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode",
-        Justification = "ValidationContext(object) reflects over instance.GetType() to resolve DisplayName. TViewModel members are preserved via DAM annotations; resolved Type is the trimmer-rooted TViewModel.")]
+        Justification = "new ValidationContext(object) is [RequiresUnreferencedCode]: it reflects over instance.GetType() to resolve DisplayName. Mitigation: the runtime type is always TViewModel, whose PublicProperties|PublicFields|PublicConstructors the trimmer preserves because the class's TViewModel type parameter carries [DynamicallyAccessedMembers] — an annotation applied at every PageEditBase<T> instantiation, not something this method establishes. The TViewModel-typed parameter makes that link a compile-time requirement.")]
     private static ValidationContext CreateValidationContext(TViewModel instance)
-        => new ValidationContext(instance);
+        => new(instance);
 
     [UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode",
-        Justification = "Validator.TryValidateObject reflects over Model's properties and validation attributes. TViewModel's public members are preserved via DAM; built-in ValidationAttribute types are rooted by the framework. Custom ValidationAttributes must be public to be kept by the trimmer.")]
-    [UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode",
-        Justification = "Validator.TryValidateObject uses reflection; AOT safe because validation attributes are referenced statically and trimmer keeps TViewModel members.")]
+        Justification = "Validator.TryValidateObject is [RequiresUnreferencedCode]: it reflects over the instance's properties and their ValidationAttributes. Mitigation and its limits: (1) the instance is statically TViewModel, whose members the trimmer preserves via [DynamicallyAccessedMembers] on the class's type parameter; (2) built-in ValidationAttribute types are rooted by the framework. NOT covered — a custom ValidationAttribute reachable only through the attribute blob, and members of nested complex types (the annotation does not recurse). Root those yourself when publishing trimmed.")]
     private static bool TryValidate(
-        object instance,
+        TViewModel instance,
         ValidationContext validationContext,
         ICollection<ValidationResult> validationResults)
         => Validator.TryValidateObject(instance, validationContext, validationResults, validateAllProperties: true);

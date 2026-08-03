@@ -45,9 +45,11 @@ public readonly partial struct Asset
         var md5Bytes = Encoding.UTF8.GetBytes(Md5);
 #pragma warning restore ZONIT0001
 
-        // Calculate header size
+        // Calculate header size. Works off the read-only view, not Data - the latter now
+        // copies the whole payload and this method already allocates the full blob.
+        var payload = AsSpan();
         var headerSize = 1 + 16 + 1 + 8 + 2 + mimeTypeBytes.Length + 2 + nameBytes.Length + 44 + 24;
-        var result = new byte[headerSize + Data.Length];
+        var result = new byte[headerSize + payload.Length];
 
         var offset = 0;
 
@@ -90,7 +92,7 @@ public readonly partial struct Asset
         offset += 24;
 
         // File data
-        Data.CopyTo(result, offset);
+        payload.CopyTo(result.AsSpan(offset));
 
         return result;
     }
@@ -294,11 +296,15 @@ public readonly partial struct Asset
         if (options.AllowedExtensions?.Length > 0 && !IsAllowedExtension(options.AllowedExtensions))
             errors.Add($"File extension '{OriginalName.Extension}' is not allowed.");
 
-        if (options.ValidateSignature && !IsSignatureValid())
+        // Signature validation asks "does the content contradict what the name claims", not
+        // "was a signature found at all". The magic-byte table knows 21 formats, so the old
+        // Signature == Unknown test failed every .txt, .doc, .xls and .flac - i.e. it rejected
+        // most of what the built-in presets advertise as allowed.
+        if (options.ValidateSignature && !IsSignatureConsistent())
         {
-            // Inlined intentionally: GetSignatureMismatchWarning is [Obsolete] for public consumers,
-            // but the underlying check (Signature == Unknown) is still the right validation here.
-            errors.Add($"Could not detect file signature. Using fallback MIME type: '{MediaType.Value}'.");
+            errors.Add(
+                $"File content is '{GetMimeTypeFromSignature(Signature).Value}' " +
+                $"but the name '{OriginalName.Value}' claims '{MimeType.FromPath(OriginalName.Value).Value}'.");
         }
 
         return new AssetValidationResult(errors.Count == 0, errors);
@@ -376,8 +382,14 @@ public sealed record AssetValidationOptions
     public string[]? AllowedExtensions { get; init; }
 
     /// <summary>
-    /// Whether to validate file signature (magic bytes) against MIME type.
+    /// Whether to reject files whose detected binary signature contradicts their file name -
+    /// a PNG uploaded as <c>report.pdf</c>, for example.
     /// </summary>
+    /// <remarks>
+    /// Files whose format has no magic bytes (.txt, .csv, .doc, .flac, plain .svg and so on)
+    /// always pass: see <see cref="Asset.IsSignatureConsistent"/> for why absence of a
+    /// signature is never treated as a failure.
+    /// </remarks>
     public bool ValidateSignature { get; init; }
 
     /// <summary>

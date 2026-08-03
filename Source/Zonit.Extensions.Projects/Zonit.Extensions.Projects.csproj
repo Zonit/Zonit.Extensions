@@ -1,8 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <Description>Project (catalog) services for Zonit applications. Provides ICatalogProvider, project repositories and middleware. Built on top of Zonit.Extensions value objects (Project).</Description>
-    <Summary>Project / catalog services for Zonit applications.</Summary>
-    <PackageTags>Zonit;Extensions;Projects;Catalogs;Blazor;AspNetCore</PackageTags>
+    <Description>Project (catalog) services for Zonit applications. Provides ICatalogProvider (the active project and the visible project list as read-only Project value objects), ICatalogManager (per-scope catalog state and project switching) and IProjectSource, the contract your app implements to supply the data. Framework-agnostic: no HttpContext and no middleware here - the ASP.NET Core middleware that hydrates the scope ships in Zonit.Extensions.Website. Built on top of Zonit.Extensions value objects (Project).</Description>
+    <PackageTags>Zonit;Extensions;Projects;Catalogs;Workspaces</PackageTags>
   </PropertyGroup>
 
   <!--
@@ -12,10 +11,6 @@
   -->
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
-    <PackageReference Include="Microsoft.SourceLink.GitHub">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>

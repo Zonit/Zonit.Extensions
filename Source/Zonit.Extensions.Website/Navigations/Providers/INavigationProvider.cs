@@ -4,6 +4,18 @@ namespace Zonit.Extensions.Website;
 /// Aggregates navigation contributions from registered <see cref="IWebsiteArea"/>s
 /// and ad-hoc additions, with permission-aware filtering and change notifications.
 /// </summary>
+/// <remarks>
+/// <para><b>Lifetime: transient.</b> The data behind it is process-wide, so it is safe to take
+/// this dependency from a singleton — seeding menus from an <c>IHostedService</c> at startup is
+/// a supported pattern and needs no scope of its own.</para>
+///
+/// <para><b>Where you resolve it decides what <see cref="Get"/> hides.</b> An instance resolved
+/// from a request or circuit scope filters out areas that are not mounted on the Site that scope
+/// is rendering; one resolved from the root has no Site to filter by and returns everything.
+/// Inject it into components and services and let the container hand you the right one — do not
+/// cache an instance obtained at startup and read <see cref="Get"/> from it later, or you will
+/// read the unfiltered view from inside a Site.</para>
+/// </remarks>
 public interface INavigationProvider
 {
     /// <summary>

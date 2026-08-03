@@ -58,13 +58,31 @@ internal sealed class WorkspaceRepository(IOrganizationSource userWorkspace) : I
         return _state;
     }
 
-    public async Task SwitchOrganizationAsync(Guid organizationId, CancellationToken cancellationToken = default)
+    public async Task<bool> SwitchOrganizationAsync(Guid organizationId, CancellationToken cancellationToken = default)
     {
-        if (_state is null)
-            return;
+        var workspace = await _userWorkspace.SwitchOrganizationAsync(organizationId, cancellationToken);
 
-        _state.Workspace = await _userWorkspace.SwitchOrganizationAsync(organizationId, cancellationToken);
+        // null is the source's documented "the user has no access" answer. Writing it through
+        // would clear the organization the user is currently working in — an unauthorized or
+        // stale id would silently log them out of a workspace they DO have access to, and every
+        // org-scoped query behind IWorkspaceProvider would start returning nothing. Refusing the
+        // switch and reporting it is the only outcome the caller can act on.
+        if (workspace is null)
+            return false;
+
+        // A scope that never went through InitializeAsync (no middleware pass, or an interactive
+        // circuit whose WorkspaceStateBridge restore did not run) used to make this whole call a
+        // silent no-op — the switcher button simply did nothing. The switch itself needs no prior
+        // state, so materialize the snapshot instead of dropping the user's action.
+        _state ??= new StateModel();
+        _state.Workspace = workspace;
+
+        // Membership is per user, not per organization, so the switchable list does not change
+        // across a switch — it is fetched only when this scope never had one.
+        _state.Organizations ??= await _userWorkspace.GetOrganizationsAsync(cancellationToken);
+
         StateChanged();
+        return true;
     }
 
     public void StateChanged()

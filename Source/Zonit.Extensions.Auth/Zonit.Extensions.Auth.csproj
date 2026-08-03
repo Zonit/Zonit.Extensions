@@ -1,23 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <Description>Authentication and authorization services for Zonit applications. Provides IAuthenticatedProvider, IAuthSource, IUserDirectory, session middleware, and credential management. Built on top of Zonit.Extensions value objects (Identity, Credential, Permission, Role).</Description>
-    <Summary>Authentication and authorization services for Zonit applications.</Summary>
-    <PackageTags>Zonit;Extensions;Auth;Authentication;Authorization;Identity;Sessions;Blazor;AspNetCore</PackageTags>
+    <Description>Framework-agnostic authentication core for Zonit applications. AddAuthExtension() registers the scoped IAuthenticatedProvider / IAuthenticatedRepository pair that carries the current Identity through a unit of work (request, Blazor circuit or background job), plus no-op defaults for the two consumer-implemented adapters: IAuthSource (token to Identity) and the optional IUserDirectory (UserModel lookups). Identity, Permission and Role come from Zonit.Extensions. No ASP.NET Core dependency - cookie hydration, the authentication scheme, authorization handlers and the Blazor AuthenticationStateProvider live in Zonit.Extensions.Website and are wired by AddWebsite().</Description>
+    <PackageTags>Zonit;Extensions;Auth;Authentication;Authorization;Identity;Permissions;Roles</PackageTags>
   </PropertyGroup>
 
   <!--
     Framework-agnostic dependencies — Auth core only exposes IAuthenticatedProvider /
-    IAuthenticatedRepository / ISessionProvider plus VO-backed Permission / Role.
+    IAuthenticatedRepository plus the consumer adapters IAuthSource / IUserDirectory.
     ASP.NET Core wiring (SessionMiddleware, AuthenticationSchemeService, authorization
     handlers and attributes, Blazor AuthenticationStateProvider) lives in
     Zonit.Extensions.Website and is composed by AddWebsite()/UseWebsite().
   -->
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
-    <PackageReference Include="Microsoft.SourceLink.GitHub">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>

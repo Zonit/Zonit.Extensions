@@ -1,8 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <Description>Organization (tenant / workspace) services for Zonit applications. Provides IWorkspaceProvider, IOrganizationManager, organization repositories and middleware. Built on top of Zonit.Extensions value objects (Organization).</Description>
-    <Summary>Organization (tenant) services for Zonit applications.</Summary>
-    <PackageTags>Zonit;Extensions;Organizations;Tenants;Workspaces;MultiTenancy;Blazor;AspNetCore</PackageTags>
+    <Description>Organization (tenant / workspace) services for Zonit applications. Provides IWorkspaceProvider (the active organization as a read-only Organization value object), IWorkspaceManager (per-scope workspace state and organization switching) and IOrganizationSource, the contract your app implements to supply the data. Framework-agnostic: no HttpContext and no middleware here - the ASP.NET Core middleware that hydrates the scope ships in Zonit.Extensions.Website. Built on top of Zonit.Extensions value objects (Organization).</Description>
+    <PackageTags>Zonit;Extensions;Organizations;Workspaces;MultiTenancy</PackageTags>
   </PropertyGroup>
 
   <!--
@@ -12,10 +11,6 @@
   -->
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
-    <PackageReference Include="Microsoft.SourceLink.GitHub">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>

@@ -2,11 +2,23 @@
 
 public class OrganizationModel
 {
+    /// <summary>
+    /// Organization identifier. Must be non-empty: a row carrying <see cref="Guid.Empty"/> is not
+    /// addressable by <c>IWorkspaceManager.SwitchOrganizationAsync</c> and is therefore reported by
+    /// <c>IWorkspaceProvider</c> as "no organization selected".
+    /// </summary>
     public Guid Id { get; set; }
 
     /// <summary>
-    /// Organization name
+    /// Organization name (display label).
     /// </summary>
+    /// <remarks>
+    /// Projected to <see cref="Title"/> for <c>IWorkspaceProvider.Organization</c>, so values that
+    /// are blank or longer than <see cref="Title.MaxLength"/> graphemes cannot be represented
+    /// faithfully. The projection never throws: blank becomes an empty title, longer text is cut at
+    /// the grapheme boundary. Keep the legal entity name in <see cref="FullName"/> and put a short
+    /// display label here if you need the switcher to read correctly.
+    /// </remarks>
     public string Name { get; set; } = string.Empty;
 
     /// <summary>

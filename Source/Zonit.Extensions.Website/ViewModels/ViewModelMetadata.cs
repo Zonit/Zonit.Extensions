@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Text.Json.Serialization.Metadata;
 
 namespace Zonit.Extensions.Website;
 
@@ -48,13 +47,6 @@ public abstract class ViewModelMetadata<TViewModel> where TViewModel : class
     /// Used by <c>PageEditBase.GetFieldValue</c>, <c>OnValueChanged</c>, and <c>AutoSave</c> lookup.
     /// </summary>
     public abstract IReadOnlyDictionary<string, PropertyAccessor<TViewModel>> Properties { get; }
-
-    /// <summary>
-    /// Optional source-generated <see cref="JsonTypeInfo{T}"/> for <typeparamref name="TViewModel"/>.
-    /// When non-null, <c>PageViewBase</c> uses the AOT-safe <see cref="JsonTypeInfo{T}"/> overload
-    /// of <c>PersistentComponentState.TryTakeFromJson</c> instead of the reflective one.
-    /// </summary>
-    public virtual JsonTypeInfo<TViewModel>? JsonTypeInfo => null;
 
     /// <summary>
     /// Creates a new instance of <typeparamref name="TViewModel"/>. Source-generated implementations

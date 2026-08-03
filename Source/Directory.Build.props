@@ -24,8 +24,22 @@
 
     <!-- Package Assets -->
     <PackageIcon>icon.png</PackageIcon>
-    <PackageReadmeFile>Readme.md</PackageReadmeFile>
+    <!--
+      Conditioned to match the matching <None Include="…\Readme.md" Condition="Exists(…)"> in
+      Directory.Packages.props. Declaring the file unconditionally while the item is conditional
+      means a project without a Readme.md fails pack with an opaque NU5039 instead of simply
+      shipping no readme. Note the casing: on case-sensitive Linux CI a file named README.md
+      does NOT satisfy this — see the guard in Directory.Build.targets and commit 34a5098.
+    -->
+    <PackageReadmeFile Condition="Exists('$(MSBuildProjectDirectory)\Readme.md')">Readme.md</PackageReadmeFile>
     <PackageReleaseNotes>See https://github.com/Zonit/Zonit.Extensions/releases</PackageReleaseNotes>
+
+    <!--
+      Deterministic builds on CI: normalizes embedded source paths so two builds of the same
+      commit are byte-identical, and is what SourceLink expects. Only on CI — locally it would
+      break the debugger's ability to step into local sources.
+    -->
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
 
     <!-- Build settings -->
     <GenerateDocumentationFile>true</GenerateDocumentationFile>

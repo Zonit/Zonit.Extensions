@@ -53,8 +53,9 @@ public sealed class WebsiteMountRegistry
     /// <summary>
     /// Captures the per-mount state from <paramref name="site"/> into a snapshot
     /// keyed by the mount's <see cref="SiteOptions.NormalizedPathBase"/>. Idempotent
-    /// in the same sense as <see cref="DashboardMountRegistry.Register"/> — calling
-    /// twice with the same key overwrites (last-call-wins matches the way
+    /// in the same sense as <c>DashboardMountRegistry.Register</c> (that type lives in
+    /// the downstream Zonit.Dashboard package, so it cannot be a <c>cref</c> here) —
+    /// calling twice with the same key overwrites (last-call-wins matches the way
     /// <c>UseWebsite</c> is expected to be invoked exactly once per mount).
     /// </summary>
     public void Register(SiteOptions site)

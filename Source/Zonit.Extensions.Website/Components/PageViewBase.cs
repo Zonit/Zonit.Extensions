@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics.CodeAnalysis;
+using System.Text.Json;
 
 namespace Zonit.Extensions.Website;
 
@@ -13,19 +14,36 @@ namespace Zonit.Extensions.Website;
 /// .NET 10 to wyłącznie refleksyjny serializator <c>System.Text.Json</c>. Adnotacja
 /// <c>[DynamicallyAccessedMembers(PublicProperties | PublicFields | PublicConstructors)]</c>
 /// na <typeparamref name="TViewModel"/> zachowuje wszystkie składowe wymagane przez STJ
-/// — IL2026 jest realnie złagodzony i lokalna supresja jest uczciwa.</para>
+/// — IL2026 jest realnie złagodzony i lokalna supresja jest uczciwa. Zagnieżdżone typy
+/// (właściwość, której typem jest kolejne DTO) nie są objęte tą gwarancją: adnotacja
+/// nie jest rekurencyjna, więc modele o zagnieżdżonym grafie trzeba samodzielnie
+/// zakotwiczyć w konsumencie albo wyłączyć persystencję.</para>
 ///
-/// <para><strong>NativeAOT (IL3050).</strong> Refleksyjny STJ <em>nie działa</em> pod
-/// pełnym Native AOT (rzuca <see cref="NotSupportedException"/>). Konsumenci publikujący
-/// AOT muszą albo nadpisać <see cref="PersistentModel"/> na <c>false</c>, albo zaczekać
-/// na overload <c>PersistAsJson(string, T, JsonTypeInfo&lt;T&gt;)</c> obiecywany w .NET 11.</para>
+/// <para><strong>Trimming / Native AOT w runtime.</strong> Gdy przełącznik
+/// <c>System.Text.Json.JsonSerializer.IsReflectionEnabledByDefault</c> jest wyłączony
+/// (SDK ustawia go na <c>false</c> dla każdej publikacji <c>PublishTrimmed</c>, a więc
+/// i dla <c>PublishAot</c>), refleksyjny STJ nie ma resolvera i każde
+/// <c>PersistAsJson</c> rzuciłoby wyjątek. Dlatego oba wywołania są bramkowane tym
+/// przełącznikiem: persystencja modelu wtedy cicho się wyłącza (komponent po prostu
+/// ładuje dane ponownie po hydratacji) zamiast wywracać obwód. Blazor WebAssembly nie
+/// jest tym dotknięty — jego SDK jawnie przywraca przełącznik na <c>true</c>.</para>
 ///
-/// <para><strong>Stan na .NET 11 ready.</strong> Generator
-/// <c>Zonit.Extensions.Website.SourceGenerators</c> emituje per-VM
-/// <c>JsonSerializerContext</c> i nadpisuje <see cref="ViewModelMetadata{T}.JsonTypeInfo"/>
-/// — gdy framework doda overload akceptujący <c>JsonTypeInfo</c>, wystarczy zmienić wywołania
-/// w <c>PersistState</c> / <c>TryTakeModelFromState</c> i obie supresje znikają.
-/// Patrz <c>Docs/NET11-Migration.md</c>.</para>
+/// <para><strong>Dlaczego nie ma tu ścieżki z <c>JsonTypeInfo</c>.</strong>
+/// <see cref="PersistentComponentState"/> w .NET 10 udostępnia publicznie, pod kluczem, wyłącznie
+/// refleksyjne <c>PersistAsJson&lt;T&gt;</c> / <c>TryTakeFromJson&lt;T&gt;</c>;
+/// <c>PersistAsBytes</c> i <c>TryTakeBytes</c> istnieją, ale są <c>internal</c>. Obie metody JSON
+/// serializują na wbudowanej instancji <c>JsonSerializerOptions</c> bez <c>TypeInfoResolver</c>
+/// (potwierdzone w IL <c>Microsoft.AspNetCore.Components</c> 10.0.9), więc nie ma parametru, do
+/// którego dałoby się podać source-generowany <c>JsonTypeInfo</c>.</para>
+///
+/// <para><strong>Uściślenie:</strong> <c>PersistentComponentStateSerializer&lt;T&gt;</c> jest
+/// w .NET 10 publiczny i nadpisywalny, ale <c>PersistAsJson</c> go <em>nie</em> konsultuje —
+/// jedynym jego konsumentem jest deklaratywna ścieżka <c>[PersistentState]</c> na właściwościach
+/// komponentu (<c>PersistentValueProviderComponentSubscription</c>), która rozwiązuje serializator
+/// przez <c>MakeGenericType</c> + <c>IServiceProvider</c> i pisze wewnętrznym
+/// <c>PersistAsBytes</c>. Persystencja modelu spod klucza <c>{Komponent}_Model</c> nie może z tego
+/// skorzystać bez porzucenia kluczy. Szczegóły i pomiary:
+/// <see cref="Zonit.Extensions.Website.Hydration.HydrationSerialization"/>.</para>
 /// </remarks>
 /// <typeparam name="TViewModel">Typ modelu danych.</typeparam>
 public class PageViewBase<[DynamicallyAccessedMembers(
@@ -65,6 +83,11 @@ public class PageViewBase<[DynamicallyAccessedMembers(
         // Zarejestruj persystencję tylko gdy potrzebna
         if (PersistentModel)
         {
+            // ExtensionsBase.OnRefreshChangeAsync woła OnInitializedAsync ponownie przy
+            // każdej zmianie Workspace/Catalog/Tenant. Bez zwolnienia poprzedniego uchwytu
+            // każde odświeżenie zostawiałoby kolejny żywy callback persystencji na czas
+            // życia obwodu — model byłby serializowany N razy w fazie persist.
+            _persistingSubscription?.Dispose();
             _persistingSubscription = PersistentComponentState.RegisterOnPersisting(PersistState);
 
             // Próba odzyskania modelu z persystencji
@@ -141,50 +164,59 @@ public class PageViewBase<[DynamicallyAccessedMembers(
     }
 
     /// <summary>
-    /// Publiczna metoda do odświeżenia danych
+    /// Publiczna metoda do odświeżenia danych — dla przeładowań inicjowanych przez samą stronę.
     /// </summary>
+    /// <remarks>
+    /// Odświeżenia wywołane zdarzeniami dostawców (Workspace / Catalog / Tenant) obsługuje
+    /// <c>ExtensionsBase.OnRefreshChangeAsync</c>, które ponownie uruchamia
+    /// <see cref="OnInitializedAsync(CancellationToken)"/>, a więc i <c>LoadAsync</c>.
+    /// Ta klasa celowo <em>nie</em> nadpisuje już <c>OnRefreshChangeAsync</c>: poprzednia
+    /// wersja wołała najpierw <c>base</c> (czyli <c>OnInitializedAsync</c> → ładowanie),
+    /// a zaraz potem <see cref="RefreshAsync"/> (drugie ładowanie). Ponieważ <c>base</c>
+    /// jest <c>async void</c> i wraca przy pierwszym <c>await</c>, strażnik
+    /// <c>if (IsLoading) return;</c> zwykle jeszcze nie widział podniesionej flagi
+    /// i backend dostawał dwa zapytania na jedną zmianę.
+    /// </remarks>
     protected async Task RefreshAsync(CancellationToken cancellationToken = default)
         => await LoadDataAsync(cancellationToken);
 
     /// <summary>Zapisuje aktualny <see cref="Model"/> w <see cref="PersistentComponentState"/>.</summary>
     [UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode",
-        Justification = "Faktyczne złagodzenie: [DynamicallyAccessedMembers(PublicProperties | PublicFields | PublicConstructors)] na TViewModel gwarantuje, że trimmer zachowa wszystkie składowe wymagane przez refleksyjny System.Text.Json. Pod pełnym AOT pozostaje IL3050 — patrz adnotacja niżej.")]
-    [UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode",
-        Justification = "Świadomy kompromis: w .NET 10 PersistentComponentState ma wyłącznie refleksyjne PersistAsJson/TryTakeFromJson. Pod Native AOT operacja rzuci NotSupportedException — konsumenci AOT mają ustawić PersistentModel=false. Generator Zonit.Extensions.Website.SourceGenerators emituje już JsonSerializerContext per VM (ViewModelMetadata<T>.JsonTypeInfo), więc gdy .NET 11 doda PersistAsJson(JsonTypeInfo<T>) overload, ta supresja znika jednym refactorem — patrz Docs/NET11-Migration.md.")]
+        Justification = "Faktyczne złagodzenie: [DynamicallyAccessedMembers(PublicProperties | PublicFields | PublicConstructors)] na TViewModel gwarantuje, że trimmer zachowa składowe TViewModel wymagane przez refleksyjny System.Text.Json. Adnotacja nie jest rekurencyjna — ograniczenie opisano w remarks klasy.")]
     private Task PersistState()
     {
-        if (PersistentModel && Model is not null)
-            PersistentComponentState.PersistAsJson(StateKey, Model);
+        if (!PersistentModel || Model is null)
+            return Task.CompletedTask;
 
+        if (!JsonSerializer.IsReflectionEnabledByDefault)
+        {
+            // Bez resolvera refleksyjnego PersistAsJson rzuciłby wyjątkiem i wywrócił
+            // fazę persist całego prerenderu. Degradacja jest bezpieczna: brak snapshotu
+            // oznacza tylko, że komponent po hydratacji sam ponownie zawoła LoadAsync.
+            Logger.LogDebug(
+                "Persystencja modelu {ComponentType} pominięta: refleksyjny System.Text.Json jest wyłączony (PublishTrimmed/PublishAot).",
+                GetType().Name);
+            return Task.CompletedTask;
+        }
+
+        PersistentComponentState.PersistAsJson(StateKey, Model);
         return Task.CompletedTask;
     }
 
     /// <summary>Próbuje odtworzyć <see cref="Model"/> z <see cref="PersistentComponentState"/>.</summary>
     [UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode",
-        Justification = "Faktyczne złagodzenie: [DynamicallyAccessedMembers(PublicProperties | PublicFields | PublicConstructors)] na TViewModel gwarantuje, że trimmer zachowa wszystkie składowe wymagane przez refleksyjny System.Text.Json. Pod pełnym AOT pozostaje IL3050 — patrz adnotacja niżej.")]
-    [UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode",
-        Justification = "Świadomy kompromis: w .NET 10 PersistentComponentState ma wyłącznie refleksyjne PersistAsJson/TryTakeFromJson. Pod Native AOT operacja rzuci NotSupportedException — konsumenci AOT mają ustawić PersistentModel=false. Generator Zonit.Extensions.Website.SourceGenerators emituje już JsonSerializerContext per VM (ViewModelMetadata<T>.JsonTypeInfo), więc gdy .NET 11 doda TryTakeFromJson(JsonTypeInfo<T>) overload, ta supresja znika jednym refactorem — patrz Docs/NET11-Migration.md.")]
+        Justification = "Faktyczne złagodzenie: [DynamicallyAccessedMembers(PublicProperties | PublicFields | PublicConstructors)] na TViewModel gwarantuje, że trimmer zachowa składowe TViewModel wymagane przez refleksyjny System.Text.Json. Adnotacja nie jest rekurencyjna — ograniczenie opisano w remarks klasy.")]
     private bool TryTakeModelFromState(out TViewModel? value)
-        => PersistentComponentState.TryTakeFromJson(StateKey, out value);
-
-    protected override async void OnRefreshChangeAsync()
     {
-        base.OnRefreshChangeAsync();
-
-        try
+        // Symetrycznie do PersistState: bez refleksyjnego STJ nie ma czego odczytać
+        // (strona serwerowa też nic nie zapisała), więc odpowiadamy „brak snapshotu”.
+        if (!JsonSerializer.IsReflectionEnabledByDefault)
         {
-            if (IsLoading)
-                return;
+            value = null;
+            return false;
+        }
 
-            await RefreshAsync(CancellationTokenSource?.Token ?? CancellationToken.None);
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex,
-                "Błąd podczas odświeżania komponentu {ComponentType}: {Message}",
-                GetType().Name, ex.Message);
-        }
+        return PersistentComponentState.TryTakeFromJson(StateKey, out value);
     }
 
     protected override void Dispose(bool disposing)

@@ -1,8 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <Description>Tenant (per-domain settings) services for Zonit applications. Provides ITenantProvider, ITenantManager, plugin-aware Setting&lt;T&gt; templates, and the auto-generated TenantSettings access layer. Built on top of Zonit.Extensions value objects.</Description>
-    <Summary>Tenant settings + plugin-aware configuration for Zonit applications.</Summary>
-    <PackageTags>Zonit;Extensions;Tenants;Settings;MultiTenancy;Plugins;Blazor;AspNetCore</PackageTags>
+    <Description>Per-domain tenant identity and settings for Zonit applications: ITenantSource (the data adapter you implement), the scoped ITenantRepository/ITenantProvider pair, plugin-aware Setting&lt;T&gt; models, and a source generator that gives every setting a strongly-typed accessor. Framework-agnostic: no ASP.NET Core dependency and no middleware here. Built on top of Zonit.Extensions value objects.</Description>
+    <PackageTags>Zonit;Extensions;Tenants;Settings;MultiTenancy;Plugins</PackageTags>
   </PropertyGroup>
 
   <!--
@@ -12,10 +11,6 @@
   -->
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
-    <PackageReference Include="Microsoft.SourceLink.GitHub">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>
@@ -31,9 +26,9 @@
                       UndefineProperties="PublishTrimmed;PublishAot;TargetFramework" />
   </ItemGroup>
 
-  <!-- Pack the source generator DLL inside this NuGet so consumers get it transparently. -->
-  <ItemGroup>
-    <None Include="..\Zonit.Extensions.Tenants.SourceGenerators\bin\$(Configuration)\netstandard2.0\Zonit.Extensions.Tenants.SourceGenerators.dll"
-          Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
-  </ItemGroup>
+  <!--
+    The generator DLL is packed into analyzers/dotnet/cs by the shared
+    ZonitPackAnalyzerFromProjectReference target in ../Directory.Build.targets, which resolves
+    the path from the ProjectReference above instead of hardcoding bin/$(Configuration)/….
+  -->
 </Project>

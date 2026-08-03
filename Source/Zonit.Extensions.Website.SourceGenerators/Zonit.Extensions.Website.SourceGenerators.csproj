@@ -28,4 +28,10 @@
     <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" PrivateAssets="all" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Release tracking for the ZONITVM#### diagnostics this generator reports (RS2008).
+         The table doubles as the catalogue a consumer needs to <NoWarn> a rule by id. -->
+    <AdditionalFiles Include="AnalyzerReleases.Unshipped.md" />
+  </ItemGroup>
+
 </Project>

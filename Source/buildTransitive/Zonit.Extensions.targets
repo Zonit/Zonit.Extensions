@@ -1,0 +1,70 @@
+<Project>
+
+  <!--
+    Per-package entry point for Zonit.Extensions. NuGet auto-imports buildTransitive/<PackageId>.targets,
+    so this file runs for every consumer that installs this package directly or transitively.
+
+    It contributes ONLY this package's documentation to the shared installer. Item groups from
+    every installed Zonit.Extensions.* package accumulate before any target runs, so the consumer
+    ends up with docs for exactly what they installed - see Zonit.Extensions.Instructions.targets.
+  -->
+
+  <ItemGroup>
+    <ZonitExtDocRoot Include="$(MSBuildThisFileDirectory)..\Instruction\extensions\core">
+      <Area>core</Area>
+    </ZonitExtDocRoot>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ZonitExtDoc Include="value-objects">
+      <Area>core</Area>
+      <Summary>The value-object contract: strict constructors vs TryCreate, Empty/HasValue on structs, JSON with zero registration, and the EF Core HasConversion recipes with their MaxLength constants.</Summary>
+      <SourceFile>$(MSBuildThisFileDirectory)..\Instruction\extensions\core\value-objects.md</SourceFile>
+    </ZonitExtDoc>
+    <ZonitExtDoc Include="auth-value-objects">
+      <Area>core</Area>
+      <Summary>Identity, Permission, Role and Credential: the Id-only vs hydrated-snapshot pattern, the wildcard permission grammar, and Credential auto-detection.</Summary>
+      <SourceFile>$(MSBuildThisFileDirectory)..\Instruction\extensions\core\auth-value-objects.md</SourceFile>
+    </ZonitExtDoc>
+    <ZonitExtDoc Include="money">
+      <Area>core</Area>
+      <Summary>Price vs Money vs Currency: non-negative intent, culture-agnostic parsing where both separators are accepted, formatting, and the length gate on user input.</Summary>
+      <SourceFile>$(MSBuildThisFileDirectory)..\Instruction\extensions\core\money.md</SourceFile>
+    </ZonitExtDoc>
+    <ZonitExtDoc Include="schedule">
+      <Area>core</Area>
+      <Summary>The Schedule value object: interval mode vs calendar mode, the factories, and the compact binary format with its EF mapping.</Summary>
+      <SourceFile>$(MSBuildThisFileDirectory)..\Instruction\extensions\core\schedule.md</SourceFile>
+    </ZonitExtDoc>
+    <ZonitExtDoc Include="assets">
+      <Area>core</Area>
+      <Summary>Asset, FileSize and Color: signature-first media-type detection, storage round-trips, the validation presets, and OKLCH colour output.</Summary>
+      <SourceFile>$(MSBuildThisFileDirectory)..\Instruction\extensions\core\assets.md</SourceFile>
+    </ZonitExtDoc>
+    <ZonitExtDoc Include="binding">
+      <Area>core</Area>
+      <Summary>Value objects in Blazor EditForm and ASP.NET model binding: which VOs validate automatically, which can never fail, and how to make your own VO participate.</Summary>
+      <Glob>**/*.razor</Glob>
+      <SourceFile>$(MSBuildThisFileDirectory)..\Instruction\extensions\core\binding.md</SourceFile>
+    </ZonitExtDoc>
+    <ZonitExtDoc Include="exceptions">
+      <Area>core</Area>
+      <Summary>BaseException&lt;TErrorCode&gt; for i18n-ready errors, plus the Text / Xml / Reflection utilities and their documented limits.</Summary>
+      <Glob>**/*Exception.cs</Glob>
+      <SourceFile>$(MSBuildThisFileDirectory)..\Instruction\extensions\core\exceptions.md</SourceFile>
+    </ZonitExtDoc>
+  </ItemGroup>
+
+  <!--
+    Guard the IMPORT, not the target. Every Zonit.Extensions.* package ships an identical copy of
+    the shared installer, so without this condition the second package's import would re-run the
+    installer's property block, flip its own "already imported" flag, and silently disable the
+    install target. The stubs above still all contribute their items — only the installer body is
+    imported once, from whichever package NuGet ordered first. That is safe precisely because the
+    installer resolves every path from item metadata (ZonitExtDocRoot / SourceFile) rather than
+    from its own MSBuildThisFileDirectory.
+  -->
+  <Import Project="$(MSBuildThisFileDirectory)Zonit.Extensions.Instructions.targets"
+          Condition="'$(_ZonitExtInstallerSeen)' != 'true'" />
+
+</Project>

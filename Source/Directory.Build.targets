@@ -1,0 +1,110 @@
+<Project>
+
+  <!--
+    ============================================================================
+    Packaging guards shared by every Zonit.Extensions package.
+    Both targets exist because the failure modes they replace were SILENT.
+    ============================================================================
+  -->
+
+  <!--
+    Ship the source generator that a project references with OutputItemType="Analyzer".
+
+    Replaces two hand-rolled mechanisms that both reached into a sibling project's
+    bin/$(Configuration)/netstandard2.0 by hardcoded path and failed in opposite ways:
+      - Zonit.Extensions.Tenants used a bare <None Include="…dll"> evaluated at project load,
+        so a clean tree died at pack with NU5019.
+      - Zonit.Extensions.Website wrapped the same item in Condition="Exists(…)", so a missing
+        DLL produced a package with NO analyzer, quietly, and that is unrecoverable once the
+        package is on nuget.org.
+
+    Here the path is asked of the referenced project (GetTargetPath) instead of guessed, and a
+    missing output is a hard error. The generator .pdb rides along so a generator crash inside
+    a consumer's build has line numbers.
+  -->
+  <Target Name="ZonitPackAnalyzerFromProjectReference"
+          BeforeTargets="_GetPackageFiles"
+          Condition="'$(IsPackable)' != 'false' and '@(ProjectReference->WithMetadataValue('OutputItemType','Analyzer'))' != ''">
+
+    <MSBuild Projects="@(ProjectReference->WithMetadataValue('OutputItemType','Analyzer'))"
+             Targets="GetTargetPath"
+             Properties="Configuration=$(Configuration)"
+             RemoveProperties="TargetFramework;PublishTrimmed;PublishAot">
+      <Output TaskParameter="TargetOutputs" ItemName="_ZonitAnalyzerOutput" />
+    </MSBuild>
+
+    <Error Condition="'@(_ZonitAnalyzerOutput)' == ''"
+           Text="$(MSBuildProjectName) references a source generator as an Analyzer but its output could not be resolved. Refusing to pack a generator-less package." />
+
+    <ItemGroup>
+      <None Include="@(_ZonitAnalyzerOutput)"
+            Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+      <None Include="@(_ZonitAnalyzerOutput->'%(RootDir)%(Directory)%(Filename).pdb')"
+            Condition="Exists('%(RootDir)%(Directory)%(Filename).pdb')"
+            Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+    </ItemGroup>
+  </Target>
+
+  <!--
+    Fail loudly on the readme-casing trap instead of at pack time on Linux only.
+    Commit 34a5098 ("fix(packaging): rename MudBlazor README.md to Readme.md (case fix for
+    Linux CI)") already paid for this class of bug once: NTFS is case-insensitive, so a file
+    committed as README.md looks fine on Windows and vanishes from Exists('…\Readme.md') on CI.
+  -->
+  <!--
+    ============================================================================
+    AI context delivery — ship the instruction docs + their MSBuild installer.
+    ============================================================================
+    Same idea as Zonit.Extensions.Ai and Zonit.Messaging: the authored markdown lives in the
+    repo's Instruction/ folder (browsable on GitHub, single source of truth) and is packed into
+    the nupkg, where buildTransitive/<PackageId>.targets projects it into the consumer's
+    .claude / .cursor / .github surfaces at build time.
+
+    The area is derived from the project name rather than declared per-csproj, so adding a
+    package is one line here instead of an edit in two places that can drift apart.
+    A project with no mapping simply ships no docs — no error, no empty folder.
+  -->
+  <PropertyGroup>
+    <ZonitInstructionArea Condition="'$(MSBuildProjectName)' == 'Zonit.Extensions'">core</ZonitInstructionArea>
+    <ZonitInstructionArea Condition="'$(MSBuildProjectName)' == 'Zonit.Extensions.Auth'">auth</ZonitInstructionArea>
+    <ZonitInstructionArea Condition="'$(MSBuildProjectName)' == 'Zonit.Extensions.Cultures'">cultures</ZonitInstructionArea>
+    <ZonitInstructionArea Condition="'$(MSBuildProjectName)' == 'Zonit.Extensions.Organizations'">organizations</ZonitInstructionArea>
+    <ZonitInstructionArea Condition="'$(MSBuildProjectName)' == 'Zonit.Extensions.Projects'">projects</ZonitInstructionArea>
+    <ZonitInstructionArea Condition="'$(MSBuildProjectName)' == 'Zonit.Extensions.Tenants'">tenants</ZonitInstructionArea>
+    <ZonitInstructionArea Condition="'$(MSBuildProjectName)' == 'Zonit.Extensions.Website'">website</ZonitInstructionArea>
+    <ZonitInstructionArea Condition="'$(MSBuildProjectName)' == 'Zonit.Extensions.Website.MudBlazor'">mudblazor</ZonitInstructionArea>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(ZonitInstructionArea)' != '' and '$(IsPackable)' != 'false'">
+    <!-- The shared installer (identical in every package; it self-guards against double import)
+         and this package's own stub, which declares only this package's docs. -->
+    <None Include="$(MSBuildThisFileDirectory)buildTransitive\Zonit.Extensions.Instructions.targets"
+          Pack="true" PackagePath="buildTransitive\Zonit.Extensions.Instructions.targets" Visible="false" />
+    <None Include="$(MSBuildThisFileDirectory)buildTransitive\$(MSBuildProjectName).targets"
+          Pack="true" PackagePath="buildTransitive\$(MSBuildProjectName).targets" Visible="false" />
+    <!-- The docs themselves, under the exact path the stub's <SourceFile> metadata expects. -->
+    <None Include="$(MSBuildThisFileDirectory)..\Instruction\extensions\$(ZonitInstructionArea)\*.md"
+          Pack="true" PackagePath="Instruction\extensions\$(ZonitInstructionArea)" Visible="false" />
+  </ItemGroup>
+
+  <!--
+    A stub that declares a doc which was never authored would ship a package whose installer
+    silently skips that guide. Catch it at pack time instead.
+  -->
+  <Target Name="ZonitValidateInstructionDocs"
+          BeforeTargets="Pack"
+          Condition="'$(ZonitInstructionArea)' != '' and '$(IsPackable)' != 'false'">
+    <Error Condition="!Exists('$(MSBuildThisFileDirectory)buildTransitive\$(MSBuildProjectName).targets')"
+           Text="$(MSBuildProjectName) maps to instruction area '$(ZonitInstructionArea)' but has no buildTransitive\$(MSBuildProjectName).targets stub." />
+    <Error Condition="!Exists('$(MSBuildThisFileDirectory)..\Instruction\extensions\$(ZonitInstructionArea)')"
+           Text="$(MSBuildProjectName) maps to instruction area '$(ZonitInstructionArea)' but Instruction\extensions\$(ZonitInstructionArea)\ does not exist." />
+  </Target>
+
+  <Target Name="ZonitValidatePackageReadme"
+          BeforeTargets="Pack"
+          Condition="'$(IsPackable)' != 'false'">
+    <Error Condition="!Exists('$(MSBuildProjectDirectory)\Readme.md')"
+           Text="$(MSBuildProjectName) is packable but has no Readme.md in its project directory. Note the exact casing 'Readme.md' — a file named README.md will not be found on case-sensitive filesystems." />
+  </Target>
+
+</Project>

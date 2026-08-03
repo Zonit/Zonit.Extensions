@@ -15,18 +15,32 @@ namespace Zonit.Extensions;
 ///
 /// <para>The struct is implicitly convertible to / from <see cref="string"/> so it slots
 /// into existing call sites that expect a plain string. Empty input is normalised to
-/// <see cref="string.Empty"/> at construction; <see cref="Empty"/> is the canonical
-/// "no translation" sentinel.</para>
+/// <see cref="string.Empty"/>; <see cref="Empty"/> is the canonical "no translation"
+/// sentinel.</para>
+///
+/// <para>Null-safety is enforced at the <see cref="Value"/> accessor, not in the primary
+/// constructor: a field initialiser does not run for <c>default(Translation)</c>, for an
+/// element of <c>new Translation[n]</c>, or for any struct produced by default
+/// initialisation, so a constructor-only guard would leave <c>_text</c> null on exactly the
+/// paths the "never null" contract is meant to cover. Every member — including
+/// <see cref="ToString"/>, the string conversion and equality — therefore reads
+/// <see cref="Value"/> rather than the backing field. This mirrors the sibling
+/// <see cref="Culture"/> value object. Consequence: <c>default(Translation)</c> and
+/// <see cref="Empty"/> are equal and share a hash code.</para>
 ///
 /// <para>Equality is ordinal — translations are technical content, not user-visible
 /// labels we want to compare case-insensitively. Hash code mirrors that.</para>
 /// </remarks>
 public readonly struct Translation(string text) : IEquatable<Translation>
 {
-    private readonly string _text = text ?? string.Empty;
+    private readonly string? _text = text;
 
-    /// <summary>The rendered translation text. Never <see langword="null"/>.</summary>
-    public string Value => _text;
+    /// <summary>
+    /// The rendered translation text. Never <see langword="null"/> — returns
+    /// <see cref="string.Empty"/> for <c>default(Translation)</c> and for a null constructor
+    /// argument.
+    /// </summary>
+    public string Value => _text ?? string.Empty;
 
     /// <summary><see langword="true"/> when there is no rendered text.</summary>
     public bool IsEmpty => string.IsNullOrEmpty(_text);
@@ -34,17 +48,21 @@ public readonly struct Translation(string text) : IEquatable<Translation>
     /// <summary><see langword="true"/> when the rendered text is whitespace-only.</summary>
     public bool IsNullOrWhiteSpace => string.IsNullOrWhiteSpace(_text);
 
-    public static implicit operator string(Translation translation) => translation._text;
+    public static implicit operator string(Translation translation) => translation.Value;
 
     public static implicit operator Translation(string text) => new(text);
 
-    public override string ToString() => _text;
+    /// <inheritdoc />
+    public override string ToString() => Value;
 
-    public bool Equals(Translation other) => string.Equals(_text, other._text, StringComparison.Ordinal);
+    /// <inheritdoc />
+    public bool Equals(Translation other) => string.Equals(Value, other.Value, StringComparison.Ordinal);
 
+    /// <inheritdoc />
     public override bool Equals(object? obj) => obj is Translation other && Equals(other);
 
-    public override int GetHashCode() => _text?.GetHashCode(StringComparison.Ordinal) ?? 0;
+    /// <inheritdoc />
+    public override int GetHashCode() => Value.GetHashCode(StringComparison.Ordinal);
 
     public static bool operator ==(Translation left, Translation right) => left.Equals(right);
 

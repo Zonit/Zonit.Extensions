@@ -13,9 +13,11 @@ namespace Zonit.Extensions.Tenants;
 /// <para><b>Lifetime.</b> Recommended <c>Scoped</c>. The middleware resolves it once
 /// per request and never holds the reference across requests.</para>
 ///
-/// <para>If you do not register an <see cref="ITenantSource"/>, the library auto-wires
-/// <c>NullTenantSource</c> via <c>AddTenantsExtension()</c>; <c>TenantMiddleware</c>
-/// then falls back to <see cref="Tenant.Solo"/> and the host runs in single-tenant mode.</para>
+/// <para><b>Optional.</b> Register nothing and the seam stays unresolved:
+/// <c>TenantMiddleware</c> sees no source, seeds <see cref="Tenant.Solo"/> directly, and the
+/// host runs in single-tenant mode with one state change per scope. (Through 10.0.0-preview.9
+/// <c>AddTenantsExtension()</c> auto-wired a null-returning stub here instead, which turned
+/// every solo request into a pointless async round trip <i>and</i> a double state change.)</para>
 /// </remarks>
 public interface ITenantSource
 {

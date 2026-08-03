@@ -23,9 +23,15 @@ public interface IWorkspaceManager
     /// <summary>
     /// Change the default user organization.
     /// </summary>
-    /// <param name="organizationId"></param>
+    /// <param name="organizationId">Organization to switch into.</param>
     /// <param name="cancellationToken">Forwarded to the underlying source.</param>
-    public Task SwitchOrganizationAsync(Guid organizationId, CancellationToken cancellationToken = default);
+    /// <returns>
+    /// <see langword="true"/> when the switch was granted and the workspace snapshot now describes
+    /// <paramref name="organizationId"/>; <see langword="false"/> when
+    /// <c>IOrganizationSource.SwitchOrganizationAsync</c> answered <see langword="null"/>
+    /// ("no access"), in which case the previously selected organization is left untouched.
+    /// </returns>
+    public Task<bool> SwitchOrganizationAsync(Guid organizationId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Workspace data

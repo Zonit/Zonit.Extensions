@@ -16,8 +16,8 @@ namespace Zonit.Extensions;
 /// - Interval Mode: Set Interval to repeat every N time. Calendar fields are ignored.
 /// - Calendar Mode: Set calendar fields (Second, Minute, Hour, etc.). Null = wildcard (any value).
 /// 
-/// Binary Storage: Schedule uses compact 16-byte binary format for database storage.
-/// Use ToBytes() and FromBytes() for serialization.
+/// Binary Storage: Schedule uses a compact 20-byte binary format for database storage
+/// (see <see cref="StorageSize"/>). Use ToBytes() and FromBytes() for serialization.
 /// 
 /// Calendar Mode Examples:
 /// - new Schedule { Second = 0 } - Every minute at :00
@@ -32,21 +32,38 @@ public readonly record struct Schedule : IEquatable<Schedule>
     #region Constants
 
     /// <summary>
-    /// Binary storage format version.
+    /// Format tag written as the first byte by <see cref="ToBytes"/> and required by
+    /// <see cref="FromBytes(ReadOnlySpan{byte})"/>.
     /// </summary>
-    private const byte StorageVersion = 1;
+    /// <remarks>
+    /// This is a shape guard, not a compatibility mechanism. There is exactly one layout and
+    /// no reader for any other, so a blob that does not start with this byte is rejected rather
+    /// than reinterpreted. Should the layout ever change, bump this and the change is a hard,
+    /// visible break — which is the honest outcome for a fixed-width binary column.
+    /// </remarks>
+    private const byte StorageFormatTag = 1;
 
     /// <summary>
-    /// Binary storage size in bytes (fixed 16 bytes).
+    /// Binary storage size in bytes (fixed 20 bytes) written by <see cref="ToBytes"/>.
+    /// Use this value to size a database column, e.g. <c>BINARY(20)</c>.
     /// </summary>
-    public const int StorageSize = 16;
+    /// <remarks>
+    /// Deliberately <c>static readonly</c> rather than <c>const</c>. A public <c>const</c> is
+    /// inlined into consuming assemblies at THEIR compile time, so a downstream binary built
+    /// against an older package would keep using the stale number until recompiled — and this is
+    /// precisely the value consumers are told to size a database column with, so the failure
+    /// would surface as a truncated column or an <see cref="ArgumentException"/> from
+    /// <see cref="WriteToSpan"/> at runtime, with nothing at build time to warn anyone.
+    /// </remarks>
+    public static readonly int StorageSize = 20;
 
     /// <summary>
-    /// Empty schedule instance (never triggers).
+    /// Empty schedule instance (never triggers). Identical to <c>new Schedule()</c>
+    /// and to <c>default(Schedule)</c> - see the Fields region for why that holds.
     /// </summary>
-    public static readonly Schedule Empty = default;
+    public static readonly Schedule Empty = new();
 
-    // Sentinel values for nullable fields in binary format
+    // Sentinel values for nullable fields in the *binary* format (what ToBytes writes).
     private const sbyte NullSentinel = -128;
     private const long NullIntervalTicks = -1;
 
@@ -54,6 +71,15 @@ public readonly record struct Schedule : IEquatable<Schedule>
 
     #region Fields (private backing)
 
+    // Storage encoding: every field below holds its binary-format value XOR-ed with that
+    // field's null sentinel, so "no value" is the all-zero bit pattern.
+    //
+    // WHY: C# skips the parameterless struct constructor for `default(T)`. Storing the raw
+    // sentinels (-128 / -1) directly meant default(Schedule), `new Schedule[n]` elements,
+    // unassigned fields and EF-materialised NULL columns all read back as 0/Sunday with
+    // HasValue == true - a schedule that claims to be configured for midnight on day 0 of
+    // month 0, which no date can ever match. XOR-ing with the sentinel is an involution, so
+    // encode and decode are the same operation and the zero pattern means "all wildcards".
     private readonly long _intervalTicks;
     private readonly sbyte _second;
     private readonly sbyte _minute;
@@ -64,8 +90,22 @@ public readonly record struct Schedule : IEquatable<Schedule>
     private readonly int _maxExecutions;
     private readonly byte _flags;
 
-    // Flag bits packed into _flags (byte 15 of binary layout).
+    // Flag bits packed into _flags (byte 15 of binary layout). 0 is a valid "no flags" state,
+    // so this field needs no sentinel encoding.
     private const byte FlagIsNow = 0x01;
+
+    /// <summary>Converts between the binary-format value and the stored value (self-inverse).</summary>
+    private static sbyte Xor(sbyte value) => (sbyte)(value ^ NullSentinel);
+
+    /// <summary>Converts between the binary-format tick count and the stored one (self-inverse).</summary>
+    private static long XorTicks(long value) => value ^ NullIntervalTicks;
+
+    /// <summary>Decodes a stored calendar field to its nullable public value.</summary>
+    private static int? Decode(sbyte stored)
+    {
+        var value = Xor(stored);
+        return value == NullSentinel ? null : value;
+    }
 
     #endregion
 
@@ -77,8 +117,12 @@ public readonly record struct Schedule : IEquatable<Schedule>
     /// </summary>
     public TimeSpan? Interval
     {
-        get => _intervalTicks == NullIntervalTicks ? null : TimeSpan.FromTicks(_intervalTicks);
-        init => _intervalTicks = value?.Ticks ?? NullIntervalTicks;
+        get
+        {
+            var ticks = XorTicks(_intervalTicks);
+            return ticks == NullIntervalTicks ? null : TimeSpan.FromTicks(ticks);
+        }
+        init => _intervalTicks = XorTicks(value?.Ticks ?? NullIntervalTicks);
     }
 
     /// <summary>
@@ -86,8 +130,8 @@ public readonly record struct Schedule : IEquatable<Schedule>
     /// </summary>
     public int? Second
     {
-        get => _second == NullSentinel ? null : _second;
-        init => _second = value.HasValue ? ValidateRange(value.Value, 0, 59, nameof(Second)) : NullSentinel;
+        get => Decode(_second);
+        init => _second = Xor(value.HasValue ? ValidateRange(value.Value, 0, 59, nameof(Second)) : NullSentinel);
     }
 
     /// <summary>
@@ -95,8 +139,8 @@ public readonly record struct Schedule : IEquatable<Schedule>
     /// </summary>
     public int? Minute
     {
-        get => _minute == NullSentinel ? null : _minute;
-        init => _minute = value.HasValue ? ValidateRange(value.Value, 0, 59, nameof(Minute)) : NullSentinel;
+        get => Decode(_minute);
+        init => _minute = Xor(value.HasValue ? ValidateRange(value.Value, 0, 59, nameof(Minute)) : NullSentinel);
     }
 
     /// <summary>
@@ -104,8 +148,8 @@ public readonly record struct Schedule : IEquatable<Schedule>
     /// </summary>
     public int? Hour
     {
-        get => _hour == NullSentinel ? null : _hour;
-        init => _hour = value.HasValue ? ValidateRange(value.Value, 0, 23, nameof(Hour)) : NullSentinel;
+        get => Decode(_hour);
+        init => _hour = Xor(value.HasValue ? ValidateRange(value.Value, 0, 23, nameof(Hour)) : NullSentinel);
     }
 
     /// <summary>
@@ -113,8 +157,8 @@ public readonly record struct Schedule : IEquatable<Schedule>
     /// </summary>
     public int? DayOfMonth
     {
-        get => _dayOfMonth == NullSentinel ? null : _dayOfMonth;
-        init => _dayOfMonth = value.HasValue ? ValidateDayOfMonth(value.Value) : NullSentinel;
+        get => Decode(_dayOfMonth);
+        init => _dayOfMonth = Xor(value.HasValue ? ValidateDayOfMonth(value.Value) : NullSentinel);
     }
 
     /// <summary>
@@ -122,8 +166,8 @@ public readonly record struct Schedule : IEquatable<Schedule>
     /// </summary>
     public int? Month
     {
-        get => _month == NullSentinel ? null : _month;
-        init => _month = value.HasValue ? ValidateRange(value.Value, 1, 12, nameof(Month)) : NullSentinel;
+        get => Decode(_month);
+        init => _month = Xor(value.HasValue ? ValidateRange(value.Value, 1, 12, nameof(Month)) : NullSentinel);
     }
 
     /// <summary>
@@ -131,8 +175,8 @@ public readonly record struct Schedule : IEquatable<Schedule>
     /// </summary>
     public DayOfWeek? DayOfWeek
     {
-        get => _dayOfWeek == NullSentinel ? null : (DayOfWeek)_dayOfWeek;
-        init => _dayOfWeek = value.HasValue ? (sbyte)value.Value : NullSentinel;
+        get => Decode(_dayOfWeek) is { } value ? (DayOfWeek)value : null;
+        init => _dayOfWeek = Xor(value.HasValue ? (sbyte)value.Value : NullSentinel);
     }
 
     /// <summary>
@@ -158,7 +202,7 @@ public readonly record struct Schedule : IEquatable<Schedule>
     /// <summary>
     /// Indicates whether this is an interval-based schedule (vs calendar-based).
     /// </summary>
-    public bool IsInterval => _intervalTicks != NullIntervalTicks && _intervalTicks > 0;
+    public bool IsInterval => XorTicks(_intervalTicks) > 0;
 
     /// <summary>
     /// Indicates whether this schedule has any meaningful configuration.
@@ -166,15 +210,16 @@ public readonly record struct Schedule : IEquatable<Schedule>
     public bool HasValue => IsInterval || HasCalendarFields || IsNow;
 
     /// <summary>
-    /// Indicates whether any calendar field is set.
+    /// Indicates whether any calendar field is set. A stored 0 is the encoded null sentinel,
+    /// so "any field set" is simply "any stored byte non-zero".
     /// </summary>
     private bool HasCalendarFields =>
-        _second != NullSentinel ||
-        _minute != NullSentinel ||
-        _hour != NullSentinel ||
-        _dayOfMonth != NullSentinel ||
-        _month != NullSentinel ||
-        _dayOfWeek != NullSentinel;
+        _second != 0 ||
+        _minute != 0 ||
+        _hour != 0 ||
+        _dayOfMonth != 0 ||
+        _month != 0 ||
+        _dayOfWeek != 0;
 
     #endregion
 
@@ -185,19 +230,23 @@ public readonly record struct Schedule : IEquatable<Schedule>
     /// </summary>
     public Schedule()
     {
-        _intervalTicks = NullIntervalTicks;
-        _second = NullSentinel;
-        _minute = NullSentinel;
-        _hour = NullSentinel;
-        _dayOfMonth = NullSentinel;
-        _month = NullSentinel;
-        _dayOfWeek = NullSentinel;
+        // All-zero *is* the encoded "every field is a wildcard" state (see Fields region).
+        // Spelling it out keeps new Schedule() and default(Schedule) provably identical, which
+        // is the invariant that Schedule.Empty, array elements and EF NULL columns depend on.
+        _intervalTicks = 0;
+        _second = 0;
+        _minute = 0;
+        _hour = 0;
+        _dayOfMonth = 0;
+        _month = 0;
+        _dayOfWeek = 0;
         _maxExecutions = 0;
         _flags = 0;
     }
 
     /// <summary>
-    /// Internal constructor for binary deserialization.
+    /// Internal constructor for binary deserialization. Takes values in the *binary format*
+    /// encoding (-128 / -1 mean null) and stores them XOR-ed; see the Fields region.
     /// </summary>
     private Schedule(
         long intervalTicks,
@@ -210,13 +259,13 @@ public readonly record struct Schedule : IEquatable<Schedule>
         int maxExecutions,
         byte flags)
     {
-        _intervalTicks = intervalTicks;
-        _second = second;
-        _minute = minute;
-        _hour = hour;
-        _dayOfMonth = dayOfMonth;
-        _month = month;
-        _dayOfWeek = dayOfWeek;
+        _intervalTicks = XorTicks(intervalTicks);
+        _second = Xor(second);
+        _minute = Xor(minute);
+        _hour = Xor(hour);
+        _dayOfMonth = Xor(dayOfMonth);
+        _month = Xor(month);
+        _dayOfWeek = Xor(dayOfWeek);
         _maxExecutions = maxExecutions;
         _flags = flags;
     }
@@ -244,12 +293,12 @@ public readonly record struct Schedule : IEquatable<Schedule>
     #region Binary Storage
 
     /// <summary>
-    /// Serializes schedule to compact binary format (16 bytes).
+    /// Serializes schedule to compact binary format (20 bytes).
     /// </summary>
     /// <remarks>
-    /// <para><strong>Binary Format V1 (16 bytes):</strong></para>
+    /// <para><strong>Binary format (20 bytes, fixed):</strong></para>
     /// <code>
-    /// [1 byte]  Version (1)
+    /// [1 byte]  Format tag (1)
     /// [8 bytes] IntervalTicks (Int64, -1 = null)
     /// [1 byte]  Second (-128 = null, 0-59)
     /// [1 byte]  Minute (-128 = null, 0-59)
@@ -257,9 +306,13 @@ public readonly record struct Schedule : IEquatable<Schedule>
     /// [1 byte]  DayOfMonth (-128 = null, -1 = last, 1-31)
     /// [1 byte]  Month (-128 = null, 1-12)
     /// [1 byte]  DayOfWeek (-128 = null, 0-6)
-    /// [1 byte]  Reserved (for future use)
+    /// [1 byte]  Flags (bit 0 = IsNow)
+    /// [4 bytes] MaxExecutions (Int32, 0 = unlimited)
     /// </code>
-    /// <para>Note: MaxExecutions stored separately if needed.</para>
+    /// <para>Store as <c>BINARY(20)</c> / <c>byte[20]</c>, sizing the column from
+    /// <see cref="StorageSize"/> rather than a literal. Anything shorter, or a blob whose first
+    /// byte is not the format tag, is rejected by <see cref="FromBytes(ReadOnlySpan{byte})"/> and
+    /// yields <see cref="Empty"/> — a malformed blob is never partially reinterpreted.</para>
     /// </remarks>
     public byte[] ToBytes()
     {
@@ -269,35 +322,36 @@ public readonly record struct Schedule : IEquatable<Schedule>
     }
 
     /// <summary>
-    /// Writes schedule to a span (must be at least 16 bytes).
+    /// Writes schedule to a span (must be at least <see cref="StorageSize"/> bytes).
     /// </summary>
     public void WriteToSpan(Span<byte> destination)
     {
         if (destination.Length < StorageSize)
             throw new ArgumentException($"Destination must be at least {StorageSize} bytes.", nameof(destination));
 
-        destination[0] = StorageVersion;
-        BinaryPrimitives.WriteInt64LittleEndian(destination[1..], _intervalTicks);
-        destination[9] = (byte)_second;
-        destination[10] = (byte)_minute;
-        destination[11] = (byte)_hour;
-        destination[12] = (byte)_dayOfMonth;
-        destination[13] = (byte)_month;
-        destination[14] = (byte)_dayOfWeek;
+        destination[0] = StorageFormatTag;
+        BinaryPrimitives.WriteInt64LittleEndian(destination[1..], XorTicks(_intervalTicks));
+        destination[9] = (byte)Xor(_second);
+        destination[10] = (byte)Xor(_minute);
+        destination[11] = (byte)Xor(_hour);
+        destination[12] = (byte)Xor(_dayOfMonth);
+        destination[13] = (byte)Xor(_month);
+        destination[14] = (byte)Xor(_dayOfWeek);
         destination[15] = _flags;
+        BinaryPrimitives.WriteInt32LittleEndian(destination[16..], _maxExecutions);
     }
 
     /// <summary>
-    /// Deserializes schedule from binary format.
+    /// Deserializes a schedule from the 20-byte binary format. Returns <see cref="Empty"/> for
+    /// anything that is not a well-formed blob — wrong length, or a first byte that is not the
+    /// format tag.
     /// </summary>
     public static Schedule FromBytes(ReadOnlySpan<byte> bytes)
     {
-        if (bytes.Length < StorageSize)
+        // Length and tag are both checked before any field is read: a short or foreign blob must
+        // never be partially reinterpreted into a schedule that silently fires at the wrong time.
+        if (bytes.Length < StorageSize || bytes[0] != StorageFormatTag)
             return Empty;
-
-        var version = bytes[0];
-        if (version != StorageVersion)
-            return Empty; // Unknown version
 
         var intervalTicks = BinaryPrimitives.ReadInt64LittleEndian(bytes[1..]);
         var second = (sbyte)bytes[9];
@@ -307,19 +361,17 @@ public readonly record struct Schedule : IEquatable<Schedule>
         var month = (sbyte)bytes[13];
         var dayOfWeek = (sbyte)bytes[14];
         var flags = bytes[15];
+        var maxExecutions = BinaryPrimitives.ReadInt32LittleEndian(bytes[16..]);
 
-        return new Schedule(intervalTicks, second, minute, hour, dayOfMonth, month, dayOfWeek, 0, flags);
+        return new Schedule(intervalTicks, second, minute, hour, dayOfMonth, month, dayOfWeek, maxExecutions, flags);
     }
 
     /// <summary>
-    /// Deserializes schedule from byte array.
+    /// Deserializes a schedule from a byte array. Returns <see cref="Empty"/> for <see langword="null"/>
+    /// or a malformed blob.
     /// </summary>
     public static Schedule FromBytes(byte[]? bytes)
-    {
-        if (bytes is null || bytes.Length < StorageSize)
-            return Empty;
-        return FromBytes(bytes.AsSpan());
-    }
+        => bytes is null ? Empty : FromBytes(bytes.AsSpan());
 
     #endregion
 
@@ -420,8 +472,13 @@ public readonly record struct Schedule : IEquatable<Schedule>
     /// <summary>
     /// Returns a new schedule with the specified maximum execution count.
     /// </summary>
+    /// <remarks>
+    /// Uses <c>with</c> rather than the private constructor because that constructor takes
+    /// binary-format values and re-encodes them; copying the already-encoded fields is the
+    /// only correct way to preserve them.
+    /// </remarks>
     public Schedule WithMaxExecutions(int count) =>
-        new(_intervalTicks, _second, _minute, _hour, _dayOfMonth, _month, _dayOfWeek, count, _flags);
+        this with { MaxExecutions = count };
 
     #endregion
 
@@ -572,7 +629,10 @@ public readonly record struct Schedule : IEquatable<Schedule>
 
     /// <inheritdoc />
     public override int GetHashCode() =>
-        HashCode.Combine(_intervalTicks, _second, _minute, _hour, _dayOfMonth, _month, _dayOfWeek, _flags);
+        // _maxExecutions is part of Equals, so it belongs here too - HashCode.Combine tops out
+        // at eight arguments, hence the nested combine for the two trailing fields.
+        HashCode.Combine(_intervalTicks, _second, _minute, _hour, _dayOfMonth, _month, _dayOfWeek,
+            HashCode.Combine(_maxExecutions, _flags));
 
     #endregion
 

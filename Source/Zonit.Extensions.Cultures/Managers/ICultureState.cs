@@ -1,4 +1,4 @@
-using System.Collections.Immutable;
+﻿using System.Collections.Immutable;
 
 namespace Zonit.Extensions.Cultures;
 
@@ -20,11 +20,11 @@ public interface ICultureState
     Culture Current { get; }
 
     /// <summary>
-    /// Currently active time-zone for this scope as a <see cref="Extensions.TimeZone"/>
+    /// Currently active time-zone for this scope as a <see cref="Extensions.Zone"/>
     /// value object. Accepts named zones (IANA / Windows id) or fixed offsets; see
-    /// <see cref="Extensions.TimeZone"/> for the full grammar.
+    /// <see cref="Extensions.Zone"/> for the full grammar.
     /// </summary>
-    TimeZone TimeZone { get; }
+    Zone TimeZone { get; }
 
     /// <summary>Supported cultures (process-wide configuration).</summary>
     ImmutableArray<LanguageModel> Supported { get; }

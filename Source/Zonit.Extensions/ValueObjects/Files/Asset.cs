@@ -141,9 +141,25 @@ public readonly partial struct Asset : IEquatable<Asset>
     public string Hash => Sha256;
 
     /// <summary>
-    /// File content as bytes. Never null - returns empty array for default.
+    /// Copies the file content into a new byte array. Never null - returns an empty array
+    /// for <c>default(Asset)</c>.
     /// </summary>
-    public byte[] Data => _data ?? [];
+    /// <remarks>
+    /// <para>Asset caches <see cref="Sha256"/>, <see cref="Signature"/> and <see cref="Size"/>
+    /// at construction. Handing out the live buffer let a caller mutate the payload behind
+    /// those values, so an Asset could report a hash that no longer described its own bytes -
+    /// which defeats the one guarantee this type exists to provide. Hence the copy.</para>
+    /// <para>The copy allocates <see cref="Size"/> bytes (up to <see cref="MaxSize"/>), so
+    /// prefer <see cref="AsSpan"/> / <see cref="AsMemory"/> for reads and <see cref="ToStream"/>
+    /// for streaming - all three are allocation-free read-only views over the payload.</para>
+    /// </remarks>
+    public byte[] ToArray() => _data is { Length: > 0 } ? _data.AsSpan().ToArray() : [];
+
+    /// <summary>
+    /// File content as bytes. Never null - returns an empty array for <c>default(Asset)</c>.
+    /// </summary>
+    /// <remarks>Alias for <see cref="ToArray"/>; see there for why this copies.</remarks>
+    public byte[] Data => ToArray();
 
     /// <summary>
     /// Indicates whether this asset has data.
@@ -244,6 +260,13 @@ public readonly partial struct Asset : IEquatable<Asset>
     /// Full internal constructor with all parameters.
     /// All computations (hash, signature, base64) are done here once.
     /// </summary>
+    /// <remarks>
+    /// <b>Takes ownership of <paramref name="data"/>.</b> The array is stored as-is rather than
+    /// cloned, because cloning would double peak memory for every upload on a type that accepts
+    /// payloads up to <see cref="MaxSize"/>. Nothing on the public surface can reach the array
+    /// again (see <see cref="ToArray"/>), so the value is immutable to everyone except a caller
+    /// that deliberately keeps its own reference and mutates it - don't.
+    /// </remarks>
     private Asset(byte[] data, string? name, MimeType? mimeType, Guid? id, DateTime? createdAt)
     {
         ArgumentNullException.ThrowIfNull(data, nameof(data));
@@ -428,14 +451,14 @@ public readonly partial struct Asset : IEquatable<Asset>
     public static implicit operator MemoryStream(Asset asset) => asset.ToStream();
 
     /// <summary>
-    /// Implicit conversion to byte[].
+    /// Implicit conversion to byte[]. Allocates a copy - see <see cref="ToArray"/>.
     /// </summary>
-    public static implicit operator byte[](Asset asset) => asset.Data;
+    public static implicit operator byte[](Asset asset) => asset.ToArray();
 
     /// <summary>
-    /// Implicit conversion to ReadOnlyMemory&lt;byte&gt;.
+    /// Implicit conversion to ReadOnlyMemory&lt;byte&gt;. Zero-copy read-only view.
     /// </summary>
-    public static implicit operator ReadOnlyMemory<byte>(Asset asset) => asset.Data.AsMemory();
+    public static implicit operator ReadOnlyMemory<byte>(Asset asset) => asset.AsMemory();
 
     // Note: implicit conversion to ReadOnlySpan<byte> is not possible (ref struct limitation).
     // Use AsSpan() method instead.
@@ -457,9 +480,14 @@ public readonly partial struct Asset : IEquatable<Asset>
     public string ToDataUrl() => DataUrl;
 
     /// <summary>
-    /// Opens a read-only MemoryStream over the data.
+    /// Opens a non-writable, non-resizable MemoryStream over the data.
     /// </summary>
-    public MemoryStream ToStream() => new(Data, writable: false);
+    /// <remarks>
+    /// Wraps the payload directly rather than a copy: the stream is created with
+    /// <c>writable: false</c>, so it exposes neither <c>Write</c> nor <c>GetBuffer</c> and
+    /// cannot be used to reach the underlying array.
+    /// </remarks>
+    public MemoryStream ToStream() => new(_data ?? [], writable: false);
 
     /// <summary>
     /// Gets text content (for text files).
@@ -468,18 +496,18 @@ public readonly partial struct Asset : IEquatable<Asset>
     public string ToText(System.Text.Encoding? encoding = null)
     {
         encoding ??= System.Text.Encoding.UTF8;
-        return encoding.GetString(Data);
+        return encoding.GetString(AsSpan());
     }
 
     /// <summary>
-    /// Gets data as ReadOnlyMemory (zero-copy).
+    /// Gets data as ReadOnlyMemory (zero-copy, read-only view).
     /// </summary>
-    public ReadOnlyMemory<byte> AsMemory() => Data.AsMemory();
+    public ReadOnlyMemory<byte> AsMemory() => _data.AsMemory();
 
     /// <summary>
-    /// Gets data as ReadOnlySpan (zero-copy).
+    /// Gets data as ReadOnlySpan (zero-copy, read-only view).
     /// </summary>
-    public ReadOnlySpan<byte> AsSpan() => Data.AsSpan();
+    public ReadOnlySpan<byte> AsSpan() => _data.AsSpan();
 
     #endregion
 
@@ -573,18 +601,21 @@ public readonly partial struct Asset : IEquatable<Asset>
     /// <summary>
     /// Creates a copy with different original name.
     /// </summary>
-    public Asset WithName(FileName newName) => new(Data, newName.Value, MediaType, Id, CreatedAt);
+    /// <remarks>
+    /// Passes the existing payload by reference rather than through <see cref="Data"/>: both
+    /// Assets are immutable and neither can hand the array out, so sharing it is safe and
+    /// avoids duplicating up to <see cref="MaxSize"/> bytes just to rename a file.
+    /// </remarks>
+    public Asset WithName(FileName newName) => new(_data ?? [], newName.Value, MediaType, Id, CreatedAt);
 
-    /// <summary>
-    /// Creates a copy with different original name.
-    /// </summary>
-    public Asset WithName(string newName) => new(Data, newName, MediaType, Id, CreatedAt);
+    /// <inheritdoc cref="WithName(FileName)"/>
+    public Asset WithName(string newName) => new(_data ?? [], newName, MediaType, Id, CreatedAt);
 
     /// <summary>
     /// Creates a copy with different MIME type.
     /// </summary>
     [Obsolete("MediaType is detected from binary signature and should not be changed manually.")]
-    public Asset WithMediaType(MimeType newMediaType) => new(Data, OriginalName.Value, newMediaType, Id, CreatedAt);
+    public Asset WithMediaType(MimeType newMediaType) => new(_data ?? [], OriginalName.Value, newMediaType, Id, CreatedAt);
 
     #endregion
 
@@ -597,8 +628,8 @@ public readonly partial struct Asset : IEquatable<Asset>
         if (Id != other.Id) return false;
         if (Size != other.Size) return false;
 
-        // Deep compare only if needed
-        return Data.AsSpan().SequenceEqual(other.Data.AsSpan());
+        // Deep compare only if needed - over the read-only views, so equality never allocates.
+        return AsSpan().SequenceEqual(other.AsSpan());
     }
 
     /// <inheritdoc />
