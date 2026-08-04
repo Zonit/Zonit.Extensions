@@ -428,8 +428,18 @@ public static class WebsiteServiceCollectionExtensions
         });
 
         // Exception handling — must come BEFORE every middleware that could throw.
-        // Dev: DeveloperExceptionPage (always, regardless of site.ExceptionHandlerPath).
-        // Prod: site.ExceptionHandlerPath (null disables).
+        //
+        // These are two different concerns and they get different treatment:
+        //
+        //   Unhandled exceptions (500) are environment-dependent. In Development the
+        //   DeveloperExceptionPage with its stack trace is worth far more than a styled page;
+        //   in Production it would leak internals, so the consumer's error page takes over.
+        //
+        //   Status codes (404, 401, 403) are NOT exceptions and are environment-independent.
+        //   Re-executing them only in Production used to mean a developer never saw their own
+        //   404 page while building the site — a request for a missing route returned a bare,
+        //   empty 404 in dev and a fully styled page in prod, so the first time anyone met the
+        //   error pages was in production. Status-code re-execution now runs in both.
         if (isDev)
         {
             branch.UseDeveloperExceptionPage();
@@ -437,6 +447,10 @@ public static class WebsiteServiceCollectionExtensions
         else if (!string.IsNullOrEmpty(site.ExceptionHandlerPath))
         {
             branch.UseExceptionHandler(site.ExceptionHandlerPath);
+        }
+
+        if (!string.IsNullOrEmpty(site.ExceptionHandlerPath))
+        {
             branch.UseStatusCodePagesWithReExecute(site.ExceptionHandlerPath + "/{0}");
         }
 

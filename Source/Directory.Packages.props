@@ -8,7 +8,7 @@
       Versioning policy: track .NET major version.
       Currently aligned with .NET 10. When .NET 11 ships, drop net10.0 and bump to 11.x.
     -->
-    <Version>10.0.0-preview.10</Version>
+    <Version>10.0.0-preview.11</Version>
     <!--
       AssemblyVersion stays frozen at 10.0.0.0 for the whole 10.x line. Website references
       five siblings, so a moving AssemblyVersion would force binding-redirect churn on every
@@ -17,7 +17,7 @@
       The identity that carries the full story is InformationalVersion (version + git sha).
     -->
     <AssemblyVersion>10.0.0.0</AssemblyVersion>
-    <FileVersion>10.0.0.10</FileVersion>
+    <FileVersion>10.0.0.11</FileVersion>
     <!-- Package Output -->
     <PackageOutputPath>$(MSBuildThisFileDirectory)..\Packages</PackageOutputPath>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
@@ -35,18 +35,21 @@
   <ItemGroup>
     <PackageVersion Include="Diacritics" Version="4.1.8" />
     <!--
-      Roslyn is PINNED LOW ON PURPOSE — do not "update" these two.
+      This version is a CONSUMER-VISIBLE FLOOR, not a normal dependency.
       Both source generators ship as analyzers inside Zonit.Extensions.Website and
-      Zonit.Extensions.Tenants. An analyzer compiled against Roslyn N refuses to load in a
-      host older than N (CS9057), so this version is the MINIMUM SDK/VS a consumer needs.
-      Roslyn per SDK: 10.0.100 = 5.0, 10.0.2xx = 5.3, 10.0.3xx = 5.6. Staying on 4.14.0 keeps
-      the generators loadable in every SDK that can consume a net10.0 package at all, and the
-      generators use only IIncrementalGenerator + CreateSyntaxProvider, present since 4.x.
-      If a future generator needs a 5.x API, ship version-partitioned analyzer folders
-      (analyzers/dotnet/roslyn4.14/cs + analyzers/dotnet/roslyn5.x/cs) — do not raise the floor.
+      Zonit.Extensions.Tenants, and an analyzer compiled against Roslyn N refuses to load in a
+      host older than N (CS9057) — so this is the minimum SDK/VS a consumer needs for the
+      generators to run at all. Roslyn per SDK: 10.0.100 = 5.0, 10.0.2xx = 5.3, 10.0.3xx = 5.6.
+
+      5.6.0 is a deliberate choice: the supported floor for this package set is SDK 10.0.3xx
+      (July 2026) or newer. A consumer on an earlier .NET 10 band still gets the libraries, but
+      the analyzers silently do not load and page/setting metadata falls back to reflection.
+      If that floor ever needs lowering, do NOT just drop this number — ship version-partitioned
+      analyzer folders (analyzers/dotnet/roslyn4.14/cs + analyzers/dotnet/roslyn5.x/cs) so old
+      hosts keep a generator that loads.
     -->
-    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
-    <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.6.0" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="5.6.0" />
     <!--
       Microsoft.SourceLink.GitHub is deliberately NOT referenced. Since the .NET 8 SDK
       SourceLink is built in; an explicit PackageReference sets SuppressImplicitGitSourceLink
@@ -67,8 +70,8 @@
       copies the standalone assembly into publish output instead of using the framework one.
       Nothing here uses an API added after 10.0.0.
     -->
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.2" />
-    <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.2" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.10" />
   </ItemGroup>
   <!-- .NET 10.0 specific dependencies (currently none) -->
 </Project>
