@@ -20,8 +20,37 @@ namespace Zonit.Extensions.Tenants;
 /// </remarks>
 public interface ITenantProvider
 {
-    /// <summary>The resolved tenant for the current scope, or <see langword="null"/> when none was matched.</summary>
+    /// <summary>
+    /// The resolved tenant for this scope, or <see langword="null"/> when none was resolved.
+    /// </summary>
+    /// <remarks>
+    /// <para><b>Nullable on purpose.</b> This property carries identity — <c>Id</c>,
+    /// <c>Domain</c>, <c>Variables</c> — and none of those has a meaningful value when no tenant
+    /// was resolved. Handing back a sentinel would make <c>@Tenant.Current.Domain</c> render
+    /// <c>"*"</c> and <c>Current.Id</c> read <see cref="Guid.Empty"/>, which is worse than a
+    /// compiler error: the page displays something, and the something is wrong.</para>
+    ///
+    /// <para><b>Reading settings does not go through here</b> and never needs a null check —
+    /// <see cref="Settings"/> and <see cref="GetSetting{TSetting}"/> always resolve, falling back
+    /// to configuration and then to compile-time defaults. So the null only surfaces where it is
+    /// genuinely a question, and <see cref="Resolution"/> answers *why* it is null.</para>
+    /// </remarks>
     Tenant? Current { get; }
+
+    /// <summary>
+    /// Why <see cref="Current"/> holds what it holds.
+    /// </summary>
+    /// <remarks>
+    /// A single-site host can ignore this. A multi-domain host should not: without it,
+    /// <see cref="TenantResolution.Unknown"/> — a hostname pointed at the app with no tenant
+    /// behind it — is indistinguishable from a deliberate single-site setup, and the app serves
+    /// default branding on a domain it does not know.
+    /// <code>
+    /// if (Tenants.Resolution is TenantResolution.Unknown)
+    ///     return Results.NotFound();
+    /// </code>
+    /// </remarks>
+    TenantResolution Resolution { get; }
 
     /// <summary>
     /// Resolves a hydrated <see cref="Setting{T}"/> instance. Returns the type's compile-time

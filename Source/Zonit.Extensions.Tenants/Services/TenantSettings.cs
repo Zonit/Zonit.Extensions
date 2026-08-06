@@ -14,10 +14,13 @@ namespace Zonit.Extensions.Tenants;
 /// this file; the generator only ever emits <c>TenantSettings.g.cs</c>.</para>
 ///
 /// <para><b>Plugin settings.</b> A partial class cannot span assemblies, so a
-/// <see cref="Settings.Setting{T}"/> declared in a plugin cannot become a property here.
-/// The generator instead emits an extension method into the plugin's own namespace, backed
-/// by <see cref="Get{TSetting}"/>: <c>@Tenant.Settings.MyPlugin().Headline</c>. Import the
-/// plugin namespace and the accessor shows up in IntelliSense alongside the built-ins.</para>
+/// <see cref="Settings.Setting{T}"/> declared in a plugin cannot become a property <i>on this
+/// type</i>. The generator instead emits an <c>extension</c> block into the plugin's own
+/// namespace, backed by <see cref="Get{TSetting}"/>. Import the plugin namespace and the
+/// accessor shows up in IntelliSense alongside the built-ins, and — on C# 14 or later — reads
+/// identically to one: <c>@Tenant.Settings.MyPlugin.Headline</c>. A consumer who pins an older
+/// <c>LangVersion</c> gets the pre-C#-14 fallback, an extension method:
+/// <c>@Tenant.Settings.MyPlugin().Headline</c>.</para>
 ///
 /// <para><b>Caller sample:</b></para>
 /// <code>

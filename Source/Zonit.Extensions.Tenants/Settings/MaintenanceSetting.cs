@@ -1,5 +1,4 @@
 using System.ComponentModel.DataAnnotations;
-using System.Text.Json;
 
 namespace Zonit.Extensions.Tenants.Settings;
 
@@ -11,9 +10,6 @@ public sealed class MaintenanceSetting : Setting<MaintenanceSettingsModel>
     public override string Key => "maintenance";
     public override string Name => "Maintenance";
     public override string Description => "Controls website availability and displays maintenance messages when the site is offline.";
-
-    public override MaintenanceSettingsModel Hydrate(string json)
-        => JsonSerializer.Deserialize(json, TenantsJsonContext.Default.MaintenanceSettingsModel) ?? new();
 }
 
 /// <summary>Model for <see cref="MaintenanceSetting"/>.</summary>

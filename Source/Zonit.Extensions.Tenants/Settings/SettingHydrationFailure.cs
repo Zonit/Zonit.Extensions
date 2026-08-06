@@ -21,4 +21,4 @@ namespace Zonit.Extensions.Tenants.Settings;
 /// <param name="SettingKey">The <see cref="ISetting.Key"/> the blob was stored under.</param>
 /// <param name="Exception">The failure. Typically a <see cref="System.Text.Json.JsonException"/>,
 /// whose <c>Path</c> / <c>LineNumber</c> pinpoint the offending token.</param>
-public sealed record SettingHydrationFailure(Guid TenantId, string SettingKey, Exception Exception);
+public sealed record SettingHydrationFailure(Guid? TenantId, string SettingKey, Exception Exception);

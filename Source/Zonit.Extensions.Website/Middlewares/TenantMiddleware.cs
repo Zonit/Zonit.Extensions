@@ -36,7 +36,7 @@ namespace Zonit.Extensions.Website.Middlewares;
 ///         instead of crashing on null-deref.</item>
 /// </list>
 /// </remarks>
-internal sealed class TenantMiddleware(RequestDelegate next)
+internal sealed class TenantMiddleware(RequestDelegate next, WebsiteOptions options)
 {
     public async Task InvokeAsync(HttpContext httpContext, ITenantRepository repository)
     {
@@ -46,30 +46,25 @@ internal sealed class TenantMiddleware(RequestDelegate next)
             return;
         }
 
-        if (repository.Current is null)
+        // The repository starts every scope on Tenant.Default and is idempotent per host, so
+        // there is nothing to branch on here any more: no "is it seeded yet" check, no
+        // solo-versus-multi split, no fallback assignment. A single-site host has no
+        // ITenantSource registered and InitializeAsync returns immediately; a multi-site host
+        // that does not recognise the host leaves the scope on Tenant.Default. Both used to be
+        // spelled out as explicit Initialize(Tenant.Solo) calls, and the second one raised a
+        // *second* OnChange for one logical resolution — every subscriber (the hydrated-settings
+        // cache, every component's OnRefreshChangeAsync) ran twice per request because of it.
+        await repository.InitializeAsync(httpContext.Request.Host.Host, httpContext.RequestAborted);
+
+        // An ITenantSource was asked about this host and did not recognise it. Carrying on would
+        // serve default branding on a domain the application knows nothing about — the failure
+        // mode a multi-domain host is least likely to notice, because it looks like a working
+        // site. The repository has already logged it; this is the part that stops it.
+        if (repository.Resolution is TenantResolution.Unknown
+            && options.UnknownHost is UnknownHostBehavior.NotFound)
         {
-            // ITenantSource is optional. Resolved via RequestServices (not constructor
-            // injection) so that solo-site hosts don't need to register one.
-            var manager = httpContext.RequestServices.GetService(typeof(ITenantSource)) as ITenantSource;
-
-            if (manager is null)
-            {
-                // Solo site shape — no per-domain resolution needed.
-                repository.Initialize(Tenant.Solo);
-            }
-            else
-            {
-                var domain = httpContext.Request.Host.Host;
-                Tenant? resolved = null;
-                if (!string.IsNullOrEmpty(domain))
-                    resolved = await repository.InitializeAsync(domain, httpContext.RequestAborted);
-
-                // Manager said "no match" — fall back to Solo so downstream pages still
-                // get defaults instead of a null Tenant. The host can still tell solo
-                // from real-tenant via Tenant.IsSolo if it cares.
-                if (resolved is null)
-                    repository.Initialize(Tenant.Solo);
-            }
+            httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
         }
 
         await next(httpContext);

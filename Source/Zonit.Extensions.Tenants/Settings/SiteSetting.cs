@@ -1,5 +1,4 @@
 using System.ComponentModel.DataAnnotations;
-using System.Text.Json;
 
 namespace Zonit.Extensions.Tenants.Settings;
 
@@ -12,9 +11,6 @@ public sealed class SiteSetting : Setting<SiteSettingsModel>
     public override string Key => "site";
     public override string Name => "Site";
     public override string Description => "Basic website settings.";
-
-    public override SiteSettingsModel Hydrate(string json)
-        => JsonSerializer.Deserialize(json, TenantsJsonContext.Default.SiteSettingsModel) ?? new();
 }
 
 /// <summary>Model for <see cref="SiteSetting"/>.</summary>

@@ -11,6 +11,22 @@
   -->
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <!--
+      Abstractions only, and still framework-agnostic: this pulls no provider, no configuration
+      and no hosting. TenantService takes ILogger<T> as an OPTIONAL constructor dependency, so a
+      host without a logging provider registered keeps resolving ITenantProvider. It buys the
+      one thing OnSettingHydrationFailed could never give on its own — a corrupt tenant blob
+      showing up in the logs of a host that never knew to subscribe.
+    -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <!--
+      Abstractions only. Backs the appsettings layer: a setting with no persisted override reads
+      Tenants:{key} through plain IConfiguration, so every provider the host registered applies
+      (JSON files, environment variables, user secrets, Key Vault) and reload rides the standard
+      IChangeToken. IConfiguration is an OPTIONAL dependency of TenantConfigurationSource, so the
+      package still composes in a bare ServiceCollection with no host behind it.
+    -->
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
   </ItemGroup>
 
   <ItemGroup>

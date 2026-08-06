@@ -18,7 +18,7 @@ namespace Zonit.Extensions.Tenants.Settings;
 /// Through 10.0.0-preview.9 this context was <c>internal</c>, so there was no way for a host
 /// writing to <c>Tenant.Variables</c> to hit the right shape except by reverse-engineering it.
 /// It is now part of the public contract: write with the same <c>JsonTypeInfo</c> the matching
-/// <see cref="Setting{T}.Hydrate(string)"/> reads with.</para>
+/// <see cref="Setting{T}.Hydrate"/> reads with.</para>
 ///
 /// <para><b>Producing a value for <c>Tenant.Variables["site"]</c>:</b></para>
 /// <code>
@@ -27,7 +27,7 @@ namespace Zonit.Extensions.Tenants.Settings;
 ///
 /// <para><b>Plugins.</b> A plugin ships its own <see cref="System.Text.Json.Serialization.JsonSerializerContext"/>
 /// and owns both halves of its round trip; the only rule is to use the <i>same</i>
-/// <c>JsonTypeInfo</c> on the write side as <see cref="Setting{T}.Hydrate(string)"/> uses on
+/// <c>JsonTypeInfo</c> on the write side as <see cref="Setting{T}.Hydrate"/> uses on
 /// the read side, and to make that context reachable by whoever persists the value. See
 /// <see cref="Setting{T}"/> for the recipe.</para>
 /// </remarks>

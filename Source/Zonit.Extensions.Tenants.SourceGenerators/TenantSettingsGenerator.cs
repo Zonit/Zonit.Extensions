@@ -55,6 +55,13 @@ public sealed class TenantSettingsGenerator : IIncrementalGenerator
     private const string Category = "Zonit.Extensions.Tenants";
 
     /// <summary>
+    /// Namespace of the emitted metadata resolver. Fixed rather than per-consumer-namespace: the
+    /// type is <c>internal</c>, so one per assembly is both sufficient and unambiguous, and the
+    /// generated registration references it by full name anyway.
+    /// </summary>
+    private const string MetadataNamespace = "Zonit.Extensions.Tenants.Generated";
+
+    /// <summary>
     /// Two settings reduce to the same accessor. Warning rather than error: one accessor is
     /// still emitted and works, so the build stays green — but the diagnostic has to name both
     /// types and say which one won, because otherwise <c>settings.Foo()</c> silently resolves
@@ -89,6 +96,20 @@ public sealed class TenantSettingsGenerator : IIncrementalGenerator
         isEnabledByDefault: true,
         description: "TenantSettings declares Provider and Get<TSetting>() and inherits object's members. An accessor with one of those names is a duplicate-member or member-hiding diagnostic inside the package, and unreachable code in a consumer assembly because an instance member always beats an extension method.");
 
+    /// <summary>
+    /// A setting model whose shape this generator cannot describe and which no hand-written
+    /// <c>[JsonSerializable]</c> covers either. Hydration still works — reflectively — so this is
+    /// a warning rather than an error, but it throws under Native AOT or trimming.
+    /// </summary>
+    private static readonly DiagnosticDescriptor UncoveredSettingModel = new(
+        id: "ZONITTS0003",
+        title: "Tenant setting model has no source-generated JSON metadata",
+        messageFormat: "Tenant setting model '{0}' (used by '{1}') has a shape this generator does not describe, so it hydrates reflectively and will throw under Native AOT or trimming. Add [JsonSerializable(typeof({0}))] to a JsonSerializerContext, which AddJsonContexts() then registers for you.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true,
+        description: "Metadata is generated for flat models — properties that are scalars, enums, or nullables of either, with public getters and setters. A nested object, a collection, a dictionary or a get-only property falls outside that, and describing a model only partially would be worse than not describing it: the missing property would bind to its default and look like data loss. Supply a JsonSerializerContext for such a model instead.");
+
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         // Pick up every `class X : Setting<...>` declaration; the heavy semantic
@@ -105,11 +126,30 @@ public sealed class TenantSettingsGenerator : IIncrementalGenerator
         var surface = context.CompilationProvider
             .Select(static (compilation, _) => TenantSettingsSurface.From(compilation));
 
-        var collected = candidates.Collect().Combine(surface);
+        // Whether the consumer's compiler accepts C# 14 extension members, which is what
+        // decides between `settings.MyPlugin` and `settings.MyPlugin()`. Projected to a bool
+        // for the same reason as the surface above — ParseOptions is a new instance per edit.
+        var extensionMembers = context.ParseOptionsProvider
+            .Select(static (options, _) => SupportsExtensionMembers(options));
+
+        // Every [JsonSerializable(typeof(X))] in this compilation, grouped by the context that
+        // declares it. This is what lets the generated registration know which contexts to hand
+        // to AddJsonContext, and which setting models nothing covers.
+        var contexts = context.SyntaxProvider
+            .ForAttributeWithMetadataName(
+                "System.Text.Json.Serialization.JsonSerializableAttribute",
+                predicate: static (node, _) => node is ClassDeclarationSyntax,
+                transform: static (ctx, _) => JsonContextInfo.From(ctx))
+            .Where(static info => info is not null);
+
+        var collected = candidates.Collect()
+            .Combine(surface)
+            .Combine(extensionMembers)
+            .Combine(contexts.Collect());
 
         context.RegisterSourceOutput(collected, static (spc, input) =>
         {
-            var (infos, surface) = input;
+            var (((infos, surface), extensionMembers), contexts) = input;
 
             var valid = infos.Where(i => i is not null).Cast<SettingInfo>().ToList();
             if (valid.Count == 0) return;
@@ -134,6 +174,19 @@ public sealed class TenantSettingsGenerator : IIncrementalGenerator
                 return;
             }
 
+            // model full name → the context that declares [JsonSerializable] for it. First
+            // declaration wins, matching the resolver chain's own first-match-wins order.
+            var coverage = new Dictionary<string, string>(System.StringComparer.Ordinal);
+            foreach (var ctx in contexts)
+            {
+                if (ctx is null) continue;
+                foreach (var model in ctx.SerializableTypes())
+                {
+                    if (!coverage.ContainsKey(model))
+                        coverage.Add(model, ctx.ContextFullName);
+                }
+            }
+
             // One façade per namespace: a `using MyPlugin;` — which the consumer already has
             // wherever the setting type is visible — is then enough to bring the accessors
             // into scope, and two plugins in different namespaces never collide. Uniqueness is
@@ -147,10 +200,86 @@ public sealed class TenantSettingsGenerator : IIncrementalGenerator
                     ? "TenantSettingsExtensions.g.cs"
                     : "TenantSettingsExtensions." + group.Key + ".g.cs";
 
-                spc.AddSource(hint, EmitConsumerFacade(group.Key, settings));
+                spc.AddSource(hint, EmitConsumerFacade(group.Key, settings, extensionMembers, coverage));
             }
+
+            EmitMetadata(valid, coverage, spc);
         });
     }
+
+    /// <summary>
+    /// Emits <c>JsonTypeInfo</c> metadata for every setting model this generator can describe, and
+    /// reports the ones it cannot.
+    /// </summary>
+    /// <remarks>
+    /// A model already covered by a hand-written <c>[JsonSerializable]</c> is skipped — that
+    /// context is registered first and would win the resolver chain anyway, and generating a
+    /// second description of the same type only invites the two to drift.
+    /// </remarks>
+    private static void EmitMetadata(
+        List<SettingInfo> settings,
+        Dictionary<string, string> coverage,
+        SourceProductionContext spc)
+    {
+        var models = new List<ModelMetadataEmitter.ModelInfo>();
+        var seen = new HashSet<string>(System.StringComparer.Ordinal);
+
+        foreach (var setting in settings)
+        {
+            if (coverage.ContainsKey(setting.ModelFullName))
+                continue;
+
+            if (setting.Model is null)
+            {
+                // Not describable here: a nested object, a collection, an init-only or
+                // getter-only property. Hydration still works reflectively, so this is a warning
+                // rather than an error — but it will throw under AOT, and the fix is one attribute.
+                spc.ReportDiagnostic(Diagnostic.Create(
+                    UncoveredSettingModel,
+                    setting.Location.ToLocation(),
+                    setting.ModelFullName,
+                    setting.ClassFullName));
+                continue;
+            }
+
+            if (seen.Add(setting.Model.ModelFullName))
+                models.Add(setting.Model);
+        }
+
+        // Hand-written contexts covering setting models are registered by the same module
+        // initializer, which is what makes AddJsonContexts() optional rather than required.
+        var contexts = new SortedSet<string>(System.StringComparer.Ordinal);
+        foreach (var setting in settings)
+        {
+            if (coverage.TryGetValue(setting.ModelFullName, out var context))
+                contexts.Add(context);
+        }
+
+        if (models.Count == 0 && contexts.Count == 0) return;
+
+        models.Sort(static (a, b) => string.CompareOrdinal(a.ModelFullName, b.ModelFullName));
+        spc.AddSource(
+            "TenantSettingsJsonMetadata.g.cs",
+            ModelMetadataEmitter.Emit(MetadataNamespace, models, [.. contexts]));
+    }
+
+    /// <summary>
+    /// True when the compilation is parsed at C# 14 or later, where an <c>extension</c> block can
+    /// declare <b>properties</b> — the shape that makes a plugin accessor read exactly like a
+    /// built-in one (<c>settings.MyPlugin</c> rather than <c>settings.MyPlugin()</c>).
+    /// </summary>
+    /// <remarks>
+    /// <para>Compared numerically against <c>1400</c> instead of <c>LanguageVersion.CSharp14</c>
+    /// so the generator still builds against an older Roslyn reference than the one it runs on.
+    /// <see cref="LanguageVersionFacts.MapSpecifiedToEffectiveVersion"/> first resolves
+    /// <c>Latest</c> / <c>LatestMajor</c> / <c>Preview</c> / <c>Default</c>, which are the values
+    /// actually present on <see cref="CSharpParseOptions"/> when a project sets
+    /// <c>&lt;LangVersion&gt;latest&lt;/LangVersion&gt;</c> — comparing those raw would read as
+    /// <see cref="int.MaxValue"/> or <c>0</c> rather than as a real version.</para>
+    /// </remarks>
+    private static bool SupportsExtensionMembers(ParseOptions options)
+        => options is CSharpParseOptions csharp
+           && (int)LanguageVersionFacts.MapSpecifiedToEffectiveVersion(csharp.LanguageVersion) >= 1400;
 
     /// <summary>
     /// Reduces one emission scope (the whole compilation for the core partial, one namespace
@@ -271,6 +400,7 @@ public sealed class TenantSettingsGenerator : IIncrementalGenerator
         return new SettingInfo(
             ClassFullName: symbol.ToDisplayString(),
             ModelFullName: modelNamed.ToDisplayString(),
+            Model: ModelMetadataEmitter.ModelInfo.From(modelNamed),
             TypeName: symbol.Name,
             PropertyName: PropertyName(symbol.Name),
             Namespace: symbol.ContainingNamespace.IsGlobalNamespace
@@ -365,12 +495,29 @@ public sealed class TenantSettingsGenerator : IIncrementalGenerator
     }
 
     /// <summary>
-    /// The out-of-package shape: extension methods over the referenced <c>TenantSettings</c>.
-    /// No state is cached here — <c>ITenantProvider.GetSetting&lt;T&gt;()</c> already caches
-    /// per scope and invalidates on tenant change, so a façade-level field would only add a
-    /// second cache that can go stale.
+    /// The out-of-package shape: extension members over the referenced <c>TenantSettings</c>,
+    /// because a partial class cannot span assemblies.
     /// </summary>
-    private static string EmitConsumerFacade(string ns, IReadOnlyList<SettingInfo> settings)
+    /// <remarks>
+    /// <para><b>Two emission shapes.</b> On C# 14 and later this is an <c>extension</c> block
+    /// declaring <b>properties</b>, so a plugin accessor is indistinguishable from a built-in
+    /// one at the call site: <c>Settings.Site.Title</c> and <c>Settings.MyPlugin.Headline</c>
+    /// read the same. Below C# 14 extension properties do not exist and the fallback is the
+    /// classic extension <b>method</b> (<c>Settings.MyPlugin()</c>) — the shape this generator
+    /// emitted unconditionally before, kept so a consumer who pins an older
+    /// <c>&lt;LangVersion&gt;</c> still compiles instead of getting a syntax error inside
+    /// generated code they cannot edit.</para>
+    ///
+    /// <para><b>No caching here.</b> <c>ITenantProvider.GetSetting&lt;T&gt;()</c> already caches
+    /// per scope and invalidates on tenant change, so a façade-level field would only add a
+    /// second cache that can go stale. That is also why the property shape is safe: it is a
+    /// dictionary hit, not a deserialisation, on every read after the first.</para>
+    /// </remarks>
+    private static string EmitConsumerFacade(
+        string ns,
+        IReadOnlyList<SettingInfo> settings,
+        bool extensionMembers,
+        Dictionary<string, string> coverage)
     {
         var sb = new StringBuilder();
         sb.AppendLine("// <auto-generated/>");
@@ -385,32 +532,169 @@ public sealed class TenantSettingsGenerator : IIncrementalGenerator
 
         sb.AppendLine("/// <summary>");
         sb.AppendLine("/// Auto-generated accessors for the <c>Setting&lt;T&gt;</c> types declared in this assembly.");
-        sb.AppendLine("/// Extension methods rather than <c>TenantSettings</c> members because a partial class");
+        sb.AppendLine("/// Extension members rather than <c>TenantSettings</c> members because a partial class");
         sb.AppendLine("/// cannot span assemblies — the type itself lives in Zonit.Extensions.Tenants.");
         sb.AppendLine("/// </summary>");
         sb.AppendLine("public static class TenantSettingsExtensions");
         sb.AppendLine("{");
 
-        foreach (var s in settings)
+        if (extensionMembers)
         {
-            sb.AppendLine($"    /// <summary>Accessor for <see cref=\"global::{s.ClassFullName}\"/>.</summary>");
-            sb.AppendLine(
-                $"    public static global::{s.ModelFullName} {Identifier(s.PropertyName)}(" +
-                "this global::Zonit.Extensions.Tenants.TenantSettings settings)");
-            sb.AppendLine($"        => settings.Get<global::{s.ClassFullName}>().Value;");
-            sb.AppendLine();
+            sb.AppendLine("    extension(global::Zonit.Extensions.Tenants.TenantSettings settings)");
+            sb.AppendLine("    {");
+
+            foreach (var s in settings)
+            {
+                sb.AppendLine($"        /// <summary>Accessor for <see cref=\"global::{s.ClassFullName}\"/>.</summary>");
+                sb.AppendLine($"        public global::{s.ModelFullName} {Identifier(s.PropertyName)}");
+                sb.AppendLine($"            => settings.Get<global::{s.ClassFullName}>().Value;");
+                sb.AppendLine();
+            }
+
+            sb.AppendLine("    }");
         }
+        else
+        {
+            foreach (var s in settings)
+            {
+                sb.AppendLine($"    /// <summary>Accessor for <see cref=\"global::{s.ClassFullName}\"/>.</summary>");
+                sb.AppendLine(
+                    $"    public static global::{s.ModelFullName} {Identifier(s.PropertyName)}(" +
+                    "this global::Zonit.Extensions.Tenants.TenantSettings settings)");
+                sb.AppendLine($"        => settings.Get<global::{s.ClassFullName}>().Value;");
+                sb.AppendLine();
+            }
+        }
+
+        EmitJsonContextRegistration(sb, settings, coverage);
 
         sb.AppendLine("}");
         return sb.ToString();
     }
 
+    /// <summary>
+    /// Emits <c>AddJsonContexts</c> — the one call that registers every
+    /// <c>JsonSerializerContext</c> covering this namespace's setting models, so a consumer names
+    /// its contexts once (in <c>[JsonSerializable]</c>) instead of twice.
+    /// </summary>
+    /// <remarks>
+    /// <para><b>What this can and cannot remove.</b> It removes the <i>registration</i> —
+    /// hand-writing <c>o.AddJsonContext(FooJsonContext.Default).AddJsonContext(BarJsonContext.Default)</c>
+    /// and keeping that list in sync as settings are added. It cannot remove the
+    /// <c>[JsonSerializable]</c> attribute itself: Roslyn generators do not observe each other's
+    /// output, so an attribute emitted here would be invisible to the System.Text.Json generator
+    /// and the context would fail to compile with <c>CS0534</c>. That attribute is the input the
+    /// other generator needs, and it has to be in hand-written source.</para>
+    ///
+    /// <para>Nothing is emitted when no context covers any of this namespace's models — an app
+    /// hydrating reflectively has nothing to register, and an empty method would only invite a
+    /// call that does nothing.</para>
+    /// </remarks>
+    private static void EmitJsonContextRegistration(
+        StringBuilder sb,
+        IReadOnlyList<SettingInfo> settings,
+        Dictionary<string, string> coverage)
+    {
+        var contexts = new SortedSet<string>(System.StringComparer.Ordinal);
+        var hasGenerated = false;
+
+        foreach (var setting in settings)
+        {
+            if (coverage.TryGetValue(setting.ModelFullName, out var context))
+                contexts.Add(context);
+            else if (setting.Model is not null)
+                hasGenerated = true;
+        }
+
+        if (contexts.Count == 0 && !hasGenerated) return;
+
+        sb.AppendLine("    /// <summary>");
+        sb.AppendLine("    /// Registers the JSON metadata for every <c>Setting&lt;T&gt;</c> declared in this");
+        sb.AppendLine("    /// assembly, so hydration needs no reflection and survives trimming and Native AOT.");
+        sb.AppendLine("    /// </summary>");
+        sb.AppendLine("    /// <remarks>");
+        sb.AppendLine("    /// Covers both halves: metadata this generator produced for flat setting models, and any");
+        sb.AppendLine("    /// hand-written <c>JsonSerializerContext</c> whose <c>[JsonSerializable]</c> entries cover a");
+        sb.AppendLine("    /// setting model. Hand-written contexts are registered first, so supplying one for a model");
+        sb.AppendLine("    /// overrides the generated description of it.");
+        sb.AppendLine("    /// </remarks>");
+        sb.AppendLine("    /// <example>");
+        sb.AppendLine("    /// <code>");
+        sb.AppendLine("    /// builder.Services.AddTenantsExtension(o =&gt; o.AddJsonContexts());");
+        sb.AppendLine("    /// </code>");
+        sb.AppendLine("    /// </example>");
+        sb.AppendLine(
+            "    public static global::Zonit.Extensions.Tenants.Settings.TenantSettingsOptions AddJsonContexts(" +
+            "this global::Zonit.Extensions.Tenants.Settings.TenantSettingsOptions options)");
+        sb.AppendLine("    {");
+
+        foreach (var context in contexts)
+            sb.AppendLine($"        options.AddJsonContext(global::{context}.Default);");
+
+        if (hasGenerated)
+        {
+            sb.AppendLine(
+                $"        options.AddJsonResolver(global::{MetadataNamespace}.TenantSettingsJsonMetadata.Default);");
+        }
+
+        sb.AppendLine("        return options;");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+    }
+
     private static string FieldName(string propertyName)
         => $"_{char.ToLowerInvariant(propertyName[0])}{propertyName.Substring(1)}";
+
+    /// <summary>
+    /// One <see cref="System.Text.Json.Serialization.JsonSerializerContext"/> in this compilation
+    /// and the models it declares.
+    /// </summary>
+    /// <param name="SerializableTypeNames">
+    /// Newline-joined rather than a collection: <c>ImmutableArray&lt;string&gt;</c> compares by
+    /// reference in the incremental cache, which would re-run every downstream step on every
+    /// keystroke.
+    /// </param>
+    private sealed record JsonContextInfo(string ContextFullName, string SerializableTypeNames)
+    {
+        private const char Separator = '\n';
+
+        public IEnumerable<string> SerializableTypes()
+            => SerializableTypeNames.Length == 0
+                ? System.Array.Empty<string>()
+                : SerializableTypeNames.Split(Separator);
+
+        public static JsonContextInfo? From(GeneratorAttributeSyntaxContext ctx)
+        {
+            if (ctx.TargetSymbol is not INamedTypeSymbol context)
+                return null;
+
+            // A context is only usable through `Ctx.Default`, which the System.Text.Json
+            // generator emits solely for a partial, non-generic, accessible class.
+            if (context.DeclaredAccessibility != Accessibility.Public
+                && context.DeclaredAccessibility != Accessibility.Internal)
+            {
+                return null;
+            }
+
+            var models = new SortedSet<string>(System.StringComparer.Ordinal);
+
+            foreach (var attribute in ctx.Attributes)
+            {
+                if (attribute.ConstructorArguments.Length == 0) continue;
+                if (attribute.ConstructorArguments[0].Value is INamedTypeSymbol model)
+                    models.Add(model.ToDisplayString());
+            }
+
+            return models.Count == 0
+                ? null
+                : new JsonContextInfo(context.ToDisplayString(), string.Join(Separator.ToString(), models));
+        }
+    }
 
     private sealed record SettingInfo(
         string ClassFullName,
         string ModelFullName,
+        ModelMetadataEmitter.ModelInfo? Model,
         string TypeName,
         string PropertyName,
         string Namespace,

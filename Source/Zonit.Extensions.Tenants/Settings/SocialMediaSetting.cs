@@ -1,5 +1,4 @@
 using System.ComponentModel.DataAnnotations;
-using System.Text.Json;
 
 namespace Zonit.Extensions.Tenants.Settings;
 
@@ -13,9 +12,6 @@ public sealed class SocialMediaSetting : Setting<SocialMediaModel>
     public override string Key => "social_media";
     public override string Name => "Social Media";
     public override string Description => "Links to social media profiles.";
-
-    public override SocialMediaModel Hydrate(string json)
-        => JsonSerializer.Deserialize(json, TenantsJsonContext.Default.SocialMediaModel) ?? new();
 }
 
 /// <summary>Model for <see cref="SocialMediaSetting"/>.</summary>

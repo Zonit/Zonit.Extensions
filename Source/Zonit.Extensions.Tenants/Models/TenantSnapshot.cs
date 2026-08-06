@@ -37,7 +37,7 @@ namespace Zonit.Extensions.Tenants;
 public sealed class TenantSnapshot
 {
     /// <summary>Mirrors <see cref="Tenant.Id"/>.</summary>
-    public Guid Id { get; set; }
+    public Guid? Id { get; set; }
 
     /// <summary>Mirrors <see cref="Tenant.Domain"/>.</summary>
     public string Domain { get; set; } = string.Empty;
@@ -49,7 +49,7 @@ public sealed class TenantSnapshot
     /// <remarks>
     /// <para><b>There is no "dehydrate" API.</b> Nothing on <see cref="Settings.Setting{T}"/>
     /// writes these blobs — the type only reads them, through
-    /// <see cref="Settings.Setting{T}.Hydrate(string)"/>. Whoever persists a tenant (admin UI,
+    /// <see cref="Settings.Setting{T}.Hydrate"/>. Whoever persists a tenant (admin UI,
     /// seeder, migration) produces each entry itself, and the one rule is to serialise with the
     /// <b>same</b> <c>JsonTypeInfo</c> the matching <c>Hydrate</c> deserialises with: a blob
     /// written with default options is PascalCase, the built-in settings read camelCase, and

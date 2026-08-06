@@ -1,5 +1,4 @@
 using System.ComponentModel.DataAnnotations;
-using System.Text.Json;
 
 namespace Zonit.Extensions.Tenants.Settings;
 
@@ -14,9 +13,6 @@ public sealed class ThemeSetting : Setting<ThemeSettingsModel>
     public override string Name => "Theme";
     public override string Description => "Visual theme and styling settings for the website.";
     public override IReadOnlyCollection<ThemeSettingsModel>? Templates { get; } = [];
-
-    public override ThemeSettingsModel Hydrate(string json)
-        => JsonSerializer.Deserialize(json, TenantsJsonContext.Default.ThemeSettingsModel) ?? new();
 }
 
 /// <summary>Model for <see cref="ThemeSetting"/>.</summary>

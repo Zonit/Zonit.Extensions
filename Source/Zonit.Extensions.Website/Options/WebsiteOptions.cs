@@ -57,6 +57,30 @@ public sealed class WebsiteOptions
     public bool RazorPages { get; set; } = false;
 
     /// <summary>
+    /// What to do when an <c>ITenantSource</c> is registered but does not recognise the request's
+    /// host — <c>TenantResolution.Unknown</c>. Defaults to
+    /// <see cref="UnknownHostBehavior.NotFound"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para><b>Why this defaults to refusing the request.</b> Reaching that state means a
+    /// hostname is pointed at the application with no tenant behind it: a DNS record added
+    /// without the matching row, a typo'd alias, a staging host leaking into production. The
+    /// alternative — carrying on — serves the compile-time default branding on a domain the app
+    /// does not know, under whatever certificate answered, and looks to a visitor like a real
+    /// (if oddly generic) site. That failure is silent, and it is the exact thing a multi-domain
+    /// host is least likely to notice.</para>
+    ///
+    /// <para>Set <see cref="UnknownHostBehavior.Continue"/> when unknown hosts are legitimate —
+    /// a marketing site that answers on any domain, a health-check probe hitting the container's
+    /// internal name, a catch-all landing page. Pages can then still branch on
+    /// <c>ITenantProvider.Resolution</c> themselves.</para>
+    ///
+    /// <para>Single-site hosts are unaffected: with no <c>ITenantSource</c> registered the
+    /// resolution is <c>SingleSite</c>, never <c>Unknown</c>.</para>
+    /// </remarks>
+    public UnknownHostBehavior UnknownHost { get; set; } = UnknownHostBehavior.NotFound;
+
+    /// <summary>
     /// Registers an Area with the DI container. Instantiates <typeparamref name="TArea"/>
     /// (must have a public parameterless ctor — Areas are data-first POCOs), runs its
     /// <see cref="IWebsiteServices.ConfigureServices"/> hook if implemented, and stores

@@ -70,7 +70,10 @@ applies and everything is visible.
 Three things it does not do:
 
 - **No permission filtering.** `NavGroup.Permission` and `NavItem.Permission` are data the UI may
-  consult; nothing in this package hides an entry based on them.
+  consult; nothing in *this* package hides an entry based on them. The renderer is expected to,
+  and `Zonit.Dashboard` does — it drops any node whose permission the current identity fails,
+  wildcards included, and a group left with no visible children goes with them. A host rendering
+  its own nav markup must do the same, or its menu will offer links that answer 401.
 - **`Add` without an `areaKey` is unreachable.** The store keys unkeyed additions under the empty
   string, while `Get` rejects a null/whitespace area key outright. Always pass `areaKey`.
 - **No persistence.** Runtime additions are in-memory and lost on restart.

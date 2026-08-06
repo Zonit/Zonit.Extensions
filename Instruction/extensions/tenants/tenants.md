@@ -2,31 +2,34 @@
 
 A tenant is a *site identity* resolved from the request host: an id, a domain, and a bag of
 JSON-encoded setting overrides. The package resolves one tenant per DI scope and exposes its
-settings as strongly-typed models. It is framework-agnostic — it depends only on
-`Microsoft.Extensions.DependencyInjection.Abstractions` and `Zonit.Extensions`, with no ASP.NET Core
-reference. The HTTP glue (`TenantMiddleware`) lives in `Zonit.Extensions.Website` and is `internal`;
-see `.zonit/extensions/website/hosting.md`.
+settings as strongly-typed models. It is framework-agnostic — it depends only on the
+`Microsoft.Extensions.*` abstractions (DI, Logging, Configuration) and `Zonit.Extensions`, with no
+ASP.NET Core reference. The HTTP glue (`TenantMiddleware`) lives in `Zonit.Extensions.Website` and
+is `internal`; see `.zonit/extensions/website/hosting.md`.
 
-Everything below is verified against **10.0.0-preview.10**.
+Everything below is verified against **10.0.0-preview.11**.
 
 ## Read this before you write any code
 
 | Trap | Reality |
 |---|---|
-| Calling `AddTenantsExtension()` after `AddWebsite()` | `AddWebsite()` already calls it. Harmless (both registrations are `TryAdd`) but pointless. |
-| `GetRequiredService<ITenantSource>()` | Throws in a solo host. The package registers **no** `ITenantSource`; `NullTenantSource` was deleted in preview.10. Use `GetService<ITenantSource>()` and handle `null`. |
-| Expecting the framework to match `Tenant.Domain` | It never reads it. You get the raw `HttpRequest.Host.Host` and own case, aliases, `www.`, punycode — and all caching. |
-| Writing overrides with `JsonSerializer.Serialize(model)` | Default options are PascalCase; hydration is camelCase and **case-sensitive**. The blob matches nothing, you silently get compile-time defaults, and no exception and no event is raised. |
+| Calling `AddTenantsExtension()` after `AddWebsite()` | `AddWebsite()` already calls it. Call it again only to change `ConfigurationSection` / `ReloadOnChange`; JSON metadata registers itself. |
+| `GetRequiredService<ITenantSource>()` | Throws in a single-site host. The package registers **no** `ITenantSource`. Use `GetService<ITenantSource>()` and handle `null`. |
+| Expecting the framework to match `Tenant.Domain` | It never matches on it. You get the raw `HttpRequest.Host.Host` and own case, aliases, `www.`, punycode — and all caching. |
+| `if (Tenants.Current is null)` | Correct — `Current` **is** nullable. But settings never go through it, so you rarely need the check. Read `Resolution` for *why* it is null. |
+| Treating a null `Current` as "unknown host" | It is also null for a single-site app and for an uninitialised scope. `Resolution == TenantResolution.Unknown` is the misconfiguration signal. |
+| Writing a `Hydrate` override and a `JsonSerializerContext` per setting | No longer needed for a flat model — the generator emits its JSON metadata. Supply a context only for nested/collection models (ZONITTS0003 tells you) or for different JSON rules. |
+| Assuming blob casing matters | It does not. Reading is case-insensitive; `{"Title":…}` and `{"title":…}` both bind. |
 | `Settings.Site` vs `GetSetting<SiteSetting>()` | The first returns the **model** (`SiteSettingsModel`), the second returns the **setting** — add `.Value`. |
-| Your own setting on the façade | It is an extension **method**, not a property: `Settings.Pricing()`, with parentheses. |
-| `Settings.Site.Title = "x"` | Compiles, and changes what every later reader in that scope sees. Nothing is persisted — this package has no write path. |
-| Two settings whose names collapse to one accessor | The consumer build fails with `CS0111` inside generated code. See *Known limitations*. |
+| Your own setting on the façade | An extension **property** on C# 14+: `Settings.Pricing`, no parentheses. Below C# 14 the generator falls back to `Settings.Pricing()`. |
+| `Settings.Site.Title = "x"` | Compiles, and changes what every later reader in that scope sees. Nothing is persisted. |
 
 ## Setup
 
-`AddTenantsExtension()` lives in namespace `Zonit.Extensions` (not `…Tenants`) and `TryAdd`s two
-scoped services: `ITenantRepository` → `TenantRepository` and `ITenantProvider` → `TenantService`.
-Both implementations are `internal`.
+`AddTenantsExtension()` lives in namespace `Zonit.Extensions` (not `…Tenants`). It `TryAdd`s two
+scoped services (`ITenantRepository` → `TenantRepository`, `ITenantProvider` → `TenantService`) and
+two singletons (`ITenantSettingsSerializer`, the internal configuration source). All
+implementations are `internal`.
 
 ```csharp
 using Zonit.Extensions;            // AddTenantsExtension()
@@ -36,19 +39,15 @@ using Zonit.Extensions.Tenants;    // ITenantProvider, ITenantSource, Tenant
 // so the only line you add is your data adapter.
 builder.Services.AddScoped<ITenantSource, SqlTenantSource>();
 
-// Non-web host (console / worker / test): wire it yourself.
-services.AddScoped<ITenantSource, SqlTenantSource>();
-services.AddTenantsExtension();
+// JSON metadata for setting models needs NO registration — see "AOT and trimming".
+builder.Services.AddTenantsExtension();
 ```
 
 Registration order does not matter for `ITenantSource` — nothing `TryAdd`s it. It *does* matter if
-you want to substitute the provider itself: `AddTenantsExtension()` uses `TryAdd`, so register your
-own `ITenantProvider` / `ITenantRepository` **before** it, or use `services.Replace(...)`.
+you want to substitute the provider itself: registrations are `TryAdd`, so register your own
+`ITenantProvider` / `ITenantRepository` **before**, or use `services.Replace(...)`.
 
-A solo site registers no source at all. `TenantMiddleware` detects that (`GetService<ITenantSource>()`
-returns `null`), seeds `Tenant.Solo` directly and raises the change notification exactly once — no
-async round trip. Registering a no-op source instead re-introduces the double-notification bug that
-preview.9 shipped.
+A single-site app registers no source at all; `Current` stays `null` and `Resolution` is `SingleSite`.
 
 ### Without middleware
 
@@ -59,17 +58,110 @@ using var scope = provider.CreateScope();
 var repository = scope.ServiceProvider.GetRequiredService<ITenantRepository>();
 
 await repository.InitializeAsync("acme.example.com");   // goes through ITenantSource
-// or, when you already hold the instance:
-repository.Initialize(Tenant.Solo);                     // synchronous, always raises OnChange
+repository.Initialize(someTenant);                      // synchronous, e.g. from persisted state
+repository.Initialize(null);                            // reset — Current back to null
 
 var tenants = scope.ServiceProvider.GetRequiredService<ITenantProvider>();
 Console.WriteLine(tenants.Settings.Site.Title);
 ```
 
 `InitializeAsync` is idempotent per scope: a second call with the same domain (compared
-`OrdinalIgnoreCase`) short-circuits without touching your source. It returns early without notifying
-when no `ITenantSource` is registered, and raises `OnChange` only when the resolved instance actually
-differs from the current one.
+`OrdinalIgnoreCase`) short-circuits without touching your source — including when the first call
+found nothing. It returns early when no `ITenantSource` is registered, and raises `OnChange` only
+when the effective tenant actually changes. `Initialize` has the same no-op guard.
+
+## `Tenant`, `Tenant.Default` and `Resolution`
+
+`Tenant` is a **sealed class**, not a record — no value equality, no `with` expression.
+
+```csharp
+public sealed class Tenant
+{
+    public required Guid? Id { get; init; }
+    public required string Domain { get; init; }
+    public FrozenDictionary<string, string> Variables { get; init; } = FrozenDictionary<string, string>.Empty;
+
+    public static readonly Tenant Default;              // Id = null, Domain = "*"
+    public bool IsDefault { get; }                      // Id is null && Domain == "*"
+}
+```
+
+`Id` is **required and nullable**, which answers two different questions. `required` means you have
+to state what the id is — forgetting it is a compile error, not a record that quietly carries a
+meaningless value. Nullable means "this tenant has no identity" is sayable at all, which a
+single-site host needs. `Guid.Empty` is never produced by the framework and should not be used as
+a stand-in: it is a real `Guid`, so nothing would distinguish "no id" from "somebody forgot the
+id", and the second reads as the first at every use site — including a database lookup that then
+matches nothing.
+
+`Tenant.Default` is **not** manufactured by the framework any more: an unresolved scope has a
+`null` `Current`. It stays available for a host that deliberately wants a non-null tenant in a
+single-site app (`repository.Initialize(Tenant.Default)`).
+
+**In a multi-domain app, do not reach for it as a fallback — return a catch-all from your
+`ITenantSource` instead:**
+
+```csharp
+public async Task<Tenant?> GetByDomainAsync(string domain, CancellationToken ct = default)
+    => await LookupAsync(domain, ct) ?? CatchAll;
+
+private static readonly Tenant CatchAll = new()
+{
+    Id = null, Domain = "*", Variables = /* the marketing site's settings */,
+};
+```
+
+The host is then `Resolved`, `Current` is never null, and the catch-all carries its own settings.
+Verified behaviour with three tenant domains:
+
+| Source | Host | `Resolution` | `Current` | `Settings.Site.Title` |
+|---|---|---|---|---|
+| plain | `acme.com` | `Resolved` | the tenant | `"Acme"` |
+| plain | `typo.com` | `Unknown` | `null` | from configuration (and the middleware 404s first) |
+| catch-all | `acme.com` | `Resolved` | the tenant | `"Acme"` |
+| catch-all | `typo.com` | `Resolved` | the catch-all | the catch-all's own title |
+
+The framework deliberately does not substitute a default itself: doing so is exactly how a typo'd
+DNS record ends up serving a real-looking page, and it would collapse `Unknown` into `SingleSite`
+so that nothing could 404 or log.
+
+`Current` is **nullable** on both `ITenantRepository` and `ITenantProvider`, and starts `null`. It
+carries identity — `Id`, `Domain`, `Variables` — and none of those has a meaningful value before a
+tenant resolves; a sentinel would make `@Tenant.Current.Domain` render `"*"`.
+
+**Reading settings does not go through it.** `Settings` and `GetSetting<T>()` always resolve,
+falling back to configuration and then to compile-time defaults, so a null tenant costs no page a
+null check. `Resolution` says *why* it is null:
+
+| `TenantResolution` | Meaning |
+|---|---|
+| `None` | Nothing resolved in this scope — console, worker, test, or a circuit before the state bridge |
+| `SingleSite` | No `ITenantSource` registered. A single-site app; defaults are the answer |
+| `Resolved` | A source returned a tenant for this host — the only case where `Current` is not null |
+| `Unknown` | A source was asked and did not recognise the host |
+
+**`Unknown` means a hostname is pointed at the app with no tenant behind it** — a DNS record without
+the matching row, a typo'd alias, a staging host leaking into production.
+
+In a web host `TenantMiddleware` **answers `404` by default** and does not run the rest of the
+pipeline, because serving compile-time default branding on an unknown domain is indistinguishable
+from a working site. Opt out when unknown hosts are legitimate:
+
+```csharp
+builder.Services.AddWebsite<MyApp>(o => o.UnknownHost = UnknownHostBehavior.Continue);
+```
+
+Either way it is logged at `Warning` (category
+`Zonit.Extensions.Tenants.Repositories.TenantRepository`, event id 2) with the offending host.
+Outside a web host, or with `Continue`, branch on it yourself:
+
+```csharp
+if (Tenants.Resolution is TenantResolution.Unknown)
+    return Results.NotFound();
+```
+
+`Tenant.Solo` / `IsSolo` still exist as `[Obsolete]` aliases for `Default` / `IsDefault` and will be
+removed in the next preview.
 
 ## Implementing `ITenantSource`
 
@@ -86,7 +178,7 @@ public interface ITenantSource
 |---|---|
 | Hands you `HttpRequest.Host.Host` verbatim, once per non-static request scope | Case folding, `www.` stripping, alias tables, wildcard / punycode handling |
 | Caches the result **for the current scope only** | All cross-request caching (`IMemoryCache`, `IDistributedCache`, a preloaded frozen map) |
-| Substitutes `Tenant.Solo` when you return `null` | Deciding what "unknown host" means for your product |
+| Leaves `Current` null and sets `Resolution = Unknown` when you return `null` | Deciding what "unknown host" means for your product (the middleware 404s by default) |
 
 ```csharp
 using System.Collections.Frozen;
@@ -118,57 +210,57 @@ internal sealed class SqlTenantSource : ITenantSource
 
 Recommended lifetime `Scoped`.
 
-### `Tenant` and `Tenant.Solo`
+## Where a setting's value comes from
 
-`Tenant` is a **sealed class**, not a record — no value equality, no `with` expression.
+Three layers, resolved per `ISetting.Key`:
+
+1. **`Tenant.Variables[key]`** — this tenant's persisted JSON blob.
+2. **`Tenants:{key}` in `IConfiguration`** — the house default shared by every tenant.
+3. **The model's compile-time defaults.**
+
+### 1. The storage contract
+
+`Tenant.Variables` maps **`ISetting.Key` → JSON of the model**. Built-in keys are `site`, `theme`,
+`maintenance`, `social_media`. Unknown keys are ignored.
+
+Blobs are written **camelCase**, nulls omitted, enums as **numbers**. Do not hand-roll it — inject
+`ITenantSettingsSerializer`, which exposes the exact options the reader uses:
 
 ```csharp
-public sealed class Tenant
+public sealed class TenantWriter(ITenantSettingsSerializer serializer)
 {
-    public required Guid Id { get; init; }
-    public required string Domain { get; init; }
-    public FrozenDictionary<string, string> Variables { get; init; } = FrozenDictionary<string, string>.Empty;
-
-    public static readonly Tenant Solo;   // Id = Guid.Empty, Domain = "*"
-    public bool IsSolo { get; }           // Id == Guid.Empty && Domain == "*"
+    public string ToBlob(SiteSettingsModel model) => serializer.Serialize(model);
+    // {"title":"Acme","metaDescription":"This is a new website created","language":"en-US"}
 }
 ```
 
-`Tenant.Solo` is the sentinel the middleware substitutes in two cases: no `ITenantSource` registered
-(single-site app), or a registered source returned `null` (unknown host). The point is that
-`ITenantProvider.Current` is never `null` in normal request flow, so pages never null-check.
-`Current?.IsSolo == true` is how you tell "defaults" from "a real tenant".
-
-## The storage contract
-
-`Tenant.Variables` maps **`ISetting.Key` → JSON of the model**. Keys for the built-ins are `site`,
-`theme`, `maintenance`, `social_media`. Unknown keys are ignored; a missing key means the setting
-resolves to its compile-time defaults.
-
-The shape is defined by whatever `Setting<T>.Hydrate(string)` deserialises with. For the built-ins
-that is `TenantsJsonContext`, which is **public since preview.10** precisely so the write side can
-match it:
-
-```csharp
-using Zonit.Extensions.Tenants.Settings;
-
-// The supported way to produce a value for Variables["site"].
-var json = JsonSerializer.Serialize(
-    new SiteSettingsModel { Title = "Acme", Language = "en-US" },
-    TenantsJsonContext.Default.SiteSettingsModel);
-// {"title":"Acme","metaDescription":"This is a new website created","language":"en-US"}
-```
-
-Its options are `PropertyNamingPolicy = CamelCase`, `WriteIndented = false`,
-`DefaultIgnoreCondition = WhenWritingNull`. Consequences worth internalising:
-
-- **camelCase, case-sensitive.** `{"Title":"Pascal"}` hydrates to `Title = "New website"`. Verified:
-  no exception, `OnSettingHydrationFailed` does not fire. This is the most common way to lose tenant
-  data.
-- **Enums serialise as numbers** — there is no `JsonStringEnumConverter`. A default
-  `ThemeSettingsModel` round-trips as `…,"fontFamily":0,"fontScale":1,"roundness":2,"shadow":1}`.
+- **Reading ignores casing.** `{"Title":"Pascal"}` binds fine. This used to be the most common way
+  to lose tenant data: matching was case-sensitive, the blob matched nothing, and the setting fell
+  back to defaults with no exception and no event.
+- **Enums are numbers.** Renumbering an enum member reinterprets every stored blob.
 - **Nulls are omitted on write**, and absent properties keep the model default on read, so a partial
   blob is legal: `{"primaryColor":"#0F766E"}` overrides one colour and leaves the rest alone.
+
+### 2. Configuration
+
+```json
+{
+  "Tenants": {
+    "site":  { "Title": "Acme", "Language": "en-US" },
+    "theme": { "PrimaryColor": "#0F766E", "Roundness": "Large", "FontScale": 2 },
+    "acme_pricing": { "Plan": "pro", "SeatLimit": 25 }
+  }
+}
+```
+
+Ordinary `IConfiguration`, so every provider applies — `appsettings.{Environment}.json`, user
+secrets, environment variables (`Tenants__site__Title`), Key Vault, command line. Property casing is
+free-form and enums accept either the member name (`"Large"`) or its number (`2`).
+
+A tenant that stores its own blob overrides configuration for that key only. Editing the file
+re-renders open Blazor circuits: a reload invalidates hydrated settings and raises
+`ITenantProvider.OnChange`, which components already subscribe to. Change the section name with
+`o.ConfigurationSection` and disable reload with `o.ReloadOnChange = false`.
 
 ### Built-in models and defaults
 
@@ -210,8 +302,8 @@ Blazor renderer to swap `InputText` for a colour-picker control.
     <p>@Tenants.Settings.Maintenance.MaintenanceMessage</p>
 }
 
-@* consumer-declared setting — a METHOD *@
-<span>@Tenants.Settings.Pricing().Plan</span>
+@* consumer-declared setting — a PROPERTY, same as a built-in *@
+<span>@Tenants.Settings.Pricing.Plan</span>
 ```
 
 Inside a `PageBase` / `ExtensionsBase` component the provider is already available as
@@ -226,9 +318,9 @@ SiteSettingsModel b = provider.GetSetting<SiteSetting>().Value; // setting → .
 // ReferenceEquals(a, b) is true within a scope
 ```
 
-`GetSetting<TSetting>()` is constrained `where TSetting : ISetting, new()` — the type needs a public
-parameterless constructor. Results are cached per scope keyed by `ISetting.Key`, and the cache is
-cleared whenever the tenant changes (`ITenantProvider.OnChange`).
+`GetSetting<TSetting>()` is constrained `where TSetting : ISetting, new()`. Results are cached per
+scope keyed by `ISetting.Key`; the cache is cleared when the tenant changes or configuration
+reloads (`ITenantProvider.OnChange`).
 
 Two sharp edges on that shared instance:
 
@@ -249,8 +341,6 @@ Treat hydrated models as read-only.
 namespace Acme.Pricing;
 
 using System.ComponentModel.DataAnnotations;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using Zonit.Extensions.Tenants.Settings;
 
 public sealed class PricingModel
@@ -279,39 +369,88 @@ public sealed class PricingSetting : Setting<PricingModel>
         new PricingModel { Plan = "free", SeatLimit = 5 },
         new PricingModel { Plan = "pro",  SeatLimit = 25 },
     ];
-
-    // MUST be AOT-safe: a source-generated JsonTypeInfo, never JsonSerializer.Deserialize<T>(string).
-    // MUST NOT throw on bad data — the contract is "fall back to new()".
-    public override PricingModel Hydrate(string json)
-    {
-        try
-        {
-            return JsonSerializer.Deserialize(json, PricingJsonContext.Default.PricingModel) ?? new();
-        }
-        catch (JsonException)
-        {
-            return new();
-        }
-    }
 }
-
-// Public, so whoever writes Variables["acme_pricing"] can produce the exact shape Hydrate reads.
-[JsonSourceGenerationOptions(
-    PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
-    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
-[JsonSerializable(typeof(PricingModel))]
-public sealed partial class PricingJsonContext : JsonSerializerContext;
 ```
+
+That is the whole setting. **No `Hydrate` override and no `JsonSerializerContext`** — those were
+required through preview.10 and are not any more.
 
 | Requirement | Why |
 |---|---|
 | `TModel : class, new()` | Defaults are materialised with `new()` when there is no override. |
+| Every model property needs a sensible default | "No override" is answered with `new()`, never with `null`. |
 | Public parameterless ctor on the setting | `GetSetting<T>()` carries a `new()` constraint. |
 | Setting type must be `public` | The generator skips non-public types — an accessor for them would be `CS0122`. |
-| `Hydrate` uses a `JsonSerializerContext` | The reflection overloads trip IL2026 / IL3050 under `PublishAot`. The core package carries zero suppressions; keeping the whole graph clean is the plugin author's job. |
-| `Hydrate` returns rather than throws | The framework catches only `JsonException`; anything else propagates and takes the page down. |
 
-### What the generator emits
+Override `Hydrate(string json, JsonSerializerOptions options)` **only** when a setting needs
+different JSON rules than the shared camelCase / `WhenWritingNull` contract — a custom converter,
+string enums. Reach for the concrete `JsonTypeInfo` there, because the shared options deliberately
+do not inherit a context's own `[JsonSourceGenerationOptions]`. Do not catch `JsonException` inside
+it: the framework catches it, keeps the defaults, logs, and raises `OnSettingHydrationFailed`;
+swallowing it makes a corrupt blob indistinguishable from "no override".
+
+## AOT and trimming
+
+The package is `IsTrimmable` / `IsAotCompatible`, and a Native AOT publish of a consuming app
+compiles through ILC with zero IL2xxx/IL3xxx warnings.
+
+Hydration takes one of two paths per model:
+
+| Your app | Path | What you write |
+|---|---|---|
+| JIT, untrimmed (the default) | Reflection | Nothing. The model just works. |
+| `PublishAot` / `PublishTrimmed` | Source-generated `JsonTypeInfo` | One `[JsonSerializable]` line + one `AddJsonContext` call |
+
+**There is nothing to write.** Declaring a `Setting<TModel>` is the whole AOT story — no
+`JsonSerializerContext`, no `[JsonSerializable]`, no `Hydrate`, no registration call.
+
+The generator describes each flat setting model through `JsonMetadataServices` (the same public API
+System.Text.Json's own generator emits calls to) into an internal
+`Zonit.Extensions.Tenants.Generated.TenantSettingsJsonMetadata` resolver, and emits a
+`[ModuleInitializer]` that registers it with `TenantSettingsMetadata` as the assembly loads. Scalar
+property types are covered once by the runtime package; enums are emitted per assembly, because
+`GetEnumConverter<TEnum>` needs the closed generic.
+
+The registry is consulted **at lookup time**, not snapshotted when the options are built. That
+matters: assemblies load lazily, so an app whose layout reads a built-in setting before anything
+touches a plugin builds its options first — verified, a snapshot taken there misses the plugin
+permanently and silently downgrades it to reflection.
+
+`AddTenantsExtension(o => o.AddJsonContext(...))` still exists and is consulted **before** anything
+the generator registered, which is how you pin precedence if two assemblies describe one model.
+
+**Covered:** properties whose type is a scalar (`string`, numerics, `bool`, `char`, `Guid`,
+`DateTime`, `DateTimeOffset`, `DateOnly`, `TimeOnly`, `TimeSpan`, `Uri`, `Version`), an enum, or a
+nullable of either — with public getters and setters.
+
+**Not covered:** nested objects, collections, dictionaries, get-only or init-only properties. Such
+a model reports **ZONITTS0003** and is skipped *whole* — describing it partially would let a
+missing property bind to its default and look like data loss. Supply a context for it:
+
+```csharp
+[JsonSerializable(typeof(NestedPricingModel))]
+public sealed partial class AppJsonContext : JsonSerializerContext;
+```
+
+That context is registered automatically too, **before** the generated metadata,
+so a hand-written context always wins for the models it covers. That is also the escape hatch when
+a model needs different JSON rules; pair it with a `Hydrate` override if the rules differ from the
+shared camelCase / `WhenWritingNull` contract.
+
+Under AOT with neither, the setting throws `InvalidOperationException` naming the model and the fix
+— it does not silently hand back an empty object.
+
+Note the one thing that genuinely cannot be generated: `[JsonSerializable]` on a
+`JsonSerializerContext`. Roslyn generators do not observe each other's output, so an attribute
+emitted by one is invisible to the System.Text.Json generator and the context fails to compile with
+`CS0534`. That is why the metadata is emitted directly rather than by delegating to that generator.
+
+For the same reason configuration binding does not use `IConfiguration.Bind`: the configuration
+binding source generator intercepts call sites where the bound type is statically known, and this
+library's call site sits behind an open generic. Values are converted to JSON via `Utf8JsonWriter`
+driven by `JsonTypeInfo.Properties`, which is source-generated metadata and needs no reflection.
+
+## What the generator emits
 
 `Zonit.Extensions.Tenants.SourceGenerators` ships inside the nupkg at `analyzers/dotnet/cs` and runs
 on **your** compilation. It scans the current compilation's syntax trees only — settings arriving
@@ -323,38 +462,38 @@ namespace Acme.Pricing;
 
 public static class TenantSettingsExtensions
 {
-    public static global::Acme.Pricing.PricingModel Pricing(this global::Zonit.Extensions.Tenants.TenantSettings settings)
-        => settings.Get<global::Acme.Pricing.PricingSetting>().Value;
+    extension(global::Zonit.Extensions.Tenants.TenantSettings settings)
+    {
+        public global::Acme.Pricing.PricingModel Pricing
+            => settings.Get<global::Acme.Pricing.PricingSetting>().Value;
+    }
 }
 ```
 
-so the call site is `Tenants.Settings.Pricing()` once `Acme.Pricing` is imported. Notes:
+so the call site is `Tenants.Settings.Pricing` once `Acme.Pricing` is imported. Notes:
 
-- **Method, not property.** A partial class cannot span assemblies, so your setting can never become
-  a `TenantSettings` member. preview.9 emitted `partial class TenantSettings` into consumer
-  assemblies and broke every build that declared a `Setting<T>` (`CS0103` on `Provider`, plus
-  `CS0436` at every use site); that shape is now gated to the single compilation that declares the
-  hand-written half. Extension *methods* rather than C# 14 extension properties, so the emitted code
-  compiles under any pinned `LangVersion`.
+- **A C# 14 `extension` block, so the accessor is a property** — no parentheses, and a plugin
+  setting reads exactly like a built-in one. Below C# 14 the generator falls back to the older
+  extension-**method** shape (`Settings.Pricing()`), because extension properties do not exist
+  there. A partial class still cannot span assemblies, so your setting is never a real
+  `TenantSettings` member; the four built-ins are.
 - **One static class per namespace**, always named `TenantSettingsExtensions`. Settings in different
   namespaces never collide.
-- **Accessor name** = type name with a trailing `Setting` stripped: `PricingSetting` → `Pricing`,
-  `ThemeSetting` → `Theme`. A type that does not end in `Setting`, or one named exactly `Setting`,
-  keeps its full name.
-- Inside `Zonit.Extensions.Tenants` itself the generator emits the partial half instead, which is why
-  the four built-ins are properties (`Settings.Site`, `Settings.Theme`, `Settings.Maintenance`,
-  `Settings.SocialMedia`) while yours is a method.
-- The generator also reaches assemblies that get the package **transitively** — verified in a project
-  whose only `PackageReference` is `Zonit.Extensions.Website`. Analyzers do not flow across
-  `ProjectReference`, so in a source-built solution add the generator project yourself with
+- **Accessor name** = type name with a trailing `Setting` stripped: `PricingSetting` → `Pricing`.
+  A type that does not end in `Setting`, or one named exactly `Setting`, keeps its full name.
+- **Colliding accessors are diagnosed, not broken.** Two settings that reduce to the same name
+  (`FooSetting` and `Foo`) report `ZONITTS0001` and only one gets an accessor; a name
+  `TenantSettings` already defines reports `ZONITTS0002` and is skipped. Read the loser with
+  `settings.Get<TSetting>()`, which is public API.
+- The generator also reaches assemblies that get the package **transitively**. Analyzers do not flow
+  across `ProjectReference`, so in a source-built solution add the generator project yourself with
   `OutputItemType="Analyzer" ReferenceOutputAssembly="false"`.
-- `settings.Get<TSetting>()` is public API and is the seam the generated code uses — call it directly
-  if you ever need to bypass the accessor.
 
 ## Corrupt override blobs
 
 When a blob exists but is malformed the framework catches `JsonException`, keeps the compile-time
-defaults, and reports it. Nothing is logged: this package has no `ILogger` dependency.
+defaults, logs at `Warning` (category `Zonit.Extensions.Tenants.Services.TenantService`, event id 1)
+and raises an event:
 
 ```csharp
 public sealed record SettingHydrationFailure(Guid TenantId, string SettingKey, Exception Exception);
@@ -365,54 +504,50 @@ provider.OnSettingHydrationFailed += failure =>
                     failure.TenantId, failure.SettingKey);
 ```
 
-Subscribing is the only way to tell "corrupt override" from "no override". A *well-formed but
-wrong-cased* blob is neither — it is silent data loss.
+The log line is free; subscribe when you want to *react* (surface a banner, flag the tenant for
+repair) rather than record. Anything that is not a `JsonException` propagates and takes the request
+down — that is deliberate, because it is a code bug rather than bad data.
 
 ## Lifetimes
 
 | Service | Lifetime | Notes |
 |---|---|---|
 | `ITenantRepository` | Scoped | Per-scope snapshot plus `Initialize` / `InitializeAsync`. No cross-request cache. |
-| `ITenantProvider` | Scoped | Read API. Caches hydrated settings per scope; cleared on tenant change. |
+| `ITenantProvider` | Scoped | Read API. Caches hydrated settings per scope; cleared on tenant change and on configuration reload. |
+| `ITenantSettingsSerializer` | Singleton | Frozen `JsonSerializerOptions` and their per-type `JsonTypeInfo` cache. |
 | `ITenantSource` | yours, `Scoped` recommended | Not registered by the package. Put your durable cache here. |
 
 A hand-written `ITenantProvider` double must declare both events (`OnChange` and
-`OnSettingHydrationFailed`; auto-events you never raise are valid) and can build the façade from
-itself — `TenantSettings` has a public constructor: `Settings => _settings ??= new TenantSettings(this)`.
+`OnSettingHydrationFailed`; auto-events you never raise are valid), expose non-nullable `Current`
+and a `Resolution`, and can build the façade from itself — `TenantSettings` has a public
+constructor: `Settings => _settings ??= new TenantSettings(this)`.
 
 ## Known limitations
 
-- **A Blazor interactive circuit sees no tenant.** `TenantMiddleware` runs against HTTP request
-  scopes; a circuit is a different scope the middleware never touches, so `Current` is `null` there
-  and every setting renders its compile-time default after a prerender that showed the real values.
-  `Models/TenantSnapshot.cs` (`From` / `ToTenant` — a serialisable mirror of `Tenant`, needed because
-  `FrozenDictionary` cannot be deserialised) is the payload for the bridge that would fix this, but
-  **no bridge exists**: nothing in the repository constructs or consumes `TenantSnapshot`, and the
-  `IPersistentStateProvider` implementations in `Zonit.Extensions.Website` cover Auth, Culture,
-  Workspace, Catalog and Cookie only. Treat `TenantSnapshot` as a type you may use to move a tenant
-  across scopes yourself (`repository.Initialize(snapshot.ToTenant())`), not as a working feature.
-  Related: the bridges that do exist are silently disabled under any `PublishTrimmed` publish — see
-  `.zonit/extensions/website/hydration.md`.
-- **Colliding accessor names break the consumer build.** Two settings in one namespace whose names
-  collapse to the same accessor — `FooSetting` and `Foo`, or `SeoSetting` and `Seo` — emit two
-  extension methods with identical signatures. Reproduced: `error CS0111 … 'TenantSettingsExtensions'
-  already defines a member named 'Seo'`, pointing into `TenantSettingsExtensions.<ns>.g.cs`, code the
-  consumer never wrote. There is no uniqueness pass and no diagnostic. Workaround: rename one type or
-  move it to another namespace.
-- **`TenantSnapshot.Variables` XML doc references `Setting<T>.Dehydrate`.** That method does not
-  exist — there is no serialisation half on `Setting<T>`. Write blobs with your own
-  `JsonSerializerContext`, as shown above.
-- **No write path.** This package reads tenants. Persisting an edited setting is entirely the host's
-  job, and the shape you must write is defined by `Hydrate`.
+- **Persisted circuit state is client-visible.** `Zonit.Extensions.Website`'s `TenantStateBridge`
+  carries the tenant across the prerender → interactive boundary by embedding a `TenantSnapshot` in
+  the prerendered HTML. That means **everything** in `Tenant.Variables` reaches the browser in clear
+  text, not just the values a page renders. Keep secrets in `IConfiguration` or a secret store,
+  which the circuit can reach directly. Related: the bridges are silently disabled under
+  `PublishTrimmed` — see `.zonit/extensions/website/hydration.md`.
+- **No write path.** This package reads tenants. Persisting an edited setting is the host's job;
+  `ITenantSettingsSerializer.Serialize` gives you the correct blob shape, but storing it is yours.
+- **`Templates` is advisory.** Nothing consumes it — it exists for admin UIs to offer presets.
 
-## Upgrading from 10.0.0-preview.9
+## Upgrading from 10.0.0-preview.10
 
 | Change | What to do |
 |---|---|
-| The generator emits an extension-method façade instead of a broken `partial class TenantSettings` | Nothing to migrate — preview.9 could not compile. Rebuild, then call `Settings.MyThing()` with parentheses. `GetSetting<T>().Value` is unchanged. |
-| Non-public `Setting<T>` types are skipped | Make the type `public` if you want an accessor. |
-| `NullTenantSource` deleted; `ITenantSource` no longer auto-registered | Switch any `GetRequiredService<ITenantSource>()` to `GetService<ITenantSource>()`. Hosts that register their own source are unaffected. |
-| `ITenantProvider` gained `event Action<SettingHydrationFailure>? OnSettingHydrationFailed` | Only affects *implementers* (test doubles, decorators): add the auto-event. Consumers of the interface need no change. |
-| `TenantsJsonContext` is now `public` | Use it to write built-in blobs instead of reverse-engineering camelCase by hand. |
-| Solo / unknown-host requests raise `OnChange` once instead of twice | Change handlers now run half as often; make them idempotent. |
-| Hydration no longer swallows non-`JsonException` failures | A plugin `Hydrate` that used to throw silently now takes the page down. Fix it to return `new()`. |
+| `Tenant.Solo` → `Tenant.Default`, `IsSolo` → `IsDefault` | Rename. The old names still work as `[Obsolete]` aliases and go away next preview. |
+| `Current` stays nullable | Unchanged from preview.10. `Initialize(null)` resets the scope. Settings never read it, so no null checks are needed for `Settings` / `GetSetting<T>()`. |
+| New `TenantResolution Resolution` on both interfaces | Implementers (test doubles, decorators) must add it. Multi-domain hosts should handle `Unknown`. |
+| `Setting<T>.Hydrate(string)` → `Hydrate(string, JsonSerializerOptions)`, and now `virtual` | Delete your override **and** your per-setting `JsonSerializerContext` — the generator emits the metadata. Keep them only for nested/collection models or custom JSON rules; if you keep the override, add the parameter. |
+| Settings are AOT-safe via generated metadata | Nothing to do — a module initializer registers it. Only models the generator cannot describe (ZONITTS0003) still need a context, and that context is picked up automatically too. |
+| Blob property matching is now case-insensitive | Nothing to do. Blobs that silently produced defaults now bind — verify you were not relying on the broken behaviour. |
+| Settings read `Tenants:{key}` from `IConfiguration` when no blob exists | Nothing to do unless you already have a `Tenants` config section meaning something else — rename it or set `o.ConfigurationSection`. |
+| A generated plugin accessor is a property, not a method | Drop the parentheses: `Settings.Pricing()` → `Settings.Pricing`. |
+| Unknown hosts log a `Warning` | Expect the new line in multi-site logs; it is pointing at a real misconfiguration. |
+| Unknown hosts return 404 by default in web hosts | Multi-site hosts that legitimately serve unknown domains must set `o.UnknownHost = UnknownHostBehavior.Continue`. Single-site hosts are unaffected. |
+| Registration of JSON contexts is automatic | Delete hand-written `AddJsonContext(X.Default)` chains. Keep one only to pin precedence when two assemblies describe the same model. |
+| New `ZONITTS0003` warning | Add the named `[JsonSerializable]` entry, or `<NoWarn>` the id if the model is deliberately reflective. |
+| `Tenant.Id` is now `required Guid?` | Set it explicitly. A real tenant gets its store's id; a tenant with no identity gets `null`. Replace any `Guid.Empty` you were using as "no id". `SettingHydrationFailure.TenantId` and `TenantSnapshot.Id` are `Guid?` to match. |

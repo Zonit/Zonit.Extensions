@@ -84,8 +84,13 @@ internal sealed class TenantStateBridge(ITenantRepository repository) : IPersist
             if (!JsonSerializer.IsReflectionEnabledByDefault)
                 return Task.CompletedTask;
 
+            // Nothing to carry when the SSR pass resolved no tenant: the circuit starts at null
+            // too, so persisting "null" would only spend bytes to restore the state it already
+            // has. Settings are unaffected either way — they fall back to configuration and then
+            // to compile-time defaults, in the circuit exactly as during prerender.
             if (repository.Current is { } tenant)
                 state.PersistAsJson(Key, TenantSnapshot.From(tenant));
+
             return Task.CompletedTask;
         });
 }
