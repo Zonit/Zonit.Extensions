@@ -28,12 +28,33 @@ the host is being built, so the first line after `CreateBuilder(args)` is the ri
 the configuration manager is not the same as beating its readers. A missing settings directory is a
 valid state: the host runs on whatever other sources it has.
 
-`AddAppData()` is idempotent across **both** overloads — they share one marker service, so calling
-`builder.AddAppData(o => …)` and then `services.AddWebsite()` keeps your options and adds nothing
-twice.
+`AddAppData()` is idempotent across **both** overloads — they share one marker service, so a repeat
+call keeps the first call's options and adds nothing twice.
 
-**Using Zonit.Extensions.Website?** `AddWebsite()` calls this for you. Opt out with
-`o.UseAppData = false`.
+## With Zonit.Extensions.Website
+
+Put `AddAppData` **above** `AddWebsite`:
+
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+
+builder.AddAppData();
+builder.Services.AddWebsite(o => o.AddArea<ShopArea>());
+```
+
+`AddWebsite` deliberately does not call this for you, and the order is a requirement rather than a
+preference. `o.AddArea<T>()` runs each area's `ConfigureServices` **during** `AddWebsite`, and areas
+read configuration there — a plugin resolving its connection string, for one — so a call from inside
+`AddWebsite` would always be too late for the areas it just registered.
+
+Get it backwards and an area fails at startup, which is the good outcome: loud, with the culprit in
+the stack.
+
+```
+Zonit.Extensions.Databases.DatabaseException: Database configuration section not found.
+   at SomeArea.ConfigureServices(...)
+   at WebsiteOptions.AddArea[TArea]()
+```
 
 ## Layout
 

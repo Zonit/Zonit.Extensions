@@ -21,7 +21,7 @@ registered areas. A host can mount as many Sites as it likes.
 ```csharp
 var builder = WebApplication.CreateBuilder(args);
 
-builder.AddWebsite(o =>
+builder.Services.AddWebsite(o =>
 {
     o.Url = "https://example.com";
     o.AddArea<HomeArea>();
@@ -51,17 +51,13 @@ app.Run();
 `AddTenantsExtension()` — plus navigation, breadcrumbs, toasts, cookies and layouts. Calling any of
 them yourself is a double registration, not a requirement.
 
-**`AddWebsite()` also loads configuration.** It calls `AddAppData()` from
-[Zonit.Extensions.Configuration](../Zonit.Extensions.Configuration/Readme.md), so every JSON file
-under `AppData/Settings` is in place before anything binds. This works from either receiver —
-`builder.AddWebsite(…)` and `builder.Services.AddWebsite(…)` behave identically, because the host
-registers its `ConfigurationManager` as the `IConfiguration` service and that type is an
-`IConfigurationBuilder` as well, so the source list is reachable from the service collection alone.
-
-Opt out with `o.UseAppData = false`. To keep the loader but change its settings, call
-`builder.AddAppData(o => …)` first — it is idempotent, so `AddWebsite` will not override you.
-Either way `AddWebsite` has to run before `Build()`, or the files arrive after Kestrel and the
-logging providers have already read configuration.
+**`AddWebsite()` does not load configuration.** If you use
+[Zonit.Extensions.Configuration](../Zonit.Extensions.Configuration/Readme.md), call
+`builder.AddAppData()` yourself and put it **above** `AddWebsite`. That order is a requirement:
+`o.AddArea<T>()` runs each area's `ConfigureServices` *during* `AddWebsite`, and areas read
+configuration there — a plugin resolving its connection string, for one. Anything `AddWebsite` did
+with configuration would already be too late for the areas it just registered, so the kernel does
+not try.
 
 **`UseWebsite` needs no companion `Use*` calls.** Each Site branch installs its own
 `UseRouting` / `UseAuthentication` / `UseAuthorization` / `UseAntiforgery` and the whole Zonit

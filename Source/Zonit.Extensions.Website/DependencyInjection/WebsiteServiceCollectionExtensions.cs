@@ -92,16 +92,6 @@ public static class WebsiteServiceCollectionExtensions
 
         var opts = new WebsiteOptions(services, registry);
         configure?.Invoke(opts);
-
-        // Configuration, from the service collection alone. The host registers its
-        // ConfigurationManager as the IConfiguration service and that type is an
-        // IConfigurationBuilder too, so the sources are reachable here — see AddAppData's remarks.
-        // Safe to run after the area pass above: IWebsiteServices.ConfigureServices receives only
-        // an IServiceCollection, so nothing has been able to read configuration yet. Idempotent,
-        // so a host that already called builder.AddAppData(…) keeps its own options.
-        if (opts.UseAppData)
-            services.AddAppData();
-
         services.TryAddSingleton(opts);
         services.AddHttpContextAccessor();
 

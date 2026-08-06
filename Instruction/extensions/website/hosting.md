@@ -5,21 +5,33 @@ host. Two calls, two phases, and they are **not** interchangeable:
 
 | Phase | Call | Runs | Does |
 |---|---|---|---|
-| services | `builder.AddWebsite(o => …)` | once | loads `AppData/Settings` **and** registers the whole service graph + every area's `ConfigureServices` |
+| services | `builder.Services.AddWebsite(o => …)` | once | registers the whole service graph + every area's `ConfigureServices` |
 | middleware | `app.UseWebsite<TApp>(directory, o => …)` | once **per Site** | builds one isolated request pipeline + `MapRazorComponents<TApp>()` |
 
 `AddWebsite` routes nothing. An app that calls only `AddWebsite` serves 404 for every page.
 
-**It also loads configuration.** Both `builder.AddWebsite(…)` and `builder.Services.AddWebsite(…)`
-call `AddAppData()`, so every JSON file under `AppData/Settings` is in configuration — the receiver
-makes no difference. The services-level overload manages it because the host registers its
-`ConfigurationManager` as the `IConfiguration` service and that type is an `IConfigurationBuilder`
-too, so the source list is reachable from the collection alone. Opt out with `o.UseAppData = false`;
-to keep the loader but change its settings, call `builder.AddAppData(o => …)` first and `AddWebsite`
-will leave it alone. See `.zonit/extensions/configuration/appdata.md`.
+**`AddWebsite` does not load configuration, and cannot.** If you use
+[Zonit.Extensions.Configuration](https://www.nuget.org/packages/Zonit.Extensions.Configuration/),
+call it yourself, **above** `AddWebsite`:
 
-`AddWebsite` must still run **before `Build()`** for those files to reach Kestrel and the logging
-providers, which read configuration while the host is being constructed.
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+
+builder.AddAppData();            // must come first — see below
+builder.Services.AddWebsite(o => o.AddArea<ShopArea>());
+```
+
+The order is a requirement, not a style preference. `o.AddArea<T>()` runs the area's
+`ConfigureServices` **during** `AddWebsite`, and areas read configuration there — a plugin resolving
+its connection string, for one. Loading settings from inside `AddWebsite` would therefore always be
+too late for the areas it just registered, which is why the kernel does not attempt it. Get it wrong
+and you see the failure at startup rather than silently:
+
+```
+Zonit.Extensions.Databases.DatabaseException: Database configuration section not found.
+   at SomeArea.ConfigureServices(...)
+   at WebsiteOptions.AddArea[TArea]()
+```
 
 ```csharp
 using Zonit.Extensions;          // AddWebsite / UseWebsite / AddWebsiteLayout
@@ -27,7 +39,7 @@ using Zonit.Extensions.Website;  // SiteOptions, WebsiteMode, IWebsiteArea
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.AddWebsite(o =>
+builder.Services.AddWebsite(o =>
 {
     o.AddArea<ShopArea>();       // registration — ConfigureServices runs here, once
     o.AddArea<AdminArea>();

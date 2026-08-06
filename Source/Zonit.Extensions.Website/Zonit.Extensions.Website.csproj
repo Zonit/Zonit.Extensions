@@ -14,13 +14,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Zonit.Extensions\Zonit.Extensions.csproj" />
-    <!--
-      Only the builder-level AddWebsite overload uses this: configuration sources have to be in
-      place before Build(), which an IServiceCollection extension cannot arrange. Hosts that
-      manage their own configuration ladder can keep calling services.AddWebsite() and never
-      touch it.
-    -->
-    <ProjectReference Include="..\Zonit.Extensions.Configuration\Zonit.Extensions.Configuration.csproj" />
     <ProjectReference Include="..\Zonit.Extensions.Cultures\Zonit.Extensions.Cultures.csproj" />
     <ProjectReference Include="..\Zonit.Extensions.Auth\Zonit.Extensions.Auth.csproj" />
     <ProjectReference Include="..\Zonit.Extensions.Organizations\Zonit.Extensions.Organizations.csproj" />

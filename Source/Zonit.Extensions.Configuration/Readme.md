@@ -32,9 +32,25 @@ that type implements `IConfigurationBuilder` too, so the source list is reachabl
 collection alone. Both overloads share one idempotency marker, and both must run before `Build()` —
 reaching the manager is not the same as beating Kestrel and the logging providers to it.
 
-**Using Zonit.Extensions.Website?** `AddWebsite()` already calls this, from either receiver, and the
-package arrives transitively — there is nothing to add. Opt out with `o.UseAppData = false`, or call
-`builder.AddAppData(o => …)` first to keep the loader with your own settings.
+**Using Zonit.Extensions.Website?** Install this package too and put `builder.AddAppData()` **above**
+`AddWebsite`. `AddWebsite` deliberately does not call it: `o.AddArea<T>()` runs each area's
+`ConfigureServices` during `AddWebsite`, and areas read configuration there, so a call from inside
+would always be too late for them.
+
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+
+builder.AddAppData();
+builder.Services.AddWebsite(o => o.AddArea<ShopArea>());
+```
+
+Get it backwards and an area fails at startup — loudly, not silently:
+
+```
+Zonit.Extensions.Databases.DatabaseException: Database configuration section not found.
+   at SomeArea.ConfigureServices(...)
+   at WebsiteOptions.AddArea[TArea]()
+```
 
 ## Layout
 
