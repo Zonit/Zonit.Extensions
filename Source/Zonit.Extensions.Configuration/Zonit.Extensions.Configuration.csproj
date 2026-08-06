@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>File-per-topic configuration for Zonit applications. AddAppData() folds every JSON file under AppData/Settings into the host's configuration — one file per concern instead of one appsettings.json where the Serilog section buries everything else — with per-environment overrides, gitignored *.local.json secrets, and reload-on-change wired in. Host-agnostic: extends IHostApplicationBuilder, so web, worker and console hosts all use the same call.</Description>
+    <PackageTags>Zonit;Extensions;Configuration;AppSettings;Settings;Json;Hosting</PackageTags>
+  </PropertyGroup>
+
+  <!--
+    Implementations, not just abstractions — this package's job IS to add concrete JSON file
+    sources, so Configuration.Json is the payload rather than a leak. Both packages ship inside
+    Microsoft.AspNetCore.App, so an ASP.NET Core host resolves them from the shared framework.
+    Deliberately NO dependency on Zonit.Extensions: nothing here touches a value object, and
+    keeping the graph empty means a host can take this package on its own.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+  </ItemGroup>
+</Project>

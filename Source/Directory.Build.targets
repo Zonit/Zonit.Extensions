@@ -67,6 +67,7 @@
   <PropertyGroup>
     <ZonitInstructionArea Condition="'$(MSBuildProjectName)' == 'Zonit.Extensions'">core</ZonitInstructionArea>
     <ZonitInstructionArea Condition="'$(MSBuildProjectName)' == 'Zonit.Extensions.Auth'">auth</ZonitInstructionArea>
+    <ZonitInstructionArea Condition="'$(MSBuildProjectName)' == 'Zonit.Extensions.Configuration'">configuration</ZonitInstructionArea>
     <ZonitInstructionArea Condition="'$(MSBuildProjectName)' == 'Zonit.Extensions.Cultures'">cultures</ZonitInstructionArea>
     <ZonitInstructionArea Condition="'$(MSBuildProjectName)' == 'Zonit.Extensions.Organizations'">organizations</ZonitInstructionArea>
     <ZonitInstructionArea Condition="'$(MSBuildProjectName)' == 'Zonit.Extensions.Projects'">projects</ZonitInstructionArea>

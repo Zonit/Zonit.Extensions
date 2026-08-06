@@ -5,10 +5,21 @@ host. Two calls, two phases, and they are **not** interchangeable:
 
 | Phase | Call | Runs | Does |
 |---|---|---|---|
-| services | `builder.Services.AddWebsite(o => …)` | once | registers the whole service graph + every area's `ConfigureServices` |
+| services | `builder.AddWebsite(o => …)` | once | loads `AppData/Settings` **and** registers the whole service graph + every area's `ConfigureServices` |
 | middleware | `app.UseWebsite<TApp>(directory, o => …)` | once **per Site** | builds one isolated request pipeline + `MapRazorComponents<TApp>()` |
 
 `AddWebsite` routes nothing. An app that calls only `AddWebsite` serves 404 for every page.
+
+**It also loads configuration.** Both `builder.AddWebsite(…)` and `builder.Services.AddWebsite(…)`
+call `AddAppData()`, so every JSON file under `AppData/Settings` is in configuration — the receiver
+makes no difference. The services-level overload manages it because the host registers its
+`ConfigurationManager` as the `IConfiguration` service and that type is an `IConfigurationBuilder`
+too, so the source list is reachable from the collection alone. Opt out with `o.UseAppData = false`;
+to keep the loader but change its settings, call `builder.AddAppData(o => …)` first and `AddWebsite`
+will leave it alone. See `.zonit/extensions/configuration/appdata.md`.
+
+`AddWebsite` must still run **before `Build()`** for those files to reach Kestrel and the logging
+providers, which read configuration while the host is being constructed.
 
 ```csharp
 using Zonit.Extensions;          // AddWebsite / UseWebsite / AddWebsiteLayout
@@ -16,7 +27,7 @@ using Zonit.Extensions.Website;  // SiteOptions, WebsiteMode, IWebsiteArea
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddWebsite(o =>
+builder.AddWebsite(o =>
 {
     o.AddArea<ShopArea>();       // registration — ConfigureServices runs here, once
     o.AddArea<AdminArea>();

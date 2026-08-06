@@ -8,7 +8,7 @@
       Versioning policy: track .NET major version.
       Currently aligned with .NET 10. When .NET 11 ships, drop net10.0 and bump to 11.x.
     -->
-    <Version>10.0.0-preview.13</Version>
+    <Version>10.0.0-preview.14</Version>
     <!--
       AssemblyVersion stays frozen at 10.0.0.0 for the whole 10.x line. Website references
       five siblings, so a moving AssemblyVersion would force binding-redirect churn on every
@@ -17,7 +17,7 @@
       The identity that carries the full story is InformationalVersion (version + git sha).
     -->
     <AssemblyVersion>10.0.0.0</AssemblyVersion>
-    <FileVersion>10.0.0.13</FileVersion>
+    <FileVersion>10.0.0.14</FileVersion>
     <!-- Package Output -->
     <PackageOutputPath>$(MSBuildThisFileDirectory)..\Packages</PackageOutputPath>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
@@ -74,6 +74,15 @@
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.10" />
+    <!--
+      Zonit.Extensions.Configuration only. Unlike the abstractions above these are
+      implementations, because that package's whole job is to contribute concrete JSON file
+      sources to the host's configuration and it needs IHostApplicationBuilder to do it.
+      Both are already in the shared framework for an ASP.NET Core host, so declaring them
+      costs a console/worker host nothing it would not have pulled anyway.
+    -->
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.10" />
   </ItemGroup>
   <!-- .NET 10.0 specific dependencies (currently none) -->
 </Project>

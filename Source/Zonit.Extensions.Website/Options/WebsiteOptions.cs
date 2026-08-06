@@ -27,6 +27,21 @@ public sealed class WebsiteOptions
         _registry = registry;
     }
 
+    /// <summary>
+    /// Whether <c>AddWebsite</c> also folds <c>AppData/Settings</c> into the host's configuration.
+    /// Default <see langword="true"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>Turn it off for a host that arranges its own configuration ladder. The loader is
+    /// idempotent, so a host that only wants <b>different</b> settings does not need this flag —
+    /// call <c>builder.AddAppData(o =&gt; …)</c> first and <c>AddWebsite</c> will leave it alone.</para>
+    ///
+    /// <para>See <c>Zonit.Extensions.Configuration</c> for the file layout and precedence. Note
+    /// that <c>AddWebsite</c> must still run before <c>Build()</c> for the files to reach Kestrel
+    /// and the logging providers, which read configuration while the host is constructed.</para>
+    /// </remarks>
+    public bool UseAppData { get; set; } = true;
+
     /// <summary>Listening address of the site. Used for self-link generation and signed URLs.</summary>
     public Url Url { get; set; }
 

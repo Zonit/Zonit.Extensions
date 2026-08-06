@@ -14,6 +14,7 @@ upgrading from preview.9 (it contains two ship-blocker fixes and several breakin
 |---|---|---|---|
 | **Zonit.Extensions** | The value-object foundation: `Title`, `Description`, `Content`, `Url`, `UrlPath`, `UrlSlug`, `Culture`, `Zone`, `Currency`, `Price`, `Money`, `Color`, `Asset`, `FileSize`, `Schedule`, `Identity`, `Permission`, `Role`, `Credential`, `Organization`, `Project` — plus `BaseException`, text/XML/reflection helpers. No ASP.NET Core, no Blazor. | — | [Readme](Source/Zonit.Extensions/Readme.md) |
 | **Zonit.Extensions.Auth** | The authentication *core*: the scoped `IAuthenticatedProvider` / `IAuthenticatedRepository` pair that carries the current `Identity` through a unit of work, and the `IAuthSource` adapter you implement. No ASP.NET Core reference — the cookie scheme, the authorization handlers and the Blazor auth state live in Website. | Zonit.Extensions | [Readme](Source/Zonit.Extensions.Auth/Readme.md) |
+| **Zonit.Extensions.Configuration** | One configuration file per concern: `builder.AddAppData()` folds every JSON file under `AppData/Settings` into the host's configuration, with `.dev.json` / `.local.json` suffixes, per-environment folders and reload-on-change. Extends `IHostApplicationBuilder`, so web, worker and console hosts share one call. Depends on no other Zonit package. | — | [Readme](Source/Zonit.Extensions.Configuration/Readme.md) |
 | **Zonit.Extensions.Cultures** | Per-scope culture and time-zone state, an indexed translation registry, and the `Translation` value object. | Zonit.Extensions | [Readme](Source/Zonit.Extensions.Cultures/Readme.md) |
 | **Zonit.Extensions.Organizations** | Workspace (organization) context: you implement `IOrganizationSource`, the package gives you `IWorkspaceProvider` (read) and `IWorkspaceManager` (write). | Zonit.Extensions | [Readme](Source/Zonit.Extensions.Organizations/Readme.md) |
 | **Zonit.Extensions.Projects** | Catalog (project) context — the structural twin of Organizations: you implement `IProjectSource`, the package gives you `ICatalogProvider` / `ICatalogManager`. | Zonit.Extensions | [Readme](Source/Zonit.Extensions.Projects/Readme.md) |
@@ -28,6 +29,8 @@ Tenants and Website respectively.
 ## How it layers
 
 ```
+Zonit.Extensions.Configuration       standalone - AppData/Settings loader, depends on no Zonit package
+
 Zonit.Extensions                     value objects only - no ASP.NET, no Blazor, no DI registration
         |
         +-- Zonit.Extensions.Cultures        culture + time zone state, translations
@@ -167,6 +170,7 @@ for the web kernel.
 Source/
   Zonit.Extensions/                            value objects
   Zonit.Extensions.Auth/                       authentication core
+  Zonit.Extensions.Configuration/              AppData/Settings config loader (standalone)
   Zonit.Extensions.Cultures/                   i18n
   Zonit.Extensions.Organizations/              workspace context
   Zonit.Extensions.Projects/                   catalog context
