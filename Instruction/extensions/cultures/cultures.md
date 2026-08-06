@@ -71,11 +71,12 @@ builder.Services.AddHostedService<TranslationSeed>();
 There is no middleware and no automatic detection here — culture is set programmatically through
 `ICultureManager`.
 
-> `AddCulturesExtension` binds `IOptions<CultureOption>` via `BindConfiguration("Culture")`, so the
-> container **must** contain an `IConfiguration`. A bare `new ServiceCollection().AddCulturesExtension()`
-> throws `InvalidOperationException: No service for type 'IConfiguration' has been registered` the
-> first time anything culture-related is resolved. Use a host builder, or register a configuration
-> yourself in unit tests.
+> `AddCulturesExtension` binds the `"Culture"` section when the container has an `IConfiguration`
+> and skips the binding when it does not — deliberately **not** via `BindConfiguration("Culture")`,
+> which would resolve `IConfiguration` with `GetRequiredService` and make configuration a hard
+> requirement of a host-agnostic package. A bare `new ServiceCollection().AddCulturesExtension(o => …)`
+> therefore works: you get the defaults plus the delegate. The decision is made at resolve time, so
+> it does not matter whether the host registers its `IConfiguration` before or after this call.
 
 ### Configuration
 
@@ -95,9 +96,54 @@ There is no middleware and no automatic detection here — culture is set progra
 | --- | --- | --- |
 | `DefaultCulture` | `"en-US"` | Initial culture of every scope **and** the fallback language of the lookup. Compared `OrdinalIgnoreCase`. An unparseable value degrades to `en-US` instead of throwing. |
 | `DefaultTimeZone` | `"Europe/Warsaw"` | IANA or Windows id, or a fixed offset (`"UTC-5"`). Unparseable → `Zone.Utc`. |
-| `SupportedCultures` | all 17 built-ins, lowercase | The allow-list. `SetCulture` and the middleware reject anything not in it. Keep entries lowercase — `DetectCultureService` lowercases the URL segment before an **ordinal** `HashSet` lookup, so an uppercase entry is unreachable from URL detection. |
+| `SupportedCultures` | all 17 built-ins, lowercase | The allow-list. `SetCulture` and the middleware reject anything not in it. A configured list **replaces** the defaults (see below); an absent or empty one keeps them. Keep entries lowercase — `DetectCultureService` lowercases the URL segment before an **ordinal** `HashSet` lookup, so an uppercase entry is unreachable from URL detection. |
 | `TrackMissingTranslations` | `false` | Opt-in recording of unresolved keys. |
 | `MaxTrackedMissingTranslations` | `1000` (`MissingTranslationRepository.DefaultCapacity`) | Hard ceiling on distinct recorded keys. `<= 0` throws `ArgumentOutOfRangeException` on first resolve. |
+
+### `SupportedCultures` replaces, it does not append
+
+The JSON above leaves **exactly** `pl-pl` and `en-us` in the allow-list. That is worth stating
+because it is not what `ConfigurationBinder` does on its own: binding a collection that already
+holds items appends to it (deliberate framework behaviour — "binding to array has to preserve
+already initialized arrays with values"), so the naive implementation would hand you 19 entries,
+the 17 defaults plus two duplicates, and a host could add a language but never remove one.
+`AddCulturesExtension` blanks the defaults before binding whenever the section defines the key.
+
+- Key absent → the 17 defaults.
+- `"SupportedCultures": []`, or entries that are not scalars → the 17 defaults. An allow-list
+  nothing can match is never the intended reading, and it would strand every request on the
+  middleware's hardcoded `en-us`.
+- Layered sources compose the ordinary way: an env var `Culture__SupportedCultures__2=fr-fr`
+  replaces the third entry instead of adding a fourth.
+- Narrowing does **not** adjust `DefaultCulture`. Leave the default outside the list and
+  `CultureMiddleware` falls back to `"en-us"` with no warning — see the traps section.
+
+### Changing the language list without a restart
+
+Every consumer takes `IOptionsMonitor<CultureOption>`, so editing the `Culture` section of a
+configuration source registered with `reloadOnChange: true` takes effect in the running process —
+add `de-de`, save, and `/de/home` routes, `SetCulture("de-de")` sticks and the picker grows a third
+entry. Open Blazor circuits redraw too: `CultureStateService` raises `ICultureState.OnChange` on
+reload, `ICultureProvider` re-emits it and `ExtensionsBase` re-renders through
+`InvokeAsync(StateHasChanged)`.
+
+- **The host must actually watch the file.** `appsettings.json` from `CreateBuilder` does;
+  a hand-added `AddJsonFile("AppData/Settings/cultures.json")` does **not** unless you pass
+  `reloadOnChange: true`. Without it nothing below applies.
+- **Narrowing evicts the active culture.** A scope sitting on `de-de` when `de-de` leaves the list
+  is re-resolved to `DefaultCulture` on the spot rather than left on a language the configuration
+  no longer permits.
+- **A new language must be one of the 17 built-ins** to get a real picker entry — `ILanguageProvider`
+  is a frozen registry, so anything else renders as "English". See the traps section.
+- **`MaxTrackedMissingTranslations` is the one option that does not reload.** It sizes the bounded
+  missing-key buffer at construction; changing it needs a restart.
+- Saving a file often fires the reload token twice (a `FileSystemWatcher` trait, not a framework
+  bug), so expect the odd duplicate re-render. It is idempotent — the second pass computes the
+  same values.
+
+Translations themselves were always dynamic: `ITranslationManager` writes into a process-wide
+`ConcurrentDictionary`, so a hosted service can add or replace them from a database at any time
+without touching configuration.
 
 ## Lifetimes
 
@@ -108,7 +154,7 @@ There is no middleware and no automatic detection here — culture is set progra
 | `MissingTranslationRepository` | Singleton | Bounded diagnostic buffer, see below. |
 | `ITranslationManager` | Singleton | Safe to inject into an `IHostedService`. |
 | `ILanguageProvider` | Singleton | Frozen registry of the 17 built-ins. |
-| `DetectCultureService` | Singleton | Snapshots `SupportedCultures` **at construction** — later option changes do not affect URL detection. |
+| `DetectCultureService` | Singleton | Rebuilds its `SupportedCultures` set on configuration reload, so URL detection follows the live config. |
 | `ICultureState` / `ICultureManager` | Scoped | The **same object** under both contracts, so a writer and a reader in one request/circuit share state and `OnChange`. |
 | `ICultureProvider` | Scoped | Subscribes to the state's `OnChange` and re-emits it. |
 
@@ -361,6 +407,14 @@ is the translation). Nothing in the framework reads this repository — it exist
 - **`Culture` accepts more than you expect.** `CultureInfo` on ICU builds happily constructs
   unregistered tags, so `Culture.TryCreate("zz")` returns `true`. `SupportedCultures` is the real
   gate; a typo in `DefaultCulture` is not caught at startup.
+- **An ICU-less host still boots, but loses culture data.** In globalization-invariant mode
+  (`InvariantGlobalization=true`, or `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1` on any build — the
+  usual Alpine / `runtime-deps` container setup) the whole stack keeps working: config binds, URL
+  detection routes, translations resolve, the picker fills. What you lose is everything that comes
+  out of ICU — `Culture.EnglishName`/`NativeName` go `null`, date and number formatting fall back to
+  invariant patterns, and an IANA time zone such as `Europe/Warsaw` no longer resolves, so
+  `ICultureState.TimeZone` degrades to `Zone.Utc`. Verify the deployment target before treating
+  invariant mode as free: for a localized app it usually is not.
 - **The missing-key ceiling is soft.** The capacity check is deliberately lock-free, so N concurrent
   writers can overshoot by up to N-1 entries. It bounds memory; it is not an exact count.
 

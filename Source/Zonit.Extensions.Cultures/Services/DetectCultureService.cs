@@ -23,13 +23,25 @@ namespace Zonit.Extensions.Cultures.Services;
 ///         enumerating every regional flavor.</item>
 /// </list>
 /// </remarks>
-public partial class DetectCultureService(IOptions<CultureOption> options)
+public sealed partial class DetectCultureService : IDisposable
 {
-    // Snapshotted at construction — CultureOption is normally singleton-bound. If the
-    // application starts supporting hot-reload, this becomes a per-call read of options.Value.
-    private readonly HashSet<string> _supportedCultures = options.Value.SupportedCultures
-        .Select(c => c.ToLowerInvariant())
-        .ToHashSet(StringComparer.Ordinal);
+    // Rebuilt on configuration reload, never mutated in place: readers take a single local
+    // copy of the reference and work on an immutable snapshot, so a language added to
+    // appsettings.json becomes routable without a restart and without locking the hot path.
+    // Building the set here rather than per call keeps URL detection allocation-free.
+    private volatile HashSet<string> _supportedCultures;
+    private readonly IDisposable? _reload;
+
+    public DetectCultureService(IOptionsMonitor<CultureOption> options)
+    {
+        _supportedCultures = Build(options.CurrentValue);
+        _reload = options.OnChange(o => _supportedCultures = Build(o));
+    }
+
+    private static HashSet<string> Build(CultureOption options)
+        => options.SupportedCultures
+            .Select(c => c.ToLowerInvariant())
+            .ToHashSet(StringComparer.Ordinal);
 
     public record PathCulture(string Url, string Culture);
 
@@ -42,8 +54,12 @@ public partial class DetectCultureService(IOptions<CultureOption> options)
         var culture = match.Groups["culture"].Value.ToLowerInvariant();
         var url = match.Groups["url"].Value;
 
+        // One read of the volatile field: a reload swapping the set mid-method must not make
+        // the exact-match test and the subtag fallback below disagree about what is supported.
+        var supportedCultures = _supportedCultures;
+
         // 1. Exact match (en-us, pl-pl).
-        if (_supportedCultures.Contains(culture))
+        if (supportedCultures.Contains(culture))
             return new PathCulture(url, culture);
 
         // 2. Primary-subtag fallback: "en" → first supported "en-*".
@@ -53,13 +69,16 @@ public partial class DetectCultureService(IOptions<CultureOption> options)
         if (!culture.Contains('-'))
         {
             var prefix = culture + "-";
-            foreach (var supported in _supportedCultures)
+            foreach (var supported in supportedCultures)
                 if (supported.StartsWith(prefix, StringComparison.Ordinal))
                     return new PathCulture(url, supported);
         }
 
         return null;
     }
+
+    /// <summary>Drops the configuration-reload subscription.</summary>
+    public void Dispose() => _reload?.Dispose();
 
     [GeneratedRegex(@"^/(?<culture>[a-z]{2}(?:-[a-z]{2})?)/(?<url>.+)", options: RegexOptions.Compiled | RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
     private static partial Regex GetUrlRegex();

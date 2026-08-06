@@ -50,8 +50,14 @@ builder.Services.AddCulturesExtension(o =>
 ```
 
 The optional delegate is applied with `PostConfigure`, so **anything you set in code wins over
-`appsettings.json`**, regardless of registration order. The container must contain an `IConfiguration`;
-a bare `new ServiceCollection().AddCulturesExtension()` throws on first resolve.
+`appsettings.json`**, regardless of registration order. `IConfiguration` is optional: without one in
+the container you get the defaults plus whatever the delegate sets, so a bare
+`new ServiceCollection().AddCulturesExtension()` works in console apps and unit tests.
+
+`SupportedCultures` in configuration **replaces** the built-in list instead of extending it — the
+JSON above leaves exactly `pl-pl` and `en-us`, not those two appended to the 17 defaults. Omit the
+key (or give it `[]`) to keep all 17. Narrowing the list does not adjust `DefaultCulture`: leave a
+default outside the list and every request silently falls back to `en-us`.
 
 Using **Zonit.Extensions.Website**? `AddWebsite()` already calls `AddCulturesExtension()` and
 `UseWebsite<TApp>()` already installs the culture middleware and the prerender → circuit state bridge.
@@ -160,7 +166,7 @@ add a language, register your own `ILanguageProvider` before `AddCulturesExtensi
 | --- | --- |
 | `TranslationRepository`, `DefaultTranslationRepository`, `MissingTranslationRepository` | Singleton |
 | `ITranslationManager`, `ILanguageProvider` | Singleton |
-| `DetectCultureService` | Singleton — snapshots `SupportedCultures` in its constructor |
+| `DetectCultureService` | Singleton — rebuilds its `SupportedCultures` set on configuration reload |
 | `ICultureState` / `ICultureManager` | Scoped — one internal instance exposed under both contracts |
 | `ICultureProvider` | Scoped |
 

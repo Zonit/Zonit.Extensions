@@ -1,4 +1,5 @@
-﻿using System.Globalization;
+﻿using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using Microsoft.Extensions.Options;
 using Zonit.Extensions.Cultures.Models;
 using Zonit.Extensions.Cultures.Options;
@@ -22,15 +23,21 @@ internal sealed class CultureService : ICultureProvider, IDisposable
     private readonly ICultureState _state;
 
     /// <summary>
-    /// Canonical form of <see cref="CultureOption.DefaultCulture"/>, resolved once because the
-    /// option cannot change for the lifetime of a scope. This is the fallback language of the
-    /// lookup and the culture whose misses are NOT worth recording (for it, the source string
-    /// is the translation). Hardcoding "en-US" here — as this service used to — silently
-    /// disabled the fallback for every app whose default language is not English.
+    /// Canonical form of <see cref="CultureOption.DefaultCulture"/>. This is the fallback
+    /// language of the lookup and the culture whose misses are NOT worth recording (for it, the
+    /// source string is the translation). Hardcoding "en-US" here — as this service used to —
+    /// silently disabled the fallback for every app whose default language is not English.
     /// </summary>
-    private readonly string _defaultCulture;
+    /// <remarks>
+    /// Cached rather than read per call because <see cref="Translate"/> is the busiest method in
+    /// the stack, and refreshed on configuration reload so a changed default language does not
+    /// need a process restart.
+    /// </remarks>
+    private string _defaultCulture;
 
-    private readonly bool _trackMissing;
+    private bool _trackMissing;
+
+    private readonly IDisposable? _reload;
 
     private DateTimeFormatModel _dateTimeFormat = new();
 
@@ -38,24 +45,35 @@ internal sealed class CultureService : ICultureProvider, IDisposable
         TranslationRepository translations,
         MissingTranslationRepository missing,
         ICultureState state,
-        IOptions<CultureOption> options)
+        IOptionsMonitor<CultureOption> options)
     {
         _translations = translations ?? throw new ArgumentNullException(nameof(translations));
         _missing = missing ?? throw new ArgumentNullException(nameof(missing));
         _state = state ?? throw new ArgumentNullException(nameof(state));
         ArgumentNullException.ThrowIfNull(options);
 
-        var option = options.Value;
+        Apply(options.CurrentValue);
+        _reload = options.OnChange(Apply);
 
+        _state.OnChange += HandleStateChanged;
+        UpdateDateTimeFormat();
+    }
+
+    /// <summary>
+    /// Copies the two option values this service caches. Deliberately does NOT raise
+    /// <see cref="OnChange"/>: <see cref="CultureStateService"/> subscribes to the same reload
+    /// and raises it through <see cref="ICultureState.OnChange"/>, which this service already
+    /// re-emits — signalling here too would double every re-render.
+    /// </summary>
+    [MemberNotNull(nameof(_defaultCulture))]
+    private void Apply(CultureOption option)
+    {
         // Same fallback ladder CultureStateService uses for the initial culture, so a bogus
         // configured tag degrades to en-US instead of throwing during scope construction.
         _defaultCulture = Culture.TryCreate(option.DefaultCulture, out var configured)
             ? configured.Value
             : Culture.Default.Value;
         _trackMissing = option.TrackMissingTranslations;
-
-        _state.OnChange += HandleStateChanged;
-        UpdateDateTimeFormat();
     }
 
     public Culture Current => _state.Current;
@@ -188,5 +206,9 @@ internal sealed class CultureService : ICultureProvider, IDisposable
             [new Translate { Content = string.Empty, Culture = NoVariableMessage }]));
     }
 
-    public void Dispose() => _state.OnChange -= HandleStateChanged;
+    public void Dispose()
+    {
+        _state.OnChange -= HandleStateChanged;
+        _reload?.Dispose();
+    }
 }

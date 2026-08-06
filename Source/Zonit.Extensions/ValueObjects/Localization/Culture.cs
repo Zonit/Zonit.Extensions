@@ -25,6 +25,27 @@ namespace Zonit.Extensions;
 public readonly struct Culture : IEquatable<Culture>, IComparable<Culture>, IParsable<Culture>, ISpanParsable<Culture>
 {
     /// <summary>
+    /// Whether the process runs in globalization-invariant mode — no ICU/NLS data, so
+    /// <see cref="CultureInfo"/> knows only the invariant culture. Set by
+    /// <c>InvariantGlobalization=true</c> at publish or by
+    /// <c>DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1</c> at runtime, which is what an ICU-less
+    /// container image (Alpine, <c>runtime-deps</c>) does to an otherwise normal build.
+    /// </summary>
+    /// <remarks>
+    /// <para>Probed once, and deliberately declared <b>before</b> <see cref="Default"/>: static
+    /// field initializers run in textual order and the constructor behind <see cref="Default"/>
+    /// consults this flag.</para>
+    ///
+    /// <para>Without it, <c>new Culture("en-US")</c> in that initializer throws under invariant
+    /// mode, the failure surfaces as a <see cref="TypeInitializationException"/> that no
+    /// <c>catch (CultureNotFoundException)</c> can intercept — so even <see cref="TryCreate"/>
+    /// threw — and because a failed type initializer is cached for the life of the process,
+    /// every later touch of <see cref="Culture"/> rethrows it from wherever it is observed
+    /// rather than from the real cause.</para>
+    /// </remarks>
+    private static readonly bool GlobalizationInvariant = DetectGlobalizationInvariant();
+
+    /// <summary>
     /// Default culture (en-US). Use this when you need a valid default culture.
     /// </summary>
     public static readonly Culture Default = new("en-US");
@@ -66,6 +87,20 @@ public readonly struct Culture : IEquatable<Culture>, IComparable<Culture>, IPar
     {
         ArgumentNullException.ThrowIfNull(value, nameof(value));
 
+        // Globalization-invariant mode rejects every non-invariant tag, so CultureInfo cannot be
+        // the validator there — it would fail "pl-PL" exactly as it fails garbage. Fall back to
+        // validating the tag's shape and canonicalising it by hand: the contract callers rely on
+        // (well-formed in, canonically cased out, CultureNotFoundException on nonsense) survives,
+        // and only the culture *data* is unavailable — which is what invariant mode means.
+        if (GlobalizationInvariant)
+        {
+            if (!TryCanonicalizeTag(value, out var canonical))
+                throw new CultureNotFoundException($"Culture '{value}' is not a valid culture code.");
+
+            _value = canonical;
+            return;
+        }
+
         try
         {
             var cultureInfo = new CultureInfo(value);
@@ -91,28 +126,65 @@ public readonly struct Culture : IEquatable<Culture>, IComparable<Culture>, IPar
     /// <summary>
     /// Converts culture to a CultureInfo object. Returns null if empty, or CultureInfo for "en-US" as fallback.
     /// </summary>
-    public CultureInfo? ToCultureInfo() => HasValue ? new CultureInfo(Value) : null;
+    /// <remarks>
+    /// Under globalization-invariant mode there is no per-culture data to return, so a non-empty
+    /// culture yields <see cref="CultureInfo.InvariantCulture"/> rather than throwing. Formatting
+    /// and comparison then follow invariant rules — the honest outcome when the runtime carries
+    /// no ICU data; <see cref="Value"/> still round-trips the tag you supplied.
+    /// </remarks>
+    public CultureInfo? ToCultureInfo()
+    {
+        if (!HasValue)
+            return null;
+
+        return GlobalizationInvariant ? CultureInfo.InvariantCulture : new CultureInfo(Value);
+    }
 
     /// <summary>
     /// Converts culture to a CultureInfo object. Returns "en-US" CultureInfo if empty.
     /// </summary>
-    public CultureInfo ToCultureInfoOrDefault() => new CultureInfo(ValueOrDefault);
+    /// <remarks>See <see cref="ToCultureInfo"/> for the globalization-invariant behaviour.</remarks>
+    public CultureInfo ToCultureInfoOrDefault()
+        => GlobalizationInvariant ? CultureInfo.InvariantCulture : new CultureInfo(ValueOrDefault);
 
 
     /// <summary>
     /// Gets the two-letter language code (e.g., "en" for "en-US").
     /// </summary>
-    public string? LanguageCode => ToCultureInfo()?.TwoLetterISOLanguageName;
+    /// <remarks>
+    /// Read off the tag itself under globalization-invariant mode, where every
+    /// <see cref="CultureInfo"/> would report the invariant culture's "iv" instead.
+    /// </remarks>
+    public string? LanguageCode
+    {
+        get
+        {
+            if (!GlobalizationInvariant)
+                return ToCultureInfo()?.TwoLetterISOLanguageName;
+
+            if (!HasValue)
+                return null;
+
+            var separator = Value.IndexOf('-');
+            return separator < 0 ? Value : Value[..separator];
+        }
+    }
 
     /// <summary>
     /// Gets the display name of the culture in its native language.
     /// </summary>
-    public string? NativeName => ToCultureInfo()?.NativeName;
+    /// <remarks>
+    /// <see langword="null"/> under globalization-invariant mode: the display name lives in the
+    /// ICU data the process does not have, and answering "Invariant Language (Invariant Country)"
+    /// for every culture would be worse than admitting it is unknown.
+    /// </remarks>
+    public string? NativeName => GlobalizationInvariant ? null : ToCultureInfo()?.NativeName;
 
     /// <summary>
     /// Gets the display name of the culture in English.
     /// </summary>
-    public string? EnglishName => ToCultureInfo()?.EnglishName;
+    /// <remarks>See <see cref="NativeName"/> — <see langword="null"/> under globalization-invariant mode.</remarks>
+    public string? EnglishName => GlobalizationInvariant ? null : ToCultureInfo()?.EnglishName;
 
     /// <summary>
     /// Converts Culture to string. Returns empty string for <see cref="Empty"/>.
@@ -271,4 +343,99 @@ public readonly struct Culture : IEquatable<Culture>, IComparable<Culture>, IPar
     /// <returns>True if parsing succeeded, false otherwise.</returns>
     public static bool TryParse(ReadOnlySpan<char> s, IFormatProvider? provider, out Culture result)
         => TryCreate(s.ToString(), out result);
+
+    /// <summary>
+    /// Probes once whether the runtime carries culture data.
+    /// </summary>
+    /// <remarks>
+    /// Two failure shapes, one meaning: with <c>PredefinedCulturesOnly</c> (the default under
+    /// invariant mode) "en-US" throws, and with it turned off the tag is accepted but collapses
+    /// to invariant data. Comparing against <see cref="CultureInfo.InvariantCulture"/> catches
+    /// the second; the <c>catch</c> catches the first. Reading the AppContext switch directly
+    /// would miss the environment-variable form, which is precisely the container case.
+    /// </remarks>
+    private static bool DetectGlobalizationInvariant()
+    {
+        try
+        {
+            return CultureInfo.GetCultureInfo("en-US").EnglishName
+                == CultureInfo.InvariantCulture.EnglishName;
+        }
+        catch (CultureNotFoundException)
+        {
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Validates a BCP-47 tag by shape and returns it in canonical casing —
+    /// <c>language[-Script][-REGION]</c>, e.g. "pl-pl" → "pl-PL", "zh-hans-cn" → "zh-Hans-CN".
+    /// </summary>
+    /// <remarks>
+    /// Only reached under globalization-invariant mode, where <see cref="CultureInfo"/> cannot
+    /// tell a real tag from a typo. Structural validation is strictly weaker than ICU's registry
+    /// — "qq-QQ" passes here — but it is the strongest check available without culture data, and
+    /// it keeps nonsense like "not a culture" out.
+    /// </remarks>
+    private static bool TryCanonicalizeTag(string value, [NotNullWhen(true)] out string? canonical)
+    {
+        canonical = null;
+
+        var parts = value.Split('-');
+        if (parts.Length is < 1 or > 3)
+            return false;
+
+        // Language: two or three ASCII letters ("en", "pl", "fil").
+        if (!IsAsciiLetters(parts[0]) || parts[0].Length is < 2 or > 3)
+            return false;
+
+        parts[0] = parts[0].ToLowerInvariant();
+
+        for (var i = 1; i < parts.Length; i++)
+        {
+            var part = parts[i];
+
+            // Script subtag: exactly four letters, title case ("Hans", "Cyrl").
+            if (part.Length == 4 && IsAsciiLetters(part))
+            {
+                parts[i] = string.Concat(
+                    char.ToUpperInvariant(part[0]).ToString(),
+                    part[1..].ToLowerInvariant());
+                continue;
+            }
+
+            // Region subtag: two letters ("PL") or three digits ("419").
+            if (part.Length == 2 && IsAsciiLetters(part))
+            {
+                parts[i] = part.ToUpperInvariant();
+                continue;
+            }
+
+            if (part.Length == 3 && IsAsciiDigits(part))
+                continue;
+
+            return false;
+        }
+
+        canonical = string.Join('-', parts);
+        return true;
+    }
+
+    private static bool IsAsciiLetters(ReadOnlySpan<char> value)
+    {
+        foreach (var c in value)
+            if (!char.IsAsciiLetter(c))
+                return false;
+
+        return !value.IsEmpty;
+    }
+
+    private static bool IsAsciiDigits(ReadOnlySpan<char> value)
+    {
+        foreach (var c in value)
+            if (!char.IsAsciiDigit(c))
+                return false;
+
+        return !value.IsEmpty;
+    }
 }

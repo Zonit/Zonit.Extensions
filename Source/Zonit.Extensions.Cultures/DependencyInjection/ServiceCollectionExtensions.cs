@@ -101,7 +101,34 @@ public static class ServiceCollectionExtensions
     {
         /// <inheritdoc />
         public void Configure(CultureOption options)
-            => services.GetService<IConfiguration>()?.GetSection(ConfigurationSection).Bind(options);
+        {
+            var section = services.GetService<IConfiguration>()?.GetSection(ConfigurationSection);
+
+            if (section is null)
+                return;
+
+            // ConfigurationBinder APPENDS to a collection that already holds items rather than
+            // replacing it — deliberate framework behaviour ("binding to array has to preserve
+            // already initialized arrays with values"), and the source-generated binder emits the
+            // same Array.Resize + copy. Since SupportedCultures ships with 17 defaults, binding a
+            // two-entry section straight onto it yields 19 entries with two duplicates: a host
+            // could ADD a language but never NARROW the allow-list that CultureMiddleware,
+            // SetCulture and the language picker all read. Blanking the defaults first makes the
+            // section REPLACE them, which is what every scalar in the same section already does.
+            var defaults = options.SupportedCultures;
+
+            if (section.GetSection(nameof(CultureOption.SupportedCultures)).GetChildren().Any())
+                options.SupportedCultures = [];
+
+            section.Bind(options);
+
+            // Restore instead of shipping an empty allow-list. Both `"SupportedCultures": []` and
+            // a list of non-scalar entries bind to nothing, and a culture set that no request can
+            // ever match is not the intended reading of either — it would strand every request on
+            // the middleware's hardcoded "en-us" fallback.
+            if (options.SupportedCultures is not { Length: > 0 })
+                options.SupportedCultures = defaults;
+        }
     }
 
     /// <summary>

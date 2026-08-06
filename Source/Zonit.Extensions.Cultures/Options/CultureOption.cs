@@ -23,8 +23,23 @@ public class CultureOption
     public string DefaultTimeZone { get; set; } = "Europe/Warsaw";
 
     /// <summary>
-    /// Supported cultures
+    /// The allow-list. <c>SetCulture</c>, <c>CultureMiddleware</c> and the language picker all
+    /// reject anything absent from it. Defaults to the 17 built-in languages.
     /// </summary>
+    /// <remarks>
+    /// <para>A <c>"Culture:SupportedCultures"</c> section <b>replaces</b> this list rather than
+    /// extending it — configure <c>[ "en-us", "pl-pl" ]</c> and exactly those two remain. That
+    /// takes a deliberate step in <c>AddCulturesExtension</c>, because <c>ConfigurationBinder</c>
+    /// appends to an already-populated collection; without it the same section would produce 19
+    /// entries with two duplicates. An absent or empty section keeps the defaults, so there is no
+    /// way to configure an allow-list nothing can match.</para>
+    ///
+    /// <para>Keep entries lowercase: <c>DetectCultureService</c> lowercases the URL segment before
+    /// an <b>ordinal</b> lookup, so an uppercase entry is unreachable from URL detection even
+    /// though every other comparison is case-insensitive. Narrowing the list does not touch
+    /// <see cref="DefaultCulture"/> — leave a default outside the list and the middleware falls
+    /// back to "en-us" without a warning.</para>
+    /// </remarks>
     public string[] SupportedCultures { get; set; } = [
         "en-us",
         "ar-sa",

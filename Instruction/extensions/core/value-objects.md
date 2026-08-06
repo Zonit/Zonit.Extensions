@@ -261,8 +261,16 @@ explicit, opt-in call in `Zonit.Extensions.Databases`; these VOs perform no I/O 
   clamps to 1. `#3498DB` serialized and deserialized comes back `#AAFFFF`. Persist `Color.Hex`, or the
   raw `L`/`C`/`H`/`Alpha` doubles, when the value has to survive storage. More in
   `.zonit/extensions/core/assets.md`.
-- **`Culture` validation depends on the host's ICU data**, so `new Culture("zz-ZZ")` succeeds on a normal
-  runtime and may not on one built with invariant globalization. Do not rely on the constructor to reject
-  a bad language tag — check the result against your own allow-list.
+- **`Culture` validation depends on the host's ICU data.** `new Culture("zz-ZZ")` succeeds on a normal
+  runtime — synthetic tags are accepted — so do not rely on the constructor to reject a bad language
+  tag; check the result against your own allow-list. Under globalization-invariant mode (published
+  with `InvariantGlobalization=true`, or **any** build run with
+  `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`, which is what an ICU-less container image sets) the type
+  falls back to structural validation of the tag: construction, canonical casing (`"pl-pl"` → `"pl-PL"`),
+  equality, `TryCreate` and the implicit conversions all behave exactly as they do with ICU. What
+  degrades is culture *data*, and only there: `NativeName` and `EnglishName` return `null`, and
+  `ToCultureInfo()` returns `CultureInfo.InvariantCulture`, so formatting and comparison follow
+  invariant rules. Nothing throws — before 10.0.0 this mode killed the process with a
+  `TypeInitializationException` on first touch of any `Culture`.
 - `Content` has no length ceiling at all. A 1 MB string is a valid `Content`; if you map it to a column,
   set the length yourself.

@@ -33,12 +33,18 @@ namespace Zonit.Extensions.Website.Middlewares;
 ///   <item>Configured <see cref="CultureOption.DefaultCulture"/>.</item>
 /// </list>
 /// </remarks>
-internal sealed class CultureMiddleware(RequestDelegate next, IOptions<CultureOption> settings)
+internal sealed class CultureMiddleware(RequestDelegate next, IOptionsMonitor<CultureOption> settings)
 {
     private const string CookieName = "Culture";
 
     private readonly RequestDelegate _next = next;
-    private readonly CultureOption _settings = settings.Value;
+
+    // IOptionsMonitor, not IOptions: middleware is a singleton, so IOptions.Value would freeze
+    // the allow-list at startup and a language added to appsettings.json would need a process
+    // restart to take effect. CurrentValue is read ONCE per request into a local and threaded
+    // through the resolution — re-reading it per step could observe a reload mid-request and
+    // validate the cookie against one list and the default against another.
+    private readonly IOptionsMonitor<CultureOption> _settings = settings;
 
     public Task InvokeAsync(
         HttpContext httpContext,
@@ -52,7 +58,7 @@ internal sealed class CultureMiddleware(RequestDelegate next, IOptions<CultureOp
         if (string.IsNullOrEmpty(path))
             return _next(httpContext);
 
-        var resolved = ResolveCulture(httpContext, path, detectCultureService);
+        var resolved = ResolveCulture(httpContext, path, detectCultureService, _settings.CurrentValue);
 
         ApplyCulture(resolved, cultureManager);
         PersistCookieIfChanged(httpContext, resolved);
@@ -66,7 +72,8 @@ internal sealed class CultureMiddleware(RequestDelegate next, IOptions<CultureOp
     /// (or the configured default). May rewrite <see cref="HttpRequest.Path"/> when the
     /// culture is encoded as a URL prefix.
     /// </summary>
-    private string ResolveCulture(HttpContext httpContext, string path, DetectCultureService detector)
+    private static string ResolveCulture(
+        HttpContext httpContext, string path, DetectCultureService detector, CultureOption settings)
     {
         // 1. URL prefix takes priority — typing /pl/home is an explicit choice that
         //    must trump any stored cookie. DetectCultureService also handles the
@@ -82,7 +89,7 @@ internal sealed class CultureMiddleware(RequestDelegate next, IOptions<CultureOp
         //    forged — we never want to render a culture we cannot translate to).
         var cookieValue = httpContext.Request.Cookies[CookieName];
         if (!string.IsNullOrWhiteSpace(cookieValue) &&
-            TryNormalizeAndValidate(cookieValue, out var fromCookie))
+            TryNormalizeAndValidate(cookieValue, settings, out var fromCookie))
         {
             return fromCookie;
         }
@@ -92,14 +99,14 @@ internal sealed class CultureMiddleware(RequestDelegate next, IOptions<CultureOp
         var preferred = httpContext.Request.GetTypedHeaders()
             .AcceptLanguage?.FirstOrDefault()?.Value.ToString();
         if (!string.IsNullOrWhiteSpace(preferred) &&
-            TryNormalizeAndValidate(preferred, out var fromHeader))
+            TryNormalizeAndValidate(preferred, settings, out var fromHeader))
         {
             return fromHeader;
         }
 
         // 4. Default. Configuration value should already be supported but we re-check
         //    to be defensive (typo in appsettings → render in en-us instead of crashing).
-        return TryNormalizeAndValidate(_settings.DefaultCulture, out var defaulted)
+        return TryNormalizeAndValidate(settings.DefaultCulture, settings, out var defaulted)
             ? defaulted
             : "en-us";
     }
@@ -144,7 +151,7 @@ internal sealed class CultureMiddleware(RequestDelegate next, IOptions<CultureOp
     /// Attempts to canonicalise <paramref name="raw"/> via <see cref="CultureInfo.GetCultureInfo(string)"/>
     /// and verifies the canonical tag is in the configured supported list.
     /// </summary>
-    private bool TryNormalizeAndValidate(string? raw, out string canonical)
+    private static bool TryNormalizeAndValidate(string? raw, CultureOption settings, out string canonical)
     {
         canonical = string.Empty;
         if (string.IsNullOrWhiteSpace(raw))
@@ -161,7 +168,7 @@ internal sealed class CultureMiddleware(RequestDelegate next, IOptions<CultureOp
         }
 
         var candidate = info.Name.ToLowerInvariant();
-        var supported = _settings.SupportedCultures;
+        var supported = settings.SupportedCultures;
         for (int i = 0; i < supported.Length; i++)
         {
             if (string.Equals(supported[i], candidate, StringComparison.OrdinalIgnoreCase))
