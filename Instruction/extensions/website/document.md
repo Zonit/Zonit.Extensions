@@ -12,6 +12,30 @@ scheme never touches the server.
 | Rendering the theme server-side | Makes every HTML response vary by cookie and costs the Site its shared-cache hit rate. Render both states and let CSS pick. |
 | `ThemeSwitcherBase.Current` in markup | Same problem — it reads the cookie. Exposed for analytics and settings forms, not for branching the page. |
 | Sub-mount after the root mount | Throws. The root branch ends in a terminal `UseEndpoints`, so any later `MapWhen` is unreachable. Declare `/admin` before `/`. |
+| `AddStylesheet("app.css")` | The manifest is keyed by the **full** path — `_content/<AssemblyName>/app.css` for an RCL. A key it does not know comes back verbatim, so the page renders fine and silently loses cache-busting. `AppBase` logs a warning once per URL; `fingerprint: false` says the omission is deliberate and silences it. |
+
+## Static assets and fingerprinting
+
+`AppBase` resolves every declared asset through .NET's static-asset manifest (`@Assets`, .NET 9+),
+so a declared URL comes out content-addressed: `app.22ublido7q.css`. `MapStaticAssets` then serves
+the fingerprinted route with `Cache-Control: max-age=31536000, immutable` and the plain one with
+`no-cache`, and — **in a Release publish** — with precompressed gzip and brotli variants.
+
+Three things are worth knowing before you measure anything:
+
+- **It does not bundle or minify.** Seven declared assets stay seven requests. Minification is
+  your build tool's job (Tailwind CLI, esbuild); .NET only fingerprints, compresses and caches.
+- **A Debug build is not representative.** Under `dotnet run` the compressed variants are
+  effectively absent and fingerprinted routes still answer `no-cache`. Measure on
+  `dotnet publish -c Release`.
+- **An unknown key fails silently.** No exception, no log, no build error — the key is returned
+  as-is. That is why `AppBase` warns, and why `ScopedCssBundle` can use "came back unchanged" as a
+  reliable "this file does not exist" and skip the link instead of shipping a 404 on every page.
+
+`Assets` lives on `ComponentBase`, so it works in a `.razor.cs` code-behind exactly as `@Assets`
+does in markup. It is **not** in DI — `[Inject] ResourceAssetCollection` compiles and throws at
+runtime — so a service, a minimal-API handler or an `IWebsiteArea` cannot resolve an asset URL.
+That is why `DocumentOptions` stores plain strings and `AppBase` resolves them at render time.
 
 ## The shell
 

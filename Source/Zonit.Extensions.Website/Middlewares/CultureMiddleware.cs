@@ -79,17 +79,50 @@ internal sealed class CultureMiddleware(
 
     public Task InvokeAsync(HttpContext context, ICultureManager cultureManager, ITenantProvider tenant)
     {
-        if (WebsiteRequestFilter.ShouldSkip(context))
-            return _next(context);
-
-        var options = _settings.CurrentValue;
         var path = context.Request.Path.Value;
         if (string.IsNullOrEmpty(path))
             path = "/";
 
+        // Static and framework traffic skips the *culture work* — resolution, the cookie, the
+        // feature, redirects — but NOT the path split. Those are two different things, and
+        // conflating them broke every asset on a prefixed Site.
+        //
+        // <base href> is "/pl/", so a relative src="_framework/blazor.web.js" makes the browser
+        // request "/pl/_framework/blazor.web.js". Returning early here left the "/pl" in
+        // Request.Path, the static-asset endpoint had no route for it, and the answer was 404 —
+        // silently, on the framework script itself, on every prefixed page. A mount prefix does
+        // not have this problem because UsePathBase is real middleware that runs unconditionally;
+        // the culture segment is moved by this method, so this method has to run too.
+        if (WebsiteRequestFilter.ShouldSkip(context))
+            return _policy.IsPrefixed ? SplitPrefixOnly(context, path) : _next(context);
+
+        var options = _settings.CurrentValue;
+
         return _policy.IsPrefixed
             ? InvokePrefixed(context, path, options, cultureManager, tenant)
             : InvokeUnprefixed(context, path, options, cultureManager, tenant);
+    }
+
+    /// <summary>
+    /// Moves a culture segment out of the path and does nothing else — the asset path for a
+    /// prefixed Site.
+    /// </summary>
+    /// <remarks>
+    /// No canonical redirect: <c>/pl-pl/app.css</c> is served, not 301'd. An asset URL is not an
+    /// indexable address, nobody links to it from outside, and bouncing it costs a round trip on
+    /// the critical path for no benefit. No cookie, no feature, no culture applied either —
+    /// nothing downstream of a static file reads any of it.
+    /// </remarks>
+    private Task SplitPrefixOnly(HttpContext context, string path)
+    {
+        var match = _policy.Match(path);
+        if (match is null)
+            return _next(context);
+
+        context.Request.PathBase = context.Request.PathBase.Add("/" + match.Value.Segment);
+        context.Request.Path = match.Value.Remainder;
+
+        return _next(context);
     }
 
     /// <summary>

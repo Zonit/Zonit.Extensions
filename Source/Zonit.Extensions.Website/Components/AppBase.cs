@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Components.Rendering;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using System.Diagnostics.CodeAnalysis;
 using Zonit.Extensions.Cultures;
 using Zonit.Extensions.Tenants;
@@ -64,6 +65,11 @@ public abstract class AppBase : ComponentBase
     [Inject] private IHttpContextAccessor Http { get; set; } = default!;
     [Inject] private IHostEnvironment Environment { get; set; } = default!;
     [Inject] private ITenantProvider Tenant { get; set; } = default!;
+
+    /// <summary>
+    /// Optional — a host that wired the Website kernel without logging still renders.
+    /// </summary>
+    [Inject] private ILogger<AppBase>? Logger { get; set; }
 
     /// <summary>Document contents declared on the Site. Override to substitute a different set.</summary>
     protected virtual DocumentOptions Document => Site.Document;
@@ -425,11 +431,41 @@ public abstract class AppBase : ComponentBase
     /// alone — the manifest only knows this application's own files, and handing it a CDN URL
     /// would just return it unchanged after a pointless lookup.
     /// </summary>
+    /// <remarks>
+    /// <para><b>Warns when a fingerprint was asked for and not obtained.</b> A key the manifest
+    /// does not recognise comes back <em>verbatim</em> — no exception, no log, nothing in the
+    /// build. So <c>AddStylesheet("app.css")</c> instead of
+    /// <c>AddStylesheet("_content/Acme.Web/app.css")</c> produces a page that renders perfectly
+    /// and has silently lost its cache-busting, which nobody discovers until a deployment ships
+    /// a stylesheet every returning visitor keeps the old copy of. The lookup cannot tell that
+    /// apart from a file legitimately served outside the manifest, so this is a warning and not
+    /// an error — silence it with <c>fingerprint: false</c>, which says the omission is
+    /// deliberate.</para>
+    /// </remarks>
     private string Resolve(DocumentAsset asset)
     {
         if (!asset.Fingerprint || asset.Url.Contains("://", StringComparison.Ordinal) || asset.Url.StartsWith("//", StringComparison.Ordinal))
             return asset.Url;
 
-        return Assets[asset.Url];
+        var resolved = Assets[asset.Url];
+
+        // One line per distinct URL per process — the shell renders on every request, and a
+        // warning repeated per page view is a warning nobody reads.
+        if (ReferenceEquals(resolved, asset.Url) || resolved == asset.Url)
+        {
+            if (WarnedAssets.TryAdd(asset.Url, 0))
+            {
+                Logger?.LogWarning(
+                    "Static asset '{Url}' is not in the manifest, so it is served without a content " +
+                    "fingerprint and browsers will cache a stale copy across deployments. Use the full " +
+                    "key (\"_content/<AssemblyName>/{Url}\" for an RCL) or pass fingerprint: false if " +
+                    "this file is served outside MapStaticAssets.",
+                    asset.Url, asset.Url);
+            }
+        }
+
+        return resolved;
     }
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> WarnedAssets = new(StringComparer.Ordinal);
 }

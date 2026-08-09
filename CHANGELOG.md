@@ -65,6 +65,14 @@ writing SEO code. Full detail and migration steps in
 - `/pl` (language root without a trailing slash) 404'd; now 301s to `/pl/`.
 - Responses varying by cookie or `Accept-Language` carried no `Vary` header, so a shared cache
   could serve one visitor's language to the next.
+- **Every relative asset 404'd on a culture-prefixed Site**, including Blazor's own framework
+  script. `<base href>` is `/pl/`, so a relative `src="_framework/blazor.web.js"` makes the
+  browser request `/pl/_framework/blazor.web.js` — and `CultureMiddleware` returned early for
+  static-looking paths *before* moving the segment into `PathBase`, so the static-asset endpoint
+  never saw a route it knew. Stylesheets, scripts and the framework bundle all failed silently on
+  every prefixed page. The skip now suppresses only the culture *work* (resolution, cookie,
+  feature, redirects); the path split always runs. A mount prefix was never affected, because
+  `UsePathBase` is real middleware that runs unconditionally.
 - A Site mounted with the non-generic `UseWebsite` and no areas produced zero page endpoints.
 - `UrlPath.ToHref()` rendered the site root (`"/"`) as `href=""`, which means "this exact URL",
   not "the base" — a Home link went nowhere. It renders `"./"` now. An *empty* `UrlPath` still
@@ -77,6 +85,9 @@ writing SEO code. Full detail and migration steps in
   flag.
 - `Zonit.Documents` emitted its own `<title>` before `<HeadOutlet />`, which after this release
   would have won over the composed one and frozen every page on the site name.
+- `AppBase` now logs a warning (once per URL) when a declared asset asked for a fingerprint and
+  the manifest did not recognise the key — previously that failure was completely silent and cost
+  the file its cache-busting.
 
 ### Breaking
 
