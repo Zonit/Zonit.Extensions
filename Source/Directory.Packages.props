@@ -56,7 +56,7 @@
       and substitutes an older band for the SDK's own — and silently gives up the SDK's
       EmbedUntrackedSources=true default. The nuspec <repository> entry comes from the SDK.
     -->
-    <PackageVersion Include="MudBlazor" Version="9.7.0" />
+    <PackageVersion Include="MudBlazor" Version="9.8.0" />
     <!--
       Framework-agnostic Microsoft.Extensions.* packages used by the pure-core domain
       projects (Cultures / Auth / Organizations / Projects) so they no longer require

@@ -15,9 +15,13 @@ using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using Zonit.Extensions.Auth;
+using Zonit.Extensions.Cultures.Options;
 using Zonit.Extensions.Website;
+using Zonit.Extensions.Website.Cultures;
 using Zonit.Extensions.Website.Authentication;
 using Zonit.Extensions.Website.Cookies.Middlewares;
 using Zonit.Extensions.Website.Hydration;
@@ -129,6 +133,11 @@ public static class WebsiteServiceCollectionExtensions
         // middleware never ran (Blazor circuit scope), so consumers see a populated
         // Site in both SSR and interactive render passes without per-host bridges.
         services.TryAddScoped<ICurrentSite, CurrentSite>();
+
+        // Channel carrying the routed page's PageMeta up to the document head. Scoped, because
+        // the head and the page must be looking at the same instance within one request or one
+        // circuit, and must NOT be within another.
+        services.TryAddScoped<IPageMetaState, PageMetaState>();
 
         // Built-in providers
         services.AddNavigationsExtension();
@@ -273,6 +282,31 @@ public static class WebsiteServiceCollectionExtensions
     }
 
     /// <summary>
+    /// Mounts a Site using the framework's own document shell — no root component, no
+    /// <c>App.razor</c>, no subclass.
+    /// </summary>
+    /// <remarks>
+    /// <para>The whole document comes from <c>SiteOptions.Document</c> and the Site's settings,
+    /// which covers a Site that has nothing structurally unusual to say about its HTML. Reach for
+    /// <c>UseWebsite&lt;TApp&gt;</c> when a virtual on <see cref="AppBase"/> needs overriding, or
+    /// when the document itself must be hand-written.</para>
+    ///
+    /// <code>
+    /// app.UseWebsite("/", o =>
+    /// {
+    ///     o.Mode = WebsiteMode.Static;
+    ///     o.Cultures.Strategy = CultureUrlStrategy.Prefix;
+    ///     o.Document.AddStylesheet("app.css").SetFavicon("favicon.svg", "image/svg+xml");
+    /// });
+    /// </code>
+    /// </remarks>
+    public static WebApplication UseWebsite(
+        this WebApplication app,
+        UrlPath directory,
+        Action<SiteOptions> configure)
+        => app.UseWebsite<WebsiteApp>(directory, configure);
+
+    /// <summary>
     /// Inheritance-friendly entry point — mounts a Site at <paramref name="directory"/>
     /// using <typeparamref name="TSiteOptions"/> as the per-Site configuration type.
     /// Specialised hosts (e.g. <c>Zonit.Dashboard</c>) ship a <see cref="SiteOptions"/>
@@ -349,6 +383,18 @@ public static class WebsiteServiceCollectionExtensions
 
         var opts = app.Services.GetRequiredService<WebsiteOptions>();
 
+        var pathBase = site.NormalizedPathBase;
+
+        // Layer the "Website" configuration section over the code defaults, and keep watching it.
+        // Attached before the registry snapshot because everything downstream — the mount
+        // registry, the URL policy, the middleware — reads settings through this resolver rather
+        // than through the SiteOptions instance, so that an appsettings edit reaches a running
+        // process instead of waiting for a deployment.
+        site.Settings = new SiteSettingsProvider(
+            app.Services.GetService<IConfiguration>(),
+            site.Defaults,
+            pathBase);
+
         // Snapshot this mount into the singleton registry. The scoped ICurrentSite
         // reads back from it whenever its per-Site branch middleware has not run
         // (Blazor circuit scope, hosted services). Mirror of how UseDashboard
@@ -357,7 +403,6 @@ public static class WebsiteServiceCollectionExtensions
         var mounts = app.Services.GetRequiredService<WebsiteMountRegistry>();
         mounts.Register(site);
 
-        var pathBase = site.NormalizedPathBase;
         var matchPath = string.IsNullOrEmpty(pathBase) ? null : pathBase;
 
         // Order guard. `BuildBranch(app, ...)` for the root mount finishes with
@@ -483,12 +528,39 @@ public static class WebsiteServiceCollectionExtensions
         foreach (var area in site.Areas) area.App(branch);
         foreach (var hook in site.AppHooks) hook(branch);
 
-        // Culture detection runs BEFORE UseRouting on purpose: the URL prefix path
-        // (/pl/home → /home) must be rewritten before EndpointRoutingMiddleware
-        // selects an endpoint, otherwise routes never match the prefixed form.
-        // CultureMiddleware does not read RouteValues / HttpContext.GetEndpoint(),
+        // Culture detection runs BEFORE UseRouting on purpose: the URL prefix
+        // (/pl/home → PathBase "/pl" + Path "/home") must be split before
+        // EndpointRoutingMiddleware selects an endpoint, otherwise routes never match the
+        // prefixed form. CultureMiddleware does not read RouteValues / HttpContext.GetEndpoint(),
         // so it is safe to place here — see audit §1.4 for the rationale.
-        branch.UseMiddleware<CultureMiddleware>();
+        //
+        // The URL policy and the localized-route table are per-Site, so they are built here and
+        // handed to the middleware rather than resolved from the container: two mounts under one
+        // host legitimately disagree about whether the language belongs in the path at all. Both
+        // follow configuration reloads, so adding a language or retuning the policy stays a
+        // restart-free change on every mount.
+        var urlPolicy = new CultureUrlPolicy(
+            branch.ApplicationServices.GetRequiredService<IOptionsMonitor<CultureOption>>(),
+            site.Cultures,
+            site.Settings!);
+
+        // Localized routes are contributed by the areas that own them, not by the Site — a host
+        // should not have to restate the translations of every plug-in it mounts.
+        var localizedRoutes = site.Areas.SelectMany(a => a.Routes).ToArray();
+        var routeTable = localizedRoutes.Length == 0
+            ? LocalizedRouteTable.Empty
+            : new LocalizedRouteTable(localizedRoutes);
+
+        site.UrlPolicy = urlPolicy;
+        site.LocalizedRoutes = routeTable;
+
+        // Tenant BEFORE culture, and both before routing. The tenant owns the site's default
+        // language — in a multi-site host each brand legitimately has its own — so the culture
+        // resolution has to be able to ask. It is safe this early: tenant resolution keys off
+        // Request.Host alone, touching neither routing nor the authenticated principal, which is
+        // exactly why it used to sit at the end without depending on anything there.
+        branch.UseMiddleware<TenantMiddleware>();
+        branch.UseMiddleware<CultureMiddleware>(urlPolicy, routeTable, site);
 
         branch.UseRouting();
 
@@ -504,12 +576,14 @@ public static class WebsiteServiceCollectionExtensions
         //               audit AUDIT_2026_05 §8.5).
         //   Session   → identity into the request scope
         //   Workspace/Project → consume identity to populate org/project state
-        //   Tenant    → independent of auth, last so downstream sees fully populated scope.
+        //
+        // Tenant is NOT here any more — it moved ahead of routing, above, because culture
+        // resolution needs the tenant's default language. Its own initialisation is idempotent
+        // per host, so nothing downstream notices the move.
         branch.UseMiddleware<CookieMiddleware>();
         branch.UseMiddleware<SessionMiddleware>();
         branch.UseMiddleware<WorkspaceMiddleware>();
         branch.UseMiddleware<ProjectMiddleware>();
-        branch.UseMiddleware<TenantMiddleware>();
 
         // Late-pipeline hooks — per-area then per-Site (signed-URL guards consuming
         // identity, audit logging tied to authenticated principal).
@@ -522,9 +596,20 @@ public static class WebsiteServiceCollectionExtensions
         // "Assembly already defined". This naturally handles the case where the host's
         // own area (e.g. HomeArea) lives in the same assembly as App.razor.
         var hostAssembly = typeof(TApp).Assembly;
-        var assemblies = site.Areas
+
+        // The entry assembly joins the scan explicitly. MapRazorComponents<TApp>() roots page
+        // discovery at TApp's assembly, which for the built-in shell is this framework — a Site
+        // mounted with the non-generic UseWebsite and no areas would then have no page endpoints
+        // at all and answer 404 for everything. It reads as a routing bug and is nothing of the
+        // sort. Harmless when TApp already lives in the entry assembly: the Distinct and the
+        // hostAssembly filter below remove it.
+        var candidates = site.Areas
             .Select(a => a.ComponentsAssembly)
+            .Append(System.Reflection.Assembly.GetEntryAssembly());
+
+        var assemblies = candidates
             .Where(a => a is not null && a != hostAssembly)
+            .Select(a => a!)
             .Distinct()
             .ToArray();
 
@@ -553,6 +638,11 @@ public static class WebsiteServiceCollectionExtensions
             // back to this branch and hit the static-assets endpoint after path-base
             // stripping.
             ep.MapStaticAssets();
+
+            // Before the Razor host, so a page routed at "/robots.txt" cannot shadow the
+            // generated one. Both files describe the Site's crawl policy and are derived from
+            // the same options the middleware obeys.
+            RobotsEndpoints.Map(ep, site, urlPolicy);
 
             if (opts.RazorComponents)
             {

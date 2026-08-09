@@ -13,6 +13,14 @@ explicitly only in components that do not derive from it.
 
 `AddWebsite()` calls all four. Do not call them again.
 
+| Trap | What actually happens |
+| --- | --- |
+| A full URL in `NavItem.Url` | **Throws at startup.** `UrlPath` rejects absolute addresses by design. Put it in `NavItem.External` and render through `item.ToHref()`. |
+| `item.Url.ToHref()` in a renderer | Skips the external destination entirely. Always call `item.ToHref()` / `link.ToHref()`. |
+| Marking an external link active | It never can be — compare only when `item.IsMatchable()`. |
+| `T(…)` around a nav title | Redundant. `INavigationProvider.Get()` already translates titles and tooltips. |
+| `href="/orders"` under a non-root mount | Bypasses `<base href>` and lands on the host root. See below. |
+
 ## `UrlPath.ToHref()` — read this before anything else
 
 Extension method in `Zonit.Extensions.Website` over the `UrlPath` value object from
@@ -153,6 +161,55 @@ internal sealed class NavSeeder(IServiceScopeFactory scopeFactory) : IHostedServ
 The addition lands in the process-wide store and survives the scope's disposal. Contributing
 navigation from an area (`IWebsiteArea.Navigation`) is the declarative alternative and needs no
 scope at all — see `.zonit/extensions/website/areas.md`.
+
+## Navigation: in-site versus external links
+
+`NavItem.Url` and `LinkModel.Url` are `UrlPath`, which **rejects absolute addresses by design** —
+assigning `"https://twitter.com/acme"` throws from the value object's implicit conversion, at
+startup, with nothing pointing at the menu entry that caused it. That is the type doing its job.
+
+External destinations go in `External` (a `Url`):
+
+```csharp
+new NavItem { Title = "GitHub", External = "https://github.com/acme", Target = Target.Blank }
+```
+
+Render with the extension, never by reaching for one property:
+
+```razor
+<a href="@item.ToHref()" target="@item.Target">@item.Title.Value</a>
+```
+
+`ToHref()` emits an external address verbatim and an in-site path *relative*, so the latter
+resolves against `<base href>` and picks up the mount and the culture prefix. `IsMatchable()`
+tells a renderer whether the item can be compared against the current route to be marked active —
+an external link never can, and skipping the check highlights a social link whose path collides.
+
+`Target.Blank` is not assumed for external links: "external" and "should open in a new tab" are
+two different decisions.
+
+## Navigation is translated for you
+
+`INavigationProvider.Get()` runs every title and tooltip through the translation registry, so a
+menu is translated once for every UI layer and no author writes `T(…)` at the declaration site.
+
+`Translate` defaults to `true`; set it to `false` on the individual entries that are exceptions —
+a brand or product name that must never be looked up:
+
+```csharp
+new NavItem { Title = "Home page" }                                   // translated
+new NavItem { Title = "GitHub", External = "https://github.com/acme",
+              Target = Target.Blank, Translate = false }              // left alone
+```
+
+Text with no rendition falls through to itself, so the flag is rarely load-bearing — it matters
+when a brand name happens to collide with a translation key. The same flag exists on `NavGroup`
+(covering the group's own title and tooltip, not its children) and on `PageMeta` (covering
+`Title` and `Description`).
+
+`NavItem`, `NavGroup` and `LinkModel` are records — the provider rebuilds the tree with `with`
+rather than mutating the shared registry copy, which would pin the first request's language onto
+the whole process.
 
 ## Breadcrumbs
 
@@ -347,3 +404,4 @@ MudBlazor 9.4+ fingerprints its own assets, so plain `@Assets[...]` is enough th
 - `.zonit/extensions/website/hosting.md` — Sites, mounts and `ICurrentSite`
 - `.zonit/extensions/website/hydration.md` — why cookies look empty in a circuit
 - `.zonit/extensions/core/value-objects.md` — `UrlPath`, `Title`, `Permission`
+

@@ -1,3 +1,4 @@
+using Zonit.Extensions.Website.Cultures;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
 
@@ -120,6 +121,79 @@ public class SiteOptions
     /// (e.g. public WebAssembly, admin Server) under the same host.
     /// </summary>
     public WebsiteMode Mode { get; set; } = WebsiteMode.Server;
+
+    /// <summary>
+    /// Settings declared in code. The <c>Website</c> configuration section is layered over these
+    /// per key at runtime, so what a request actually sees comes from
+    /// <see cref="SiteSettingsProvider.Current"/>, not from here.
+    /// </summary>
+    internal SiteSettings Defaults { get; } = new();
+
+    /// <summary>
+    /// Live settings resolver for this Site, attached by <c>UseWebsite</c>. <see langword="null"/>
+    /// on a <see cref="SiteOptions"/> that was never mounted.
+    /// </summary>
+    internal SiteSettingsProvider? Settings { get; set; }
+
+    /// <summary>
+    /// Culture URL policy built for this Site by <c>UseWebsite</c>. Exposed through
+    /// <see cref="ICurrentSite.UrlPolicy"/> so packages outside the kernel can build the same URLs.
+    /// </summary>
+    internal CultureUrlPolicy? UrlPolicy { get; set; }
+
+    /// <summary>Localized-route table flattened from this Site.s areas by <c>UseWebsite</c>.</summary>
+    internal LocalizedRouteTable? LocalizedRoutes { get; set; }
+
+    /// <summary>
+    /// Culture URL policy for this Site — whether the language leads the path, how it is spelled,
+    /// and which languages may be indexed. Defaults to <see cref="CultureUrlStrategy.None"/>, so
+    /// mounting a Site changes nothing about its URLs until the author opts in.
+    /// </summary>
+    /// <remarks>
+    /// Routes whose path differs per language are <b>not</b> configured here — they are declared
+    /// by the area that owns them, through <see cref="IWebsiteArea.Routes"/>.
+    /// </remarks>
+    public SiteCultureOptions Cultures { get; } = new();
+
+    /// <summary>
+    /// Colour-scheme plumbing for this Site's document shell — the root attribute, the cookie and
+    /// the global identifier. Which scheme is the <em>default</em> is a tenant setting; see
+    /// <see cref="AppearanceOptions"/>.
+    /// </summary>
+    public AppearanceOptions Appearance { get; } = new();
+
+    /// <summary>
+    /// Contents of this Site's document shell — fonts, stylesheets, scripts, meta tags and
+    /// components rendered around the routed page by <c>AppBase</c>. Ignored when the Site
+    /// supplies its own root component instead of deriving from <c>AppBase</c>.
+    /// </summary>
+    public DocumentOptions Document { get; } = new();
+
+    /// <summary>
+    /// Generated <c>robots.txt</c> and <c>llms.txt</c> for this Site. Derived from
+    /// <see cref="Indexable"/> and the culture policy, so the crawl directives cannot drift away
+    /// from what the pipeline actually does.
+    /// </summary>
+    /// <remarks>
+    /// Code, not configuration: the file is generated per request from live state — which
+    /// cultures are indexed, whether the Site is closed — so there is nothing here an operator
+    /// would edit that is not already derived from something they can edit.
+    /// </remarks>
+    public RobotsOptions Robots { get; } = new();
+
+    /// <inheritdoc cref="SiteSettings.Indexable"/>
+    public bool? Indexable
+    {
+        get => Defaults.Indexable;
+        set => Defaults.Indexable = value;
+    }
+
+    /// <summary>
+    /// Resolves indexability: the explicit setting when present, otherwise "indexable unless this
+    /// Site requires a permission".
+    /// </summary>
+    internal static bool ResolveIndexable(SiteSettings settings, string? permission)
+        => settings.Indexable ?? permission is null;
 
     // ─── Per-Site middleware toggles (defaults match the ASP.NET Core template). ───
 

@@ -49,6 +49,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zonit.Extensions.Tenants.So
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zonit.Extensions.Configuration", "Source\Zonit.Extensions.Configuration\Zonit.Extensions.Configuration.csproj", "{701CBC26-5A0A-46AC-8FD3-046F560A94A8}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zonit.Extensions.Website.Sitemaps", "Source\Zonit.Extensions.Website.Sitemaps\Zonit.Extensions.Website.Sitemaps.csproj", "{E21FC764-F341-4D97-9F62-3A17CC805F06}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -191,6 +193,18 @@ Global
 		{701CBC26-5A0A-46AC-8FD3-046F560A94A8}.Release|x64.Build.0 = Release|Any CPU
 		{701CBC26-5A0A-46AC-8FD3-046F560A94A8}.Release|x86.ActiveCfg = Release|Any CPU
 		{701CBC26-5A0A-46AC-8FD3-046F560A94A8}.Release|x86.Build.0 = Release|Any CPU
+		{E21FC764-F341-4D97-9F62-3A17CC805F06}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E21FC764-F341-4D97-9F62-3A17CC805F06}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E21FC764-F341-4D97-9F62-3A17CC805F06}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{E21FC764-F341-4D97-9F62-3A17CC805F06}.Debug|x64.Build.0 = Debug|Any CPU
+		{E21FC764-F341-4D97-9F62-3A17CC805F06}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{E21FC764-F341-4D97-9F62-3A17CC805F06}.Debug|x86.Build.0 = Debug|Any CPU
+		{E21FC764-F341-4D97-9F62-3A17CC805F06}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E21FC764-F341-4D97-9F62-3A17CC805F06}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E21FC764-F341-4D97-9F62-3A17CC805F06}.Release|x64.ActiveCfg = Release|Any CPU
+		{E21FC764-F341-4D97-9F62-3A17CC805F06}.Release|x64.Build.0 = Release|Any CPU
+		{E21FC764-F341-4D97-9F62-3A17CC805F06}.Release|x86.ActiveCfg = Release|Any CPU
+		{E21FC764-F341-4D97-9F62-3A17CC805F06}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -210,6 +224,7 @@ Global
 		{F7D05DFA-B3EA-4807-A316-AAFEEB085147} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 		{E8DEB043-54D7-441B-9523-90E1421ED66B} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 		{701CBC26-5A0A-46AC-8FD3-046F560A94A8} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+		{E21FC764-F341-4D97-9F62-3A17CC805F06} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {19890891-B329-40B4-BE5A-94AA9E7B63E0}

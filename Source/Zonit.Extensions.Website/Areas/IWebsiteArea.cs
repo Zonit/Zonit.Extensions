@@ -47,6 +47,33 @@ public interface IWebsiteArea
     IReadOnlyList<NavGroup> Navigation => Array.Empty<NavGroup>();
 
     /// <summary>
+    /// Optional. Declarations about this area's routes that a <c>@page</c> template cannot
+    /// express — today, paths that differ per language: <c>/news/{slug}</c> in English,
+    /// <c>/aktualnosci/{slug}</c> in Polish, one component.
+    /// </summary>
+    /// <remarks>
+    /// <para>Declared by the area rather than by the Site because the route belongs to whoever
+    /// defines it. A Site-level table would force every host to restate the translations of every
+    /// plug-in it mounts and keep them in step by hand — and the failure mode of getting that
+    /// wrong is silent: the page still routes under its English path, so nothing errors, the
+    /// translated URL simply 404s and the <c>hreflang</c> pair never appears.</para>
+    ///
+    /// <para>Collected once at mount time and flattened into a lookup consulted before routing.
+    /// Only the static head of each template is mapped; a translated <em>slug</em> comes from the
+    /// page through <c>PageMeta.Alternates</c>, because it lives in the content store.</para>
+    ///
+    /// <code>
+    /// public IReadOnlyList&lt;AreaRoute&gt; Routes =>
+    /// [
+    ///     AreaRoute.Localize("/news/{slug}",
+    ///         ("pl-pl", "/aktualnosci/{slug}"),
+    ///         ("de-de", "/nachrichten/{slug}")),
+    /// ];
+    /// </code>
+    /// </remarks>
+    IReadOnlyList<AreaRoute> Routes => Array.Empty<AreaRoute>();
+
+    /// <summary>
     /// Optional. Runs at the START of the Site's branch (after PathBase, BEFORE routing
     /// and auth). Use for libraries that must wrap every request from byte zero —
     /// e.g. <c>app.UseImageSharp()</c>, per-area static-file pipelines. Default: no-op.

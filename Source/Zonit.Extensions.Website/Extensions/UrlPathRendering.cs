@@ -41,11 +41,19 @@ public static class UrlPathRendering
     /// scenarios that need an absolute path (cross-mount redirects, server-side
     /// <c>Location:</c> headers), <see cref="ToHref"/> guarantees a relative form
     /// for scenarios that want path-base resolution to kick in.</para>
+    ///
+    /// <para><b>The site root is a special case.</b> Stripping the slash off <c>"/"</c> leaves
+    /// the empty string, and <c>href=""</c> does not mean "the base" — it means "this exact
+    /// URL", so a Home link would take the visitor nowhere. It renders <c>"./"</c> instead,
+    /// which resolves to the base itself: <c>/pl/</c> under a culture prefix, <c>/admin/</c>
+    /// under a mount. An <em>empty</em> <see cref="UrlPath"/> still renders <c>href=""</c>,
+    /// because a breadcrumb or nav entry with no destination genuinely should not navigate.</para>
     /// </remarks>
     public static string ToHref(this UrlPath path)
     {
         var raw = path.Value;
         if (string.IsNullOrEmpty(raw)) return string.Empty;
+        if (raw == "/") return "./";
         return raw[0] == '/' ? raw[1..] : raw;
     }
 }

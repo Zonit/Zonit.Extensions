@@ -65,7 +65,14 @@ public sealed class WebsiteMountRegistry
         _byMount[key] = new MountSnapshot(
             site.Directory,
             site.Permission,
-            site.Areas);
+            site.Areas,
+            site.Appearance,
+            site.Document,
+            site.Settings!,
+            site.UrlPolicy,
+            site.LocalizedRoutes ?? Cultures.LocalizedRouteTable.Empty,
+
+            site.Mode);
     }
 
     /// <summary>
@@ -131,8 +138,25 @@ public sealed class WebsiteMountRegistry
     /// singleton references that the per-Site branch middleware uses, so consumers
     /// reading from a circuit scope see the identical set without serialization.
     /// </param>
+    /// <param name="Appearance">Colour-scheme plumbing of the mount — attribute, cookie, global name.</param>
+    /// <param name="Document">Document-shell contents of the mount.</param>
+    /// <param name="Settings">
+    /// Live settings resolver of the mount. Carried here — rather than a snapshot of its values —
+    /// so a component rendering in an interactive circuit, where the branch middleware never ran,
+    /// still sees configuration changes instead of whatever was true when the host started.
+    /// </param>
+    /// <param name="UrlPolicy">Culture URL policy of the mount.</param>
+    /// <param name="LocalizedRoutes">Localized-route table of the mount.</param>
+    /// <param name="Mode">Blazor hosting mode of the mount.</param>
     public sealed record MountSnapshot(
         UrlPath Directory,
         string? Permission,
-        IReadOnlyList<IWebsiteArea> Areas);
+        IReadOnlyList<IWebsiteArea> Areas,
+        AppearanceOptions Appearance,
+        DocumentOptions Document,
+        SiteSettingsProvider Settings,
+        Cultures.CultureUrlPolicy? UrlPolicy,
+        Cultures.LocalizedRouteTable LocalizedRoutes,
+
+        WebsiteMode Mode);
 }

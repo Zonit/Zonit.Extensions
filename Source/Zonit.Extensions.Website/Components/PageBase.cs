@@ -1,10 +1,13 @@
+using Microsoft.AspNetCore.Components;
+
 namespace Zonit.Extensions.Website;
 
 /// <summary>
 /// Base class for Razor pages in a Zonit-hosted Site. Inherits the full DI surface of
 /// <see cref="ExtensionsBase"/> (Culture / Workspace / Catalog / Authenticated / Toast
-/// / Cookie / Tenant / Breadcrumbs) and adds the dynamic <see cref="LayoutKey"/> hook
-/// so a page can switch its rendering layout at runtime.
+/// / Cookie / Tenant / Breadcrumbs), adds the dynamic <see cref="LayoutKey"/> hook so a page
+/// can switch its rendering layout at runtime, and publishes the page's <see cref="Meta"/>
+/// to the document head.
 /// </summary>
 /// <remarks>
 /// <para><b>Prefer static attributes for layout selection.</b> Most pages should
@@ -24,6 +27,50 @@ namespace Zonit.Extensions.Website;
 /// </remarks>
 public abstract class PageBase : ExtensionsBase
 {
+    private PageMeta? _meta;
+    private bool _metaPublished;
+
+    [Inject] private IPageMetaState MetaState { get; set; } = default!;
+
+    /// <summary>
+    /// Declares this page's document metadata. Override with an expression body.
+    /// </summary>
+    /// <remarks>
+    /// <para>Read <b>exactly once</b>, by <see cref="Meta"/>, and cached for the page's lifetime.
+    /// That is what makes the terse expression body safe: an override returning <c>new()</c>
+    /// produces a fresh object per read, and everything after the first read — the head, and
+    /// every <c>Meta.Title = …</c> the page performs — works on the one instance the base kept.
+    /// Do not read this member directly; read <see cref="Meta"/>.</para>
+    ///
+    /// <code>
+    /// protected override PageMeta Metadata => new() { Description = "Manage your profile." };
+    /// </code>
+    /// </remarks>
+    protected virtual PageMeta Metadata => new();
+
+    /// <summary>
+    /// This page's document metadata — title, description, social preview, indexing. Stable for
+    /// the lifetime of the page, so it can be refined after data has loaded.
+    /// </summary>
+    /// <remarks>
+    /// <para>Published to the head on initialisation and re-announced after the page's own
+    /// lifecycle, so a value assigned past an <c>await</c> lands too:</para>
+    ///
+    /// <code>
+    /// protected override async Task OnInitializedAsync(CancellationToken token)
+    /// {
+    ///     _user = await _users.GetAsync(Id, token);
+    ///     Meta.Title = T("User profile {0}", _user.Name);
+    /// }
+    /// </code>
+    ///
+    /// <para>A page that sets nothing still renders a correct document: title, description and
+    /// canonical all fall back. Composition with the website title, the <c>hreflang</c> cluster
+    /// and the robots directive are never the page's business — they come from the tenant and the
+    /// Site.</para>
+    /// </remarks>
+    protected PageMeta Meta => _meta ??= Metadata;
+
     /// <summary>
     /// Dynamic layout key for this page. Mirrors <c>ILayoutContext.Key</c>.
     /// </summary>
@@ -45,5 +92,67 @@ public abstract class PageBase : ExtensionsBase
     {
         get => LayoutContext.HasOverride ? LayoutContext.Key : null;
         set => LayoutContext.SetKey(value);
+    }
+
+    /// <inheritdoc />
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+
+        // Published before the page's own OnInitializedAsync runs, so the head has a title from
+        // the very first render rather than a blank tab that fills in later. Anything the page
+        // learns afterwards arrives through the post-render notification below.
+        MetaState.Set(Meta);
+        _metaPublished = true;
+    }
+
+    /// <inheritdoc />
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        Republish();
+    }
+
+    /// <inheritdoc />
+    protected override async Task OnParametersSetAsync()
+    {
+        await base.OnParametersSetAsync();
+        Republish();
+    }
+
+    /// <summary>
+    /// Re-announces <see cref="Meta"/> after the page's own lifecycle has had a chance to change it.
+    /// </summary>
+    /// <remarks>
+    /// <para><see cref="PageMeta"/> is a mutable object, so a title assigned inside
+    /// <c>OnInitializedAsync</c> or <c>OnParametersSet</c> changes state that nothing observed.
+    /// The head component holds the other half of the contract and ignores a notification that
+    /// changes nothing, which is what stops this from being a render loop.</para>
+    ///
+    /// <para>Hooked to the async lifecycle rather than to <c>OnAfterRender</c>, which looks like
+    /// the natural place and is the wrong one: <b>it never runs under static server rendering</b>
+    /// — precisely the mode a public, indexable Site uses. Both hooks here run in every render
+    /// mode, and both sit on the <c>ComponentBase</c> overloads rather than the
+    /// cancellation-token ones that pages override, so a page cannot silently opt out of having
+    /// its own metadata published by forgetting a <c>base</c> call.</para>
+    /// </remarks>
+    private void Republish()
+    {
+        if (_metaPublished)
+            MetaState.Touch();
+    }
+
+    /// <inheritdoc />
+    protected override void Dispose(bool disposing)
+    {
+        // Clear on teardown so a page that declares no title cannot inherit the previous page's
+        // one during an interactive navigation, where the head component outlives the page.
+        if (disposing && _metaPublished)
+        {
+            MetaState?.Clear();
+            _metaPublished = false;
+        }
+
+        base.Dispose(disposing);
     }
 }

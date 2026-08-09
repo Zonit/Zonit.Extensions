@@ -74,6 +74,18 @@ public sealed class ZonitRouteView : ComponentBase, IDisposable
                               | DynamicallyAccessedMemberTypes.PublicProperties)]
     public Type? DefaultLayout { get; set; }
 
+    /// <summary>
+    /// Layout key used when <see cref="DefaultLayout"/> is not supplied — resolved through
+    /// <see cref="ILayoutRegistry"/> like every other key in this system.
+    /// </summary>
+    /// <remarks>
+    /// The string form exists so a router can carry a default layout without carrying a
+    /// <see cref="Type"/> through a component parameter, which drags trim annotations across the
+    /// whole call chain and makes the router reflection-visible. A missing key logs once and
+    /// falls back to <see cref="DefaultLayout"/>, exactly like <see cref="LayoutKeyAttribute"/>.
+    /// </remarks>
+    [Parameter] public string? DefaultLayoutKey { get; set; }
+
     /// <summary>Content shown when authorization fails for the routed page.</summary>
     [Parameter] public RenderFragment<AuthenticationState>? NotAuthorized { get; set; }
 
@@ -159,9 +171,12 @@ public sealed class ZonitRouteView : ComponentBase, IDisposable
         // 4. Standard [Layout(typeof(X))] is consumed by AuthorizeRouteView itself —
         //    we do nothing here. Setting our DefaultLayout below is harmless because
         //    AuthorizeRouteView preserves the page-level attribute's precedence.
-        // 5. Site / router default.
+        // 5. Site / router default — the keyed form first, so a Site configured through
+        //    DocumentOptions.DefaultLayoutKey wins over a hard-coded type.
         _noLayout = false;
-        _resolvedLayout = DefaultLayout;
+        _resolvedLayout = string.IsNullOrEmpty(DefaultLayoutKey)
+            ? DefaultLayout
+            : ResolveByKey(DefaultLayoutKey, pageType);
     }
 
     private Type? ResolveByKey(string? key, Type pageType)
@@ -198,27 +213,42 @@ public sealed class ZonitRouteView : ComponentBase, IDisposable
             // still apply any page-level [Layout]; the wrapping LayoutView shortcut
             // is what gives [NoLayout] its win-over-everything semantics.
             BuildAuthorizeRouteView(builder, defaultLayout: null);
-            return;
+        }
+        else
+        {
+            BuildAuthorizeRouteView(builder, defaultLayout: _resolvedLayout);
         }
 
-        BuildAuthorizeRouteView(builder, defaultLayout: _resolvedLayout);
+        // The document head is emitted here rather than from a layout so that it is present for
+        // EVERY routed page — including [NoLayout] ones, and including hosts that supply their
+        // own layouts, each of which would otherwise have to remember it. It renders through
+        // PageTitle / HeadContent, so its position in the tree does not constrain where the
+        // markup lands in the document.
+        //
+        // AFTER the page, not before: the page publishes its metadata during its own
+        // initialisation, so composing the head first would always start from the tenant
+        // fallbacks and need a second pass to correct itself. The notification path exists
+        // anyway — a title resolved after an await cannot be seen any other way — but ordering
+        // it this way makes the common, synchronous case right on the first attempt.
+        builder.OpenComponent<PageHead>(20);
+        builder.CloseComponent();
     }
 
     private void BuildAuthorizeRouteView(RenderTreeBuilder builder, Type? defaultLayout)
     {
-        builder.OpenComponent<AuthorizeRouteView>(0);
-        builder.AddAttribute(1, nameof(AuthorizeRouteView.RouteData), RouteData);
+        builder.OpenComponent<AuthorizeRouteView>(10);
+        builder.AddAttribute(11, nameof(AuthorizeRouteView.RouteData), RouteData);
 
         // AuthorizeRouteView.DefaultLayout has a [DynamicallyAccessedMembers] annotation;
         // our parameter carries the same so trim analysis is happy end-to-end.
         if (defaultLayout is not null)
-            builder.AddAttribute(2, nameof(AuthorizeRouteView.DefaultLayout), defaultLayout);
+            builder.AddAttribute(12, nameof(AuthorizeRouteView.DefaultLayout), defaultLayout);
 
         if (NotAuthorized is not null)
-            builder.AddAttribute(3, nameof(AuthorizeRouteView.NotAuthorized), NotAuthorized);
+            builder.AddAttribute(13, nameof(AuthorizeRouteView.NotAuthorized), NotAuthorized);
 
         if (Authorizing is not null)
-            builder.AddAttribute(4, nameof(AuthorizeRouteView.Authorizing), Authorizing);
+            builder.AddAttribute(14, nameof(AuthorizeRouteView.Authorizing), Authorizing);
 
         builder.CloseComponent();
     }

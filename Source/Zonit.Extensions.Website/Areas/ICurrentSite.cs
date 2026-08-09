@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Http;
+using Zonit.Extensions.Website.Cultures;
 
 namespace Zonit.Extensions.Website;
 
@@ -62,6 +63,35 @@ public interface ICurrentSite
     IReadOnlySet<string> AreaKeys { get; }
 
     /// <summary>
+    /// Colour-scheme configuration of the active Site (mirrors <see cref="SiteOptions.Appearance"/>).
+    /// Falls back to defaults outside any mount rather than returning <see langword="null"/> —
+    /// a switcher rendering in an unrecognised scope should degrade to the standard cookie and
+    /// attribute, not throw.
+    /// </summary>
+    AppearanceOptions Appearance { get; }
+
+    /// <summary>
+    /// Document-shell contents of the active Site (mirrors <see cref="SiteOptions.Document"/>).
+    /// </summary>
+    DocumentOptions Document { get; }
+
+    /// <summary>
+    /// Culture URL policy of the active Site — canonical segments, indexed cultures, path building.
+    /// </summary>
+    /// <remarks>
+    /// Exposed so a package outside the kernel (a sitemap generator, a link checker) can build the
+    /// same URLs the middleware and the head renderer do, instead of reimplementing the rules and
+    /// drifting from them.
+    /// </remarks>
+    Cultures.CultureUrlPolicy? UrlPolicy { get; }
+
+    /// <summary>Localized-route table of the active Site, contributed by its areas.</summary>
+    Cultures.LocalizedRouteTable LocalizedRoutes { get; }
+
+    /// <summary>Blazor hosting mode of the active Site (mirrors <see cref="SiteOptions.Mode"/>).</summary>
+    WebsiteMode Mode { get; }
+
+    /// <summary>
     /// Called once by the per-Site branch middleware. Subsequent calls overwrite
     /// and pin the explicit Site, so the singleton fallback is no longer consulted
     /// on this scope.
@@ -77,9 +107,18 @@ internal sealed class CurrentSite : ICurrentSite
 
     // Explicit middleware-driven state. When _explicit is true these fields win;
     // otherwise every accessor falls through to the resolved registry snapshot.
+    private static readonly AppearanceOptions DefaultAppearance = new();
+    private static readonly DocumentOptions DefaultDocument = new();
+
     private bool _explicit;
     private UrlPath _directory = UrlPath.Empty;
     private string? _permission;
+    private AppearanceOptions _appearance = DefaultAppearance;
+    private DocumentOptions _document = DefaultDocument;
+
+    private WebsiteMode _mode = WebsiteMode.Server;
+    private Cultures.CultureUrlPolicy? _urlPolicy;
+    private Cultures.LocalizedRouteTable _localizedRoutes = Cultures.LocalizedRouteTable.Empty;
     private IReadOnlyList<IWebsiteArea> _areas = Array.Empty<IWebsiteArea>();
     private IReadOnlySet<string> _areaKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -108,8 +147,34 @@ internal sealed class CurrentSite : ICurrentSite
         _areaKeys = site.Areas
             .Select(a => a.Key)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _appearance = site.Appearance;
+        _document = site.Document;
+
+        _mode = site.Mode;
+        _urlPolicy = site.UrlPolicy;
+        _localizedRoutes = site.LocalizedRoutes ?? Cultures.LocalizedRouteTable.Empty;
         _explicit = true;
     }
+
+    public AppearanceOptions Appearance => _explicit
+        ? _appearance
+        : ResolveSnapshot()?.Appearance ?? DefaultAppearance;
+
+    public DocumentOptions Document => _explicit
+        ? _document
+        : ResolveSnapshot()?.Document ?? DefaultDocument;
+
+    public Cultures.CultureUrlPolicy? UrlPolicy => _explicit
+        ? _urlPolicy
+        : ResolveSnapshot()?.UrlPolicy;
+
+    public Cultures.LocalizedRouteTable LocalizedRoutes => _explicit
+        ? _localizedRoutes
+        : ResolveSnapshot()?.LocalizedRoutes ?? Cultures.LocalizedRouteTable.Empty;
+
+    public WebsiteMode Mode => _explicit
+        ? _mode
+        : ResolveSnapshot()?.Mode ?? WebsiteMode.Server;
 
     public bool IsSet => _explicit || ResolveSnapshot() is not null;
 
@@ -178,6 +243,15 @@ internal sealed class CurrentSite : ICurrentSite
         var http = _httpContext.HttpContext;
         if (http is not null)
         {
+            // The culture middleware appends the language to PathBase so that <base href> and
+            // every relative link carry it. That makes the live PathBase the WRONG key here —
+            // it would ask the registry to find the owner of "/pl". The feature records the
+            // mount's own path base from before the append, which is exactly the key the
+            // registry is built from.
+            var culture = http.Features.Get<ICultureUrlFeature>();
+            if (culture is not null)
+                return culture.SitePathBase;
+
             if (http.Request.PathBase.HasValue)
                 return http.Request.PathBase.Value;
             if (http.Request.Path.HasValue)

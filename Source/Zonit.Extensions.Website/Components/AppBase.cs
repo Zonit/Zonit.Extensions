@@ -1,0 +1,435 @@
+using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Rendering;
+using Microsoft.AspNetCore.Components.Web;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Hosting;
+using System.Diagnostics.CodeAnalysis;
+using Zonit.Extensions.Cultures;
+using Zonit.Extensions.Tenants;
+using Zonit.Extensions.Website.Hydration;
+
+namespace Zonit.Extensions.Website;
+
+/// <summary>
+/// Complete, extensible document shell — the root component a Site is mounted with. Emits the
+/// whole HTML document and renders the routed page inside it.
+/// </summary>
+/// <remarks>
+/// <para><b>What it gets right so no project has to.</b> The <c>lang</c> attribute follows the
+/// active culture. <c>&lt;base href&gt;</c> follows the request's path base, so it is correct
+/// under a non-root mount <em>and</em> carries the culture segment — which is what makes every
+/// relative link keep the language without a single route template mentioning it. The
+/// scoped-CSS bundle is discovered and linked, or skipped when the build produced none. The
+/// theme is applied before the first paint. The state bridge is rendered when, and only when,
+/// there is an interactive pass for it to bridge to. <c>HeadOutlet</c> is present, so the page's
+/// own title, canonical and <c>hreflang</c> land where they belong.</para>
+///
+/// <para><b>How to extend it.</b> In increasing order of power:</para>
+/// <list type="number">
+///   <item>Declare contents on <c>SiteOptions.Document</c> — stylesheets, scripts, fonts, meta
+///         tags, favicon. Covers most of what a hand-written shell contains.</item>
+///   <item>Register components into the head or the end of the body
+///         (<c>Document.AddHeadComponent&lt;T&gt;()</c>) for anything that needs Razor or
+///         services.</item>
+///   <item>Derive and override a virtual here — <see cref="BodyStart"/>,
+///         <see cref="BuildRoutes"/>, <see cref="PageRenderMode"/>.</item>
+///   <item>Ignore this class entirely and pass your own root component to
+///         <c>UseWebsite&lt;TApp&gt;</c>, exactly as before. Nothing here is mandatory.</item>
+/// </list>
+///
+/// <code>
+/// public sealed class PublicApp : AppBase { }
+///
+/// app.UseWebsite&lt;PublicApp&gt;("/", o =>
+/// {
+///     o.Mode = WebsiteMode.Static;
+///     o.Cultures.Strategy = CultureUrlStrategy.Prefix;
+///     o.Document
+///         .AddPreconnect("https://fonts.gstatic.com", crossOrigin: true)
+///         .AddStylesheet("_content/Acme.Web/app.css")
+///         .SetFavicon("favicon.svg", "image/svg+xml");
+/// });
+/// </code>
+///
+/// <para><b>No framework fingerprint.</b> The emitted document names no library and no product:
+/// the structural tags are generic, the theme cookie and its global are configurable with
+/// neutral defaults, and every asset URL is one the Site declared. An attacker reading the
+/// markup learns what the site chose to say, not which open-source stack to look up advisories
+/// against.</para>
+/// </remarks>
+public abstract class AppBase : ComponentBase
+{
+    [Inject] private ICurrentSite Site { get; set; } = default!;
+    [Inject] private ICultureState Culture { get; set; } = default!;
+    [Inject] private IHttpContextAccessor Http { get; set; } = default!;
+    [Inject] private IHostEnvironment Environment { get; set; } = default!;
+    [Inject] private ITenantProvider Tenant { get; set; } = default!;
+
+    /// <summary>Document contents declared on the Site. Override to substitute a different set.</summary>
+    protected virtual DocumentOptions Document => Site.Document;
+
+    /// <summary>
+    /// Value of the <c>lang</c> attribute on <c>&lt;html&gt;</c>. Defaults to the active culture.
+    /// </summary>
+    protected virtual string Lang => Culture.Current.ValueOrDefault ?? "en";
+
+    /// <summary>
+    /// Value of <c>&lt;base href&gt;</c>, always with a trailing slash.
+    /// </summary>
+    /// <remarks>
+    /// <para>Taken from the live <c>Request.PathBase</c>, which by this point includes both the
+    /// mount and the culture segment — <c>/admin/</c>, <c>/pl/</c>, <c>/admin/pl/</c>. That is the
+    /// whole mechanism behind prefixed URLs: relative hrefs resolve against it, so a link renders
+    /// as <c>pricing</c> and lands on <c>/pl/pricing</c> without the route template knowing.</para>
+    ///
+    /// <para>The trailing slash is not cosmetic. A browser treats a base without one as a file
+    /// path, so <c>/admin</c> would resolve <c>pricing</c> to <c>/pricing</c> — the right route
+    /// on the wrong mount.</para>
+    /// </remarks>
+    protected virtual string BaseHref
+    {
+        get
+        {
+            var pathBase = Http.HttpContext?.Request.PathBase.Value;
+            if (string.IsNullOrEmpty(pathBase))
+                return "/";
+
+            return pathBase.EndsWith('/') ? pathBase : pathBase + "/";
+        }
+    }
+
+    /// <summary>
+    /// Render mode applied to the routed page, the head outlet and the state bridge. Derived from
+    /// <c>SiteOptions.Mode</c>; <see langword="null"/> means static server rendering.
+    /// </summary>
+    protected virtual IComponentRenderMode? PageRenderMode => Site.Mode switch
+    {
+        WebsiteMode.Static => null,
+        WebsiteMode.WebAssembly => RenderMode.InteractiveWebAssembly,
+        WebsiteMode.Auto => RenderMode.InteractiveAuto,
+        _ => RenderMode.InteractiveServer,
+    };
+
+    /// <summary>
+    /// Renders the router. Defaults to <see cref="WebsiteRoutes"/>; override to substitute a
+    /// hand-written one.
+    /// </summary>
+    /// <remarks>
+    /// <para>A method rather than a <see cref="Type"/> property. Forwarding a type into
+    /// <c>OpenComponent(int, Type)</c> makes the component and every one of its parameters
+    /// reflection-visible to the trimmer, which then cannot prove any of them are kept; a
+    /// generic instantiation roots exactly what is used and nothing more. It also has to be a
+    /// method because <paramref name="renderMode"/> must be applied to the router component
+    /// itself — that is the boundary the interactive pass forms around, and a fragment handed to
+    /// <c>AddContent</c> has nowhere to put it.</para>
+    /// </remarks>
+    /// <param name="builder">Tree being built; the override owns sequence numbers from 0.</param>
+    /// <param name="renderMode">
+    /// The Site's render mode, or <see langword="null"/> for static server rendering. Apply it to
+    /// the routed component with <c>AddComponentRenderMode</c>.
+    /// </param>
+    protected virtual void BuildRoutes(RenderTreeBuilder builder, IComponentRenderMode? renderMode)
+    {
+        builder.OpenComponent<WebsiteRoutes>(0);
+        if (renderMode is not null)
+            builder.AddComponentRenderMode(renderMode);
+        builder.CloseComponent();
+    }
+
+    /// <summary>
+    /// Whether to render the prerender-to-circuit state bridge.
+    /// </summary>
+    /// <remarks>
+    /// Only meaningful when there is an interactive pass. Rendering it on a statically rendered
+    /// Site would open a circuit on every page view for a handover that never happens — the cost
+    /// with none of the benefit. On an interactive Site, omitting it is the classic "SSR renders
+    /// signed in, then the interactive pass renders anonymous" bug.
+    /// </remarks>
+    protected virtual bool Hydrate => PageRenderMode is not null;
+
+    /// <summary>Rendered at the very start of the head, before anything the framework emits.</summary>
+    protected virtual RenderFragment? HeadStart => null;
+
+    /// <summary>Rendered at the end of the head, after the declared assets and before <c>HeadOutlet</c>.</summary>
+    protected virtual RenderFragment? HeadEnd => null;
+
+    /// <summary>Rendered at the start of the body, before the router.</summary>
+    protected virtual RenderFragment? BodyStart => null;
+
+    /// <summary>Rendered at the end of the body, after the framework script and declared scripts.</summary>
+    protected virtual RenderFragment? BodyEnd => null;
+
+    /// <summary>
+    /// Host application's scoped-CSS bundle, or <see langword="null"/> when the build produced
+    /// none.
+    /// </summary>
+    /// <remarks>
+    /// The name is derived from the entry assembly rather than configured, because a setting
+    /// nobody knows they need is the same as no setting at all — and the symptom of getting it
+    /// wrong (every <c>*.razor.css</c> in the project silently stops applying) points nowhere
+    /// near the cause. <c>Assets[]</c> returns the key unchanged for anything absent from the
+    /// manifest and a fingerprinted path for anything present, so "unchanged" is a reliable
+    /// "this file does not exist" — without it the Site pays a 404 on every page load.
+    /// </remarks>
+    protected string? ScopedCssBundle
+    {
+        get
+        {
+            var name = $"{Environment.ApplicationName}.styles.css";
+            var resolved = Assets[name];
+            return resolved == name ? null : resolved;
+        }
+    }
+
+    protected override void BuildRenderTree(RenderTreeBuilder builder)
+    {
+        var document = Document;
+        var renderMode = PageRenderMode;
+
+        builder.AddMarkupContent(0, "<!DOCTYPE html>\n");
+
+        builder.OpenElement(1, "html");
+        builder.AddAttribute(2, "lang", Lang);
+
+        builder.OpenElement(3, "head");
+        BuildHead(builder, document, renderMode);
+        builder.CloseElement();
+
+        builder.OpenElement(4, "body");
+        BuildBody(builder, document, renderMode);
+        builder.CloseElement();
+
+        builder.CloseElement();
+    }
+
+    private void BuildHead(RenderTreeBuilder builder, DocumentOptions document, IComponentRenderMode? renderMode)
+    {
+        builder.AddContent(0, HeadStart);
+
+        builder.AddMarkupContent(1, "<meta charset=\"utf-8\" />");
+        builder.AddMarkupContent(2, "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />");
+
+        builder.OpenElement(3, "base");
+        builder.AddAttribute(4, "href", BaseHref);
+        builder.CloseElement();
+
+        // The theme handshake goes as early as possible and blocks: anything after a stylesheet
+        // paints the wrong scheme first, and a dark-mode visitor sees a white flash on every
+        // navigation. It is a few hundred bytes and runs before the body exists.
+        if (Site.Appearance.Enabled)
+        {
+            builder.OpenElement(5, "script");
+            builder.AddMarkupContent(6, AppearanceScript.Build(Site.Appearance, Tenant.Settings.Theme.ColorScheme));
+            builder.CloseElement();
+        }
+
+        BuildPreconnects(builder, document);
+        BuildMetas(builder, document);
+        BuildStylesheets(builder, document);
+        BuildFavicon(builder, document);
+
+        if (document.ImportMap)
+        {
+            builder.OpenComponent<ImportMap>(7);
+            builder.CloseComponent();
+        }
+
+        BuildComponents(builder, 8, document.HeadComponents);
+
+        builder.AddContent(9, HeadEnd);
+
+        // Last, so a consumer's own head content is already in the tree. HeadOutlet is what the
+        // page's PageHead writes through — without it the title, canonical and hreflang are
+        // computed and then dropped on the floor.
+        builder.OpenComponent<HeadOutlet>(10);
+        if (renderMode is not null)
+            builder.AddComponentRenderMode(renderMode);
+        builder.CloseComponent();
+    }
+
+    private void BuildBody(RenderTreeBuilder builder, DocumentOptions document, IComponentRenderMode? renderMode)
+    {
+        builder.AddContent(0, BodyStart);
+
+        if (Hydrate)
+        {
+            builder.OpenComponent<WebsiteHydrator>(1);
+            if (renderMode is not null)
+                builder.AddComponentRenderMode(renderMode);
+            builder.CloseComponent();
+        }
+
+        builder.OpenRegion(2);
+        BuildRoutes(builder, renderMode);
+        builder.CloseRegion();
+
+        // Blazor's framework script is required even on a statically rendered Site: enhanced
+        // navigation and streaming rendering both live in it, and without it every link becomes
+        // a full page load.
+        builder.OpenElement(3, "script");
+        builder.AddAttribute(4, "src", Assets["_framework/blazor.web.js"]);
+        builder.CloseElement();
+
+        BuildScripts(builder, document);
+        BuildComponents(builder, 5, document.BodyEndComponents);
+
+        builder.AddContent(6, BodyEnd);
+    }
+
+    // ── Declared-asset emission ───────────────────────────────────────────────────────────────
+    //
+    // ASP0006 wants literal sequence numbers, and it is right to for ordinary component markup:
+    // computed numbers defeat Blazor's diffing. It does not apply here. These lists are
+    // configuration, their length is unknown at compile time, and OpenRegion with a per-item
+    // sequence is precisely the mechanism the framework provides for that case — a literal would
+    // give every item the same number and collapse the region. It is also moot: the document
+    // shell is the root static component of the response, rendered exactly once and never
+    // diffed against a previous tree.
+#pragma warning disable ASP0006
+
+    private void BuildPreconnects(RenderTreeBuilder builder, DocumentOptions document)
+    {
+        var index = 0;
+        foreach (var preconnect in document.Preconnects)
+        {
+            builder.OpenRegion(index++);
+            builder.OpenElement(0, "link");
+            builder.AddAttribute(1, "rel", "preconnect");
+            builder.AddAttribute(2, "href", preconnect.Origin);
+            if (preconnect.CrossOrigin)
+                builder.AddAttribute(3, "crossorigin", string.Empty);
+            builder.CloseElement();
+            builder.CloseRegion();
+        }
+    }
+
+    private void BuildMetas(RenderTreeBuilder builder, DocumentOptions document)
+    {
+        // theme-color from the tenant's brand colour, unless the Site declared one itself.
+        //
+        // Derived rather than configured because the answer already exists: a tenant that has
+        // picked a primary colour has picked the colour a phone should tint its browser chrome
+        // with, and asking for it twice is how the two drift apart. An explicit
+        // Document.AddMeta("theme-color", …) still wins — a Site that genuinely wants a different
+        // chrome colour from its brand colour says so and is believed.
+        if (!document.Metas.Any(m => string.Equals(m.Name, "theme-color", StringComparison.OrdinalIgnoreCase)))
+        {
+            var brand = Tenant.Settings.Theme.PrimaryColor;
+            if (!string.IsNullOrWhiteSpace(brand))
+            {
+                builder.OpenRegion(900);
+                builder.OpenElement(0, "meta");
+                builder.AddAttribute(1, "name", "theme-color");
+                builder.AddAttribute(2, "content", brand);
+                builder.CloseElement();
+                builder.CloseRegion();
+            }
+        }
+
+        var index = 1000;
+        foreach (var meta in document.Metas)
+        {
+            builder.OpenRegion(index++);
+            builder.OpenElement(0, "meta");
+            builder.AddAttribute(1, meta.IsProperty ? "property" : "name", meta.Name);
+            builder.AddAttribute(2, "content", meta.Content);
+            builder.CloseElement();
+            builder.CloseRegion();
+        }
+    }
+
+    private void BuildStylesheets(RenderTreeBuilder builder, DocumentOptions document)
+    {
+        var index = 2000;
+        foreach (var asset in document.Assets)
+        {
+            if (asset.Kind != DocumentAssetKind.Stylesheet)
+                continue;
+
+            builder.OpenRegion(index++);
+            builder.OpenElement(0, "link");
+            builder.AddAttribute(1, "rel", "stylesheet");
+            builder.AddAttribute(2, "href", Resolve(asset));
+            builder.CloseElement();
+            builder.CloseRegion();
+        }
+
+        // Emitted last so host rules win over declared ones on equal specificity, which is what
+        // a project overriding a library's chrome expects.
+        if (document.ScopedStyles && ScopedCssBundle is { } bundle)
+        {
+            builder.OpenRegion(index);
+            builder.OpenElement(0, "link");
+            builder.AddAttribute(1, "rel", "stylesheet");
+            builder.AddAttribute(2, "href", bundle);
+            builder.CloseElement();
+            builder.CloseRegion();
+        }
+    }
+
+    private void BuildFavicon(RenderTreeBuilder builder, DocumentOptions document)
+    {
+        if (document.Favicon is null)
+            return;
+
+        builder.OpenRegion(3000);
+        builder.OpenElement(0, "link");
+        builder.AddAttribute(1, "rel", "icon");
+        if (document.FaviconType is not null)
+            builder.AddAttribute(2, "type", document.FaviconType);
+        builder.AddAttribute(3, "href", document.Favicon);
+        builder.CloseElement();
+        builder.CloseRegion();
+    }
+
+    private void BuildScripts(RenderTreeBuilder builder, DocumentOptions document)
+    {
+        var index = 4000;
+        foreach (var asset in document.Assets)
+        {
+            if (asset.Kind != DocumentAssetKind.Script)
+                continue;
+
+            builder.OpenRegion(index++);
+            builder.OpenElement(0, "script");
+            builder.AddAttribute(1, "src", Resolve(asset));
+            if (asset.Defer)
+                builder.AddAttribute(2, "defer", string.Empty);
+            if (asset.Async)
+                builder.AddAttribute(3, "async", string.Empty);
+            builder.CloseElement();
+            builder.CloseRegion();
+        }
+    }
+
+    private static void BuildComponents(RenderTreeBuilder builder, int region, IReadOnlyList<RenderFragment> fragments)
+    {
+        if (fragments.Count == 0)
+            return;
+
+        builder.OpenRegion(region);
+        var index = 0;
+        foreach (var fragment in fragments)
+        {
+            builder.OpenRegion(index++);
+            builder.AddContent(0, fragment);
+            builder.CloseRegion();
+        }
+        builder.CloseRegion();
+    }
+
+#pragma warning restore ASP0006
+
+    /// <summary>
+    /// Runs a declared URL through the static-asset manifest when asked, leaving absolute URLs
+    /// alone — the manifest only knows this application's own files, and handing it a CDN URL
+    /// would just return it unchanged after a pointless lookup.
+    /// </summary>
+    private string Resolve(DocumentAsset asset)
+    {
+        if (!asset.Fingerprint || asset.Url.Contains("://", StringComparison.Ordinal) || asset.Url.StartsWith("//", StringComparison.Ordinal))
+            return asset.Url;
+
+        return Assets[asset.Url];
+    }
+}

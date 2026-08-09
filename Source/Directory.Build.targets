@@ -74,6 +74,7 @@
     <ZonitInstructionArea Condition="'$(MSBuildProjectName)' == 'Zonit.Extensions.Tenants'">tenants</ZonitInstructionArea>
     <ZonitInstructionArea Condition="'$(MSBuildProjectName)' == 'Zonit.Extensions.Website'">website</ZonitInstructionArea>
     <ZonitInstructionArea Condition="'$(MSBuildProjectName)' == 'Zonit.Extensions.Website.MudBlazor'">mudblazor</ZonitInstructionArea>
+    <ZonitInstructionArea Condition="'$(MSBuildProjectName)' == 'Zonit.Extensions.Website.Sitemaps'">sitemaps</ZonitInstructionArea>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(ZonitInstructionArea)' != '' and '$(IsPackable)' != 'false'">

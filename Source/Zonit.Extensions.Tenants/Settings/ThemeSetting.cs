@@ -15,9 +15,34 @@ public sealed class ThemeSetting : Setting<ThemeSettingsModel>
     public override IReadOnlyCollection<ThemeSettingsModel>? Templates { get; } = [];
 }
 
+/// <summary>
+/// Colour-scheme preference. <see cref="System"/> means "whatever the operating system says",
+/// which is the right default — a visitor whose OS is set to dark has already expressed a
+/// preference and should not have to express it again.
+/// </summary>
+/// <remarks>
+/// Named for the CSS property it drives rather than "theme", which in this settings tree already
+/// means the palette. This is only light versus dark.
+/// </remarks>
+public enum ColorScheme
+{
+    /// <summary>Follow <c>prefers-color-scheme</c>.</summary>
+    System = 0,
+
+    /// <summary>Default to light when the visitor has expressed no preference.</summary>
+    Light = 1,
+
+    /// <summary>Default to dark when the visitor has expressed no preference.</summary>
+    Dark = 2,
+}
+
 /// <summary>Model for <see cref="ThemeSetting"/>.</summary>
 public sealed class ThemeSettingsModel
 {
+    [Required]
+    [Display(Name = "Color Scheme", Description = "Light or dark by default. 'System' follows the visitor's operating system.")]
+    public ColorScheme ColorScheme { get; set; } = ColorScheme.System;
+
     // Brand
     [Required, ColorPicker]
     [Display(Name = "Primary Color", Description = "Main brand color used throughout the site for buttons and key elements")]

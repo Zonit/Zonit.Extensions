@@ -57,6 +57,18 @@
       <Summary>Navigation, breadcrumbs, toasts and cookies, plus UrlPath.ToHref() which is mandatory under a non-root mount.</Summary>
       <SourceFile>$(MSBuildThisFileDirectory)..\Instruction\extensions\website\ui-services.md</SourceFile>
     </ZonitExtDoc>
+    <ZonitExtDoc Include="seo">
+      <Area>website</Area>
+      <Summary>Culture in the URL, PageMeta, structured data (JSON-LD), indexability and the generated robots.txt / llms.txt.</Summary>
+      <Glob>**/*.razor</Glob>
+      <SourceFile>$(MSBuildThisFileDirectory)..Instructionextensionswebsiteseo.md</SourceFile>
+    </ZonitExtDoc>
+    <ZonitExtDoc Include="document">
+      <Area>website</Area>
+      <Summary>The document shell: AppBase, DocumentOptions, the client-side appearance system and the culture / theme switcher base classes.</Summary>
+      <Glob>**/App.razor</Glob>
+      <SourceFile>$(MSBuildThisFileDirectory)..Instructionextensionswebsitedocument.md</SourceFile>
+    </ZonitExtDoc>
     <ZonitExtDoc Include="aot">
       <Area>website</Area>
       <Summary>What is genuinely trim- and AOT-safe in the web kernel, what is annotated instead, and how the source generator removes reflection.</Summary>

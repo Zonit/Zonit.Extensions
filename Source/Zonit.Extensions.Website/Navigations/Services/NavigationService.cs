@@ -1,3 +1,4 @@
+using Zonit.Extensions.Cultures;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Zonit.Extensions.Website.Navigations.Services;
@@ -99,7 +100,101 @@ internal sealed class NavigationService : INavigationProvider
         if (currentSite is { IsSet: true } && !currentSite.AreaKeys.Contains(areaKey))
             return Array.Empty<NavGroup>();
 
-        return _registry.Get(areaKey, position);
+        return Localize(_registry.Get(areaKey, position));
+    }
+
+    /// <summary>
+    /// Runs every title and tooltip through the translation registry, honouring each node's
+    /// <c>Translate</c> flag.
+    /// </summary>
+    /// <remarks>
+    /// <para>Done here rather than in the renderers so that a menu is translated once, for every
+    /// UI layer, without the author writing <c>T(…)</c> at each declaration site. The key in this
+    /// framework <b>is</b> the English source string, so <c>Title = "Settings"</c> is already a
+    /// valid key and text with no rendition falls through to itself — a brand name survives
+    /// untouched whether or not the author remembered to set <c>Translate = false</c>.</para>
+    ///
+    /// <para>The tree is rebuilt with <c>with</c> expressions rather than mutated in place: the
+    /// registry's copy is shared by every scope and every language, so translating in place would
+    /// pin the first request's language onto the whole process. Using <c>with</c> rather than a
+    /// hand-written copy constructor also means a property added later is carried across
+    /// automatically — the alternative silently drops it.</para>
+    ///
+    /// <para>Skipped entirely when there is no culture provider (navigation wired without the rest
+    /// of the framework, or resolved from the root where scoped services do not exist), so the
+    /// registry's objects are returned untouched and nothing allocates.</para>
+    /// </remarks>
+    private IReadOnlyList<NavGroup> Localize(IReadOnlyList<NavGroup> groups)
+    {
+        if (groups.Count == 0)
+            return groups;
+
+        var culture = ResolveCulture();
+        if (culture is null)
+            return groups;
+
+        var result = new NavGroup[groups.Count];
+        for (var i = 0; i < groups.Count; i++)
+            result[i] = LocalizeGroup(groups[i], culture);
+
+        return result;
+    }
+
+    private static NavGroup LocalizeGroup(NavGroup group, ICultureProvider culture)
+        => group with
+        {
+            Title = group.Translate ? Translate(group.Title, culture) : group.Title,
+            Tooltip = group.Translate ? Translate(group.Tooltip, culture) : group.Tooltip,
+            Link = group.Link is null ? null : LocalizeLink(group.Link, culture),
+            Children = group.Children is null ? null : LocalizeItems(group.Children, culture),
+            Groups = group.Groups is null ? null : [.. group.Groups.Select(g => LocalizeGroup(g, culture))],
+        };
+
+    private static IReadOnlyList<NavItem> LocalizeItems(IReadOnlyList<NavItem> items, ICultureProvider culture)
+    {
+        var result = new NavItem[items.Count];
+        for (var i = 0; i < items.Count; i++)
+        {
+            var item = items[i];
+            result[i] = item with
+            {
+                Title = item.Translate ? Translate(item.Title, culture) : item.Title,
+                Tooltip = item.Translate ? Translate(item.Tooltip, culture) : item.Tooltip,
+                Children = item.Children is null ? null : LocalizeItems(item.Children, culture),
+            };
+        }
+
+        return result;
+    }
+
+    private static LinkModel LocalizeLink(LinkModel link, ICultureProvider culture)
+        => link with { Title = Translate(link.Title, culture) };
+
+    private static Title Translate(Title title, ICultureProvider culture)
+    {
+        var value = title.Value;
+        if (string.IsNullOrWhiteSpace(value))
+            return title;
+
+        // TryCreate, not the throwing ctor: Title has a MaxLength and a translation can be longer
+        // than the source string. A menu label that grew past the limit in one language must not
+        // take the whole navigation down — keeping the untranslated label is the graceful answer.
+        return Title.TryCreate(culture.Translate(value).Value, out var translated) ? translated : title;
+    }
+
+    private static string? Translate(string? text, ICultureProvider culture)
+        => string.IsNullOrWhiteSpace(text) ? text : culture.Translate(text).Value;
+
+    /// <summary>
+    /// The culture provider of the scope this instance belongs to, or <see langword="null"/> when
+    /// there is no scope or the host wired navigation without the culture extension.
+    /// </summary>
+    private ICultureProvider? ResolveCulture()
+    {
+        if (ReferenceEquals(_services, _root.Provider))
+            return null;
+
+        return _services.GetService<ICultureProvider>();
     }
 
     public void Refresh(string? areaKey = null) => _registry.Refresh(areaKey);

@@ -10,7 +10,7 @@ namespace Zonit.Extensions.Website;
 /// The host (Dashboard / Website) decides which area-key to filter by –
 /// see <see cref="IWebsiteArea"/>.
 /// </remarks>
-public sealed class NavGroup
+public sealed record NavGroup
 {
     /// <summary>Display title of the group.</summary>
     public Title Title { get; init; }
@@ -54,6 +54,9 @@ public sealed class NavGroup
 
     /// <summary>Badge color hint for the UI layer.</summary>
     public NavBadgeColor BadgeColor { get; init; } = NavBadgeColor.Default;
+
+    /// <summary>Whether the group.s title and tooltip are translated. <see langword="true"/> by default.</summary>
+    public bool Translate { get; init; } = true;
 
     /// <summary>Optional tooltip text displayed on hover over the group header.</summary>
     public string? Tooltip { get; init; }
