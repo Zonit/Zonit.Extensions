@@ -205,6 +205,76 @@ Things worth knowing before you write a menu renderer:
 - Two areas sharing the same `Key` have their static navigation merged under that key by the
   store — even though mounting both on one Site is rejected.
 
+## Contributing layouts
+
+An area registers its own layouts from `ConfigureServices` — there is no separate hook, because
+`AddWebsiteLayout<T>(key)` is an `IServiceCollection` extension and the layout registry is a
+singleton keyed by string:
+
+```csharp
+public void ConfigureServices(IServiceCollection services)
+{
+    services.AddWebsiteLayout<ShopCheckoutLayout>("Shop.Checkout");
+    services.AddWebsiteLayout<ShopMinimalLayout>("Zonit.Minimal");   // overwrite the built-in
+}
+```
+
+Runs once per process, not per Site, which is what you want: the registry maps a key to a type and
+nothing about that mapping is per-mount. Pages then reference the key as a string —
+`[LayoutKey("Shop.Checkout")]` — so no page needs an assembly reference to the layout that wraps
+it.
+
+Two caveats. Registration is **last-writer-wins** on the key, and area order is the order of
+`AddArea<T>()` calls at services time, so two areas claiming one key resolve by registration order
+with no diagnostic. And which layout is the Site's *default* stays a Site decision —
+`SiteOptions.Document.DefaultLayoutKey` — because the same area mounted at `/` and `/admin`
+legitimately wants different chrome.
+
+## Contributing document assets
+
+`ConfigureDocument(IDocumentAssets document)` (default: no-op) appends this area's stylesheets,
+scripts, preconnects, meta tags and head / body-end components to the document shell of **every
+Site that mounts it**. It runs once per mount, after the Site's own declarations, in area
+registration order.
+
+```csharp
+public sealed class SignalsArea : IWebsiteArea
+{
+    public string Key => "signals";
+
+    // Write the prefix out. Do NOT derive it from the assembly name — see below.
+    private const string Content = "_content/signals";
+
+    public void ConfigureDocument(IDocumentAssets document) => document
+        .AddStylesheet($"{Content}/css/signals.css")
+        .AddScript($"{Content}/js/signals.js")
+        .AddHeadComponent<SignalsPreload>();
+}
+```
+
+Without this hook the host has to list every plug-in's assets in its own shell, which turns the
+host document into a manifest of everything installed and makes installing an area two edits in
+two repositories. Forgetting the second edit fails silently: the component renders, nothing 404s,
+nothing logs, the feature is simply unstyled or inert.
+
+**The surface is append-only.** `IDocumentAssets` is a strict subset of `DocumentOptions`: an area
+cannot set `Favicon`, `DefaultLayoutKey`, `ImportMap` or `ScopedStyles`. Those are Site-wide
+verdicts — the last area to touch one would silently win, the result would depend on mount order,
+and the host that configured the value would never see it change.
+
+**Ordering.** Site declarations first, then areas. So base stylesheets (Tailwind, a component
+library) belong on `SiteOptions.Document` and an area's sheet cascades over them. The corollary:
+a Site cannot out-cascade an area it mounts, so make host rules specific rather than relying on
+source order.
+
+**Asset paths.** The prefix is whatever the RCL actually serves under, which is
+`_content/{AssemblyName}` *only* while the project leaves `StaticWebAssetBasePath` alone. A project
+that sets it — the supported way to keep a plug-in's name out of the rendered page — serves its
+files somewhere else entirely, and a key the static-asset manifest does not recognise comes back
+from `@Assets` unfingerprinted. `AppBase` logs a warning once per URL when that happens; it is not
+an error, just a silently lost cache-buster. Pass `fingerprint: false` for absolute URLs (a CDN, a
+font host) so the lookup is skipped instead of warning on every boot.
+
 ## Known limitations
 
 - **`IWebsiteServices` is only honoured on the area class itself.** `AddArea<TArea>()` does

@@ -67,6 +67,9 @@ interactive pass), the router, `blazor.web.js`, declared scripts, body-end compo
 
 ### Extending, in increasing order of power
 
+0. `IWebsiteArea.ConfigureDocument(IDocumentAssets)` — an area's *own* assets, declared by the area
+   and appended to every Site that mounts it. Use this for anything a plug-in needs, so the host
+   shell never becomes a list of what is installed. See `.zonit/extensions/website/areas.md`.
 1. `SiteOptions.Document` — covers most of what a hand-written shell contains.
 2. `AddHeadComponent<T>()` / `AddBodyEndComponent<T>()` for anything needing Razor or services.
 3. Derive from `AppBase` and override a virtual: `Lang`, `BaseHref`, `PageRenderMode`,
@@ -76,6 +79,47 @@ interactive pass), the router, `blazor.web.js`, declared scripts, body-end compo
 Nothing the shell emits names a framework or a product. Cookie names and JS globals are visible in
 developer tools, and a recognisable one advertises which open-source stack to look up advisories
 against.
+
+## Keeping library and plug-in names out of the page
+
+Asset URLs are the one place a stack fingerprint survives however carefully the markup, cookies and
+JS globals are named — and the import map is worse than a single URL, because it enumerates
+**every** JS asset the application serves. A page that ships
+`_content/Acme.Plugins.Billing.Presentation/js/billing.js` has published its plug-in inventory.
+
+The lever is `StaticWebAssetBasePath`, set in the RCL that owns the files:
+
+```xml
+<StaticWebAssetBasePath>_content/billing</StaticWebAssetBasePath>
+```
+
+Build-time, so the served URL, the manifest, `@Assets[...]` and the import map all move together
+and stay consistent. It replaces the **whole** default prefix, not the last segment — a bare
+`billing` puts the files at the application root.
+
+What you cannot do is filter or rewrite the import map at render time. `ImportMap` does take an
+`ImportMapDefinition` parameter, and `ImportMapDefinition` has a public constructor, so building
+your own compiles and renders. It just does not work: a map key **is** the specifier an `import`
+uses, so renaming keys without moving the files breaks module resolution, and dropping an entry
+drops that module's fingerprint. Rename at build time or not at all.
+
+Three leaks `StaticWebAssetBasePath` does not close:
+
+- **`_framework/blazor.web.js`** and `blazor.server.js`. Not renameable, and the reconnect markup,
+  the `_blazor` endpoint and the enhanced-navigation attributes identify the stack anyway. Hiding
+  *which framework* is not achievable; hiding *which components and plug-ins you run* is, and it
+  is the more useful secret.
+- **Third-party RCLs** (`_content/MudBlazor/…`). The property belongs to the project that owns the
+  assets, and you do not own theirs.
+- **Collocated `*.razor.js`**, which carries the component's path and name into the URL even after
+  a rebase — `_content/ui/Layouts/ReconnectModal.razor.js`. Move the file to `wwwroot/js/` and load
+  it by path if the name matters.
+
+The application's own scoped-CSS bundle is `$(PackageId).styles.css` at the site root. Renaming
+`PackageId` moves it, but `AppBase` derives the name from `ApplicationName` (the assembly name),
+which does not follow — so set `Document.ScopedCssBundleName` to the new name in the same commit.
+Get that wrong and every `*.razor.css` in the solution goes inert without a 404 or a log; the
+explicit setting warns when the manifest does not recognise it, the derived one cannot.
 
 ## Appearance (light / dark)
 

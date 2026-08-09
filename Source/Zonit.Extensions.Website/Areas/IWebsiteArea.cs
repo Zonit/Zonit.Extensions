@@ -74,6 +74,39 @@ public interface IWebsiteArea
     IReadOnlyList<AreaRoute> Routes => Array.Empty<AreaRoute>();
 
     /// <summary>
+    /// Optional. Contributes this area's own stylesheets, scripts, preconnects and head/body
+    /// components to the document shell of every Site that mounts it. Default: no-op.
+    /// </summary>
+    /// <remarks>
+    /// <para>Without this hook an area's assets have to be listed by the host, which quietly makes
+    /// the host's document shell a manifest of every plug-in installed. Installing an area then
+    /// means two edits in two repositories, and forgetting the second one fails in the worst
+    /// possible way: the component renders, nothing 404s, nothing logs, the feature is simply
+    /// unstyled or inert. Declaring assets next to the code that needs them makes an area
+    /// self-contained — mounting it is the whole installation.</para>
+    ///
+    /// <para>Runs once per mount, after the Site's own declarations and in area registration
+    /// order, so an area's stylesheet cascades over the Site's base sheet. The surface is
+    /// deliberately append-only — see <see cref="IDocumentAssets"/> for why an area cannot set the
+    /// favicon, the default layout or the import map.</para>
+    ///
+    /// <para>Write the RCL prefix out as a constant rather than deriving it from the assembly
+    /// name: a project that sets <c>StaticWebAssetBasePath</c> — which is how an area keeps its
+    /// name out of the rendered page — no longer serves its files under
+    /// <c>_content/{AssemblyName}</c>, and a key the manifest does not recognise comes back
+    /// without a fingerprint.</para>
+    ///
+    /// <code>
+    /// private const string Content = "_content/signals";
+    ///
+    /// public void ConfigureDocument(IDocumentAssets document) => document
+    ///     .AddStylesheet($"{Content}/css/signals.css")
+    ///     .AddScript($"{Content}/js/signals.js");
+    /// </code>
+    /// </remarks>
+    void ConfigureDocument(IDocumentAssets document) { }
+
+    /// <summary>
     /// Optional. Runs at the START of the Site's branch (after PathBase, BEFORE routing
     /// and auth). Use for libraries that must wrap every request from byte zero —
     /// e.g. <c>app.UseImageSharp()</c>, per-area static-file pipelines. Default: no-op.

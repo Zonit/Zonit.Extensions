@@ -395,6 +395,14 @@ public static class WebsiteServiceCollectionExtensions
             site.Defaults,
             pathBase);
 
+        // Let every mounted area append its own assets to this Site's document. After the Site's
+        // declarations (so an area sheet cascades over the base one) and before the mount snapshot
+        // (which is what ICurrentSite reads back outside the branch, so it has to see the final
+        // document). Per Site, not per area instance: the same area mounted twice contributes to
+        // each Site's own DocumentOptions exactly once.
+        foreach (var area in site.Areas)
+            area.ConfigureDocument(site.Document);
+
         // Snapshot this mount into the singleton registry. The scoped ICurrentSite
         // reads back from it whenever its per-Site branch middleware has not run
         // (Blazor circuit scope, hosted services). Mirror of how UseDashboard

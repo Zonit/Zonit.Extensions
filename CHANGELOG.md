@@ -8,6 +8,32 @@ Every package in this repository versions together — there is no partial upgra
 
 ---
 
+## 10.0.0-preview.18 — 2026-08-10
+
+### Added
+
+- **`IWebsiteArea.ConfigureDocument(IDocumentAssets)`** — an area declares its own stylesheets,
+  scripts, preconnects, metas and head / body-end components, and they are appended to the
+  document shell of every Site that mounts it. Mounting an area is now the whole installation;
+  the host shell stops being a manifest of what is installed.
+- **`IDocumentAssets`** — the append-only subset of `DocumentOptions` handed to areas.
+  `Favicon`, `DefaultLayoutKey`, `ImportMap` and `ScopedStyles` stay Site-wide decisions, so a
+  plug-in cannot silently win one by mount order.
+- **`DocumentOptions.ScopedCssBundleName`** — states the scoped-CSS bundle's real file name.
+  `AppBase` derives it from `ApplicationName`, which stops matching the moment a host renames
+  `PackageId` (the bundle is emitted as `$(PackageId).styles.css`) — and the symptom is every
+  `*.razor.css` in the solution silently going inert. A configured name the manifest does not
+  know now logs a warning, since unlike the derived one it can never legitimately be absent.
+
+Contributions run once per mount, after the Site's own declarations, in area registration order —
+so base sheets belong on `SiteOptions.Document` and an area's sheet cascades over them.
+Default-implemented, so no existing area needs a change.
+
+> Note on numbering: the section below is headed `preview.14` but covers everything released
+> across `.14` through `.17`. The entries are accurate; the header is not.
+
+---
+
 ## 10.0.0-preview.14 — 2026-08-09
 
 Public-web release: a Site can now be a correctly indexable multilingual website without the host

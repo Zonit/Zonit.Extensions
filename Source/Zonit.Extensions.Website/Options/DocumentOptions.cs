@@ -63,7 +63,7 @@ public readonly record struct DocumentPreconnect(string Origin, bool CrossOrigin
 /// <para>Nothing here emits a framework or product name into the markup. What ends up in the
 /// document is what the Site declared, plus structural tags that name no library.</para>
 /// </remarks>
-public sealed class DocumentOptions
+public sealed class DocumentOptions : IDocumentAssets
 {
     private readonly List<RenderFragment> _headComponents = [];
     private readonly List<RenderFragment> _bodyEndComponents = [];
@@ -93,7 +93,31 @@ public sealed class DocumentOptions
     /// </remarks>
     public bool ScopedStyles { get; set; } = true;
 
+    /// <summary>
+    /// File name of the scoped-CSS bundle, when it is not <c>{ApplicationName}.styles.css</c>.
+    /// <see langword="null"/> (the default) derives it from the entry assembly.
+    /// </summary>
+    /// <remarks>
+    /// <para>Set this only alongside <c>&lt;PackageId&gt;</c>, and always together with it. The
+    /// bundle is emitted as <c>$(PackageId).styles.css</c> by the Razor SDK, so renaming the host
+    /// project's <c>PackageId</c> — the one lever that keeps the application's own name out of a
+    /// URL every visitor downloads — moves the file, while <c>ApplicationName</c> stays the
+    /// assembly name and the derived lookup starts missing. The failure is the silent one this
+    /// whole option exists to prevent: no 404, no log, every <c>*.razor.css</c> in the solution
+    /// simply stops applying. A name set here that the manifest does not know logs a warning,
+    /// because unlike the derived name it can never legitimately be absent.</para>
+    /// </remarks>
+    public string? ScopedCssBundleName { get; set; }
+
     /// <summary>Emits Blazor's <c>&lt;ImportMap /&gt;</c>. Required for JS module imports.</summary>
+    /// <remarks>
+    /// The map is generated from the static-asset manifest and therefore lists every JS asset the
+    /// application serves, base path and all. It is the one part of the document that enumerates
+    /// what is installed, so keeping a library's name out of it is a matter of the owning
+    /// project's <c>StaticWebAssetBasePath</c>, not of anything that can be filtered here —
+    /// a map key is the specifier an <c>import</c> actually uses, so rewriting keys without
+    /// moving the files breaks module resolution.
+    /// </remarks>
     public bool ImportMap { get; set; } = true;
 
     /// <summary>
@@ -225,6 +249,38 @@ public sealed class DocumentOptions
         return this;
     }
 
+    // ─── IDocumentAssets ───────────────────────────────────────────────────────────────────────
+    //
+    // Explicit, so the concrete methods keep returning DocumentOptions for a host chaining on the
+    // Site, while an area chains on the narrow contribution surface. Pure forwarding: there is one
+    // implementation of each behaviour, and the interface only restricts who can reach it.
+
+    IDocumentAssets IDocumentAssets.AddStylesheet(string url, bool fingerprint)
+        => AddStylesheet(url, fingerprint);
+
+    IDocumentAssets IDocumentAssets.AddScript(string url, bool defer, bool async, bool fingerprint)
+        => AddScript(url, defer, async, fingerprint);
+
+    IDocumentAssets IDocumentAssets.AddMeta(string name, string content, bool isProperty)
+        => AddMeta(name, content, isProperty);
+
+    IDocumentAssets IDocumentAssets.AddPreconnect(string origin, bool crossOrigin)
+        => AddPreconnect(origin, crossOrigin);
+
+    IDocumentAssets IDocumentAssets.AddHeadComponent<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>()
+        => AddHeadComponent<T>();
+
+    IDocumentAssets IDocumentAssets.AddBodyEndComponent<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>()
+        => AddBodyEndComponent<T>();
+
+    IDocumentAssets IDocumentAssets.AddHeadContent(RenderFragment fragment)
+        => AddHeadContent(fragment);
+
+    IDocumentAssets IDocumentAssets.AddBodyEndContent(RenderFragment fragment)
+        => AddBodyEndContent(fragment);
+
     private static RenderFragment Fragment<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>() where T : IComponent
         => builder =>
@@ -249,6 +305,7 @@ public sealed class DocumentOptions
             Favicon = Favicon,
             FaviconType = FaviconType,
             ScopedStyles = ScopedStyles,
+            ScopedCssBundleName = ScopedCssBundleName,
             ImportMap = ImportMap,
             DefaultLayoutKey = DefaultLayoutKey,
             Assets = [.. Assets],

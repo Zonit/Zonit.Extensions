@@ -170,20 +170,43 @@ public abstract class AppBase : ComponentBase
     /// none.
     /// </summary>
     /// <remarks>
-    /// The name is derived from the entry assembly rather than configured, because a setting
+    /// <para>The name is derived from the entry assembly rather than configured, because a setting
     /// nobody knows they need is the same as no setting at all — and the symptom of getting it
     /// wrong (every <c>*.razor.css</c> in the project silently stops applying) points nowhere
     /// near the cause. <c>Assets[]</c> returns the key unchanged for anything absent from the
     /// manifest and a fingerprinted path for anything present, so "unchanged" is a reliable
-    /// "this file does not exist" — without it the Site pays a 404 on every page load.
+    /// "this file does not exist" — without it the Site pays a 404 on every page load.</para>
+    ///
+    /// <para>The derivation holds only while the bundle keeps its default name. The Razor SDK
+    /// emits it as <c>$(PackageId).styles.css</c>, so a host that renames <c>PackageId</c> to keep
+    /// its assembly name out of a public URL breaks the derivation and hits exactly the silent
+    /// failure above. <see cref="DocumentOptions.ScopedCssBundleName"/> states the real name for
+    /// that case; because it is explicit, a miss there is always a mistake and is logged.</para>
     /// </remarks>
     protected string? ScopedCssBundle
     {
         get
         {
-            var name = $"{Environment.ApplicationName}.styles.css";
+            // Through the virtual, not Site.Document — a subclass that substitutes the document
+            // substitutes this too, and the bundle it names is the one that gets linked.
+            var configured = Document.ScopedCssBundleName;
+            var name = configured ?? $"{Environment.ApplicationName}.styles.css";
             var resolved = Assets[name];
-            return resolved == name ? null : resolved;
+
+            if (resolved != name)
+                return resolved;
+
+            if (configured is not null && WarnedAssets.TryAdd(configured, 0))
+            {
+                Logger?.LogWarning(
+                    "Document.ScopedCssBundleName is '{Bundle}', which the static-asset manifest " +
+                    "does not contain, so no scoped-CSS bundle is linked and every *.razor.css in " +
+                    "the application is inert. The bundle is emitted as $(PackageId).styles.css — " +
+                    "check that this name matches the host project's PackageId.",
+                    configured);
+            }
+
+            return null;
         }
     }
 
