@@ -167,7 +167,7 @@ public abstract class CultureSwitcherBase : ComponentBase, IDisposable
         // Iterate the CONFIGURED allow-list, not ICultureState.Supported.
         //
         // Supported is an array of LanguageModel resolved through ILanguageProvider, whose
-        // registry is a frozen set of seventeen built-ins. A configured tag outside it does not
+        // registry is a frozen set of twenty-five built-ins. A configured tag outside it does not
         // fail — it silently resolves to a neighbouring model, so a site supporting pt-pt AND
         // pt-br produced two identical "português (Portugal)" entries both pointing at /pt-pt/,
         // and Brazilian Portuguese was simply unreachable from the switcher. The tag list is the

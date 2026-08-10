@@ -22,12 +22,12 @@ public static class SitemapExtensions
     /// builder.Services.AddWebsite(w => w.AddArea&lt;NewsArea&gt;());
     /// builder.Services.AddSitemap();               // no source list — see below
     ///
-    /// app.UseWebsite("/", o =>
-    /// {
-    ///     o.MapEndpoints(ep => ep.MapSitemap());   // per Site — a panel does not want one
-    ///     o.Robots.Sitemap("/sitemap.xml");        // advertise it to crawlers
-    /// });
+    /// app.UseWebsite("/", o => o.Indexing());      // robots.txt + sitemap.xml + llms.txt
     /// </code>
+    ///
+    /// <para><c>Indexing()</c> maps the sitemap and advertises it in <c>robots.txt</c> in one
+    /// call — see <see cref="IndexingExtensions.Indexing"/>. Call <see cref="MapSitemap"/>
+    /// directly only to publish a sitemap that <c>robots.txt</c> should not name.</para>
     ///
     /// <para>The area contributes its maps in its own <c>ConfigureServices</c>:</para>
     /// <code>
@@ -48,6 +48,12 @@ public static class SitemapExtensions
         services.TryAddSingleton<IOptions<SitemapOptions>>(new OptionsWrapper<SitemapOptions>(options));
         services.TryAddSingleton<SitemapCache>();
         services.TryAddScoped<SitemapGenerator>();
+
+        // The pages a project used to hand-write as a three-entry ISitemapSource are now the
+        // [Sitemap] attributes themselves, collected at build time. TryAddEnumerable keyed on the
+        // implementation type, so calling AddSitemap() twice does not list every page twice.
+        services.TryAddEnumerable(
+            ServiceDescriptor.Scoped<ISitemapSource, StaticPageSitemapSource>());
 
         return services;
     }

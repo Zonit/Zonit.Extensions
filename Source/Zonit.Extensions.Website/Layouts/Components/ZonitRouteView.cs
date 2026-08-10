@@ -231,6 +231,8 @@ public sealed class ZonitRouteView : ComponentBase, IDisposable
         // anyway — a title resolved after an await cannot be seen any other way — but ordering
         // it this way makes the common, synchronous case right on the first attempt.
         builder.OpenComponent<PageHead>(20);
+        if (RouteData?.PageType is { } routed)
+            builder.AddComponentParameter(21, nameof(PageHead.PageType), routed);
         builder.CloseComponent();
     }
 

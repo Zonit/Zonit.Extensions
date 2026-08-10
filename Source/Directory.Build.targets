@@ -74,7 +74,6 @@
     <ZonitInstructionArea Condition="'$(MSBuildProjectName)' == 'Zonit.Extensions.Tenants'">tenants</ZonitInstructionArea>
     <ZonitInstructionArea Condition="'$(MSBuildProjectName)' == 'Zonit.Extensions.Website'">website</ZonitInstructionArea>
     <ZonitInstructionArea Condition="'$(MSBuildProjectName)' == 'Zonit.Extensions.Website.MudBlazor'">mudblazor</ZonitInstructionArea>
-    <ZonitInstructionArea Condition="'$(MSBuildProjectName)' == 'Zonit.Extensions.Website.Sitemaps'">sitemaps</ZonitInstructionArea>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(ZonitInstructionArea)' != '' and '$(IsPackable)' != 'false'">
@@ -87,6 +86,15 @@
     <!-- The docs themselves, under the exact path the stub's <SourceFile> metadata expects. -->
     <None Include="$(MSBuildThisFileDirectory)..\Instruction\extensions\$(ZonitInstructionArea)\*.md"
           Pack="true" PackagePath="Instruction\extensions\$(ZonitInstructionArea)" Visible="false" />
+    <!--
+      The changelog ships as a doc too, renamed into the area folder so the installer's tree copy
+      picks it up like any other guide. An assistant working in a consumer repository otherwise has
+      no way to answer "is this API new, renamed, or gone?" — it sees the current surface and the
+      consumer's code, and nothing about which release moved what. Packed from the repo file, so
+      there is one changelog and no copy to drift.
+    -->
+    <None Include="$(MSBuildThisFileDirectory)..\CHANGELOG.md"
+          Pack="true" PackagePath="Instruction\extensions\$(ZonitInstructionArea)\changelog.md" Visible="false" />
   </ItemGroup>
 
   <!--

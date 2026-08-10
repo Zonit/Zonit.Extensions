@@ -13,7 +13,7 @@ next to a public site opts into none of it.
 | Culture prefix and `@page` | A prefixed URL never appears in a route template. The middleware moves the segment into `Request.PathBase`, so routing sees `/pricing` and `<base href>` becomes `/pl/`. |
 | `Indexable` on a permissioned Site | Already `false` — it derives from `Permission is null`. `UseDashboard` pins it explicitly on top of that. |
 | Two live URLs per page | Impossible by construction: a non-canonical culture spelling, a missing trailing slash on the language root and an untranslated route all answer **301** to the one canonical form. |
-| `robots.txt` in `wwwroot` | Shadowed. The framework serves a generated one that knows which cultures are indexed and whether the Site is closed. Set `o.Robots.Enabled = false` to hand the path back. |
+| `robots.txt` in `wwwroot` | Shadowed once a Site calls `o.Indexing(...)` — the generated one knows which cultures are indexed and whether the Site is closed. Set `x.Robots.Enabled = false` to hand the path back. |
 
 ## Culture in the URL
 
@@ -206,29 +206,53 @@ Structured data is skipped entirely on a `noindex` page.
 o.Indexable = null;   // default → derived from Permission is null
 ```
 
+Precedence, highest first — the first three are Site-level and a page cannot argue with them:
+
 | State | `robots` meta | `robots.txt` |
 | --- | --- | --- |
 | Site not indexable | `noindex, nofollow` | `Disallow: /` |
-| `Meta.NoIndex` | `noindex, follow` | — |
 | culture not in `IndexedCultures` | `noindex, follow` | `Disallow: /{segment}/` |
-| otherwise | *no tag* | normal |
+| `Metadata.Robots = "…"` | that string verbatim (`""` → no tag) | — |
+| `Metadata.NoIndex` | `noindex, follow` | — |
+| otherwise | `SeoDocument.DefaultRobots` | normal |
 
-No tag is emitted for the normal case: "index, follow" is what a crawler already assumes, and
-noise in the head is how contradictory directives eventually ship.
+`DefaultRobots` is `index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1`.
+The `index, follow` half is what a crawler assumes anyway; the three limits are **not** — they
+default to conservative values, so a site that says nothing is opting into a smaller SERP
+presentation without meaning to. `max-image-preview:large` is what makes a result eligible for the
+large image thumbnail. Emitting the positive form also removes a real ambiguity: "no tag" and "the
+head renderer never ran" look identical in view-source.
 
-## robots.txt and llms.txt
+## robots.txt, sitemap.xml and llms.txt
+
+All three live in **`Zonit.Extensions.Website.Sitemaps`**, configured as one tree:
 
 ```csharp
-o.Robots
-    .Disallow("/search")
-    .Allow("/search/help")
-    .Sitemap("/sitemap.xml")
-    .AddLlmsLink("Docs", "/docs", "API reference");   // enables /llms.txt
+app.UseWebsite("/", o => o.Indexing(x =>
+{
+    x.Robots.Disallow("/search").Allow("/search/help");
+
+    x.Llms.Summary = "What this site is, for a reader who has never seen it.";
+    x.Llms.AddLink("Docs", "/docs", "API reference — the source for parameter-level questions.");
+}));
 ```
 
-Generated per request from live state, so the crawl directives cannot drift from what the pipeline
-does. Framework paths (`/_framework/`, `/_blazor`) are disallowed automatically. Both files are
-served inside the Site's branch, so a mount at `/admin` answers at `/admin/robots.txt`.
+One call maps all three endpoints. **The sitemap address is not restated**: `robots.txt` takes it
+from the same call that mounted it. That is the whole reason they share a tree — a `robots.txt`
+naming a sitemap that moved is a *valid file*, so the mistake never surfaces as an error, and
+splitting the configuration made that agreement something the host retyped by hand.
+
+Generated per request from live state, so the directives cannot drift from what the pipeline does:
+a Site behind a permission is `Disallow: /`, a language outside `IndexedCultures` gets its segment
+disallowed, framework paths (`/_framework/`, `/_blazor`) are disallowed automatically. Served
+inside the Site's branch, so a mount at `/admin` answers at `/admin/robots.txt`.
+
+`llms.txt` stays off until the first `AddLink`. A file whose only content is the site title tells
+an agent nothing it could not read from the page, and an empty one is worse than none — it looks
+authoritative and says nothing. Write link descriptions about **when** the resource is the right
+thing to read; an agent picks a source by its description, not its name.
+
+A Site that never calls `Indexing()` serves none of the three.
 
 ## Configuration
 

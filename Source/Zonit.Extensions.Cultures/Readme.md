@@ -18,7 +18,7 @@ dotnet add package Zonit.Extensions.Cultures
 - **`ICultureManager : ICultureState`** (scoped, write) — `void SetCulture(Culture culture)` and `void SetTimeZone(Zone timeZone)`. Both accept plain strings through the value objects' implicit conversions; an unrecognised value **silently** falls back to the configured default instead of throwing.
 - **`ICultureProvider`** (scoped, render side) — `Translation Translate(string content, params object?[] args)`, `DateTime ClientTimeZone(DateTime utcDateTime)`, `Culture Current`, `DateTimeFormatModel DateTimeFormat`, `event Action? OnChange`.
 - **`ITranslationManager`** (singleton) — `void Add(Variable item)` and `void AddRange(List<Variable> items)`, writing the process-wide registry.
-- **`ILanguageProvider`** (singleton) — 17 built-in `LanguageModel`s, O(1) exact lookup with a primary-subtag fallback (`en-gb` → `en-us`) and a hard fallback to `en-us`.
+- **`ILanguageProvider`** (singleton) — 25 built-in `LanguageModel`s, O(1) exact lookup with a primary-subtag fallback (`en-gb` → `en-us`) and a hard fallback to `en-us`.
 - **`DetectCultureService`** (singleton) — `HttpContext`-free parser: `GetUrl("/pl-pl/home")` → `PathCulture(Url: "home", Culture: "pl-pl")`, including the `/pl/` → `pl-pl` subtag fold.
 
 The ASP.NET middleware that consumes all of this (URL → cookie → `Accept-Language` → default, plus a

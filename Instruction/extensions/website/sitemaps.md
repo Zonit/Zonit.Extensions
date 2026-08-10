@@ -1,7 +1,13 @@
-# Sitemaps
+# Crawling and indexing — robots.txt, sitemap.xml, llms.txt
 
-`Zonit.Extensions.Website.Sitemaps` generates `/sitemap.xml` and its parts from sources that
-plug-ins register themselves.
+Part of `Zonit.Extensions.Website`. There is no separate package: the generator needs
+`ICurrentSite`, the culture policy and the localized-route table, so it could never stand alone,
+and splitting it only made `robots.txt` conditional on remembering an install.
+
+The three files are one statement in three formats and only work if they agree — `robots.txt` must
+name the sitemap's real address, and neither may contradict the culture policy about which
+languages are indexed. One options tree is what lets the framework derive that instead of asking
+you to keep it in step.
 
 ## Read this before you write code
 
@@ -16,15 +22,71 @@ plug-ins register themselves.
 ## Setup
 
 ```csharp
-builder.Services.AddWebsite(w => w.AddArea<NewsArea>());
-builder.Services.AddSitemap();
+builder.Services.AddWebsite(w => w.AddArea<NewsArea>());   // AddSitemap() runs inside
 
-app.UseWebsite("/", o =>
-{
-    o.MapEndpoints(ep => ep.MapSitemap());
-    o.Robots.Sitemap("/sitemap.xml");     // advertise it to crawlers
-});
+app.UseWebsite("/", o => o.Indexing());   // robots.txt + sitemap.xml + llms.txt
 ```
+
+`Indexing()` maps all three and advertises the sitemap in `robots.txt` without you naming its
+address twice. Reach for `o.MapEndpoints(ep => ep.MapSitemap())` only to publish a sitemap that
+`robots.txt` should *not* name.
+
+## Static pages — the `[WebsiteSitemap]` attribute
+
+A page publishes itself. Collected at **build time** by a source generator, so nothing scans,
+reflects or allocates at run time.
+
+```csharp
+@page "/ebook"
+@attribute [WebsiteSitemap(Change = ChangeFrequency.Monthly, Priority = 0.8)]
+
+// or, when the route is a const in code-behind — the generator resolves it:
+[Route(Route)]
+[WebsiteSitemap(Change = ChangeFrequency.Daily)]
+[WebsiteLlms("Settled outcomes for every signal — the source for hit-rate questions.")]
+public sealed partial class Signals : PageBase { public const string Route = "/signals"; }
+```
+
+**Opt-in, deliberately.** A page is in the sitemap because someone wrote the attribute. The
+opt-out default reads as safer and is not: its failure mode is a page written in a hurry — an
+internal tool, a half-finished feature — being *advertised to search engines* before anyone
+decided it should be public. Forgetting the attribute costs a listing, which is visible in Search
+Console and recoverable. Forgetting to remove one publishes something.
+
+**No `@page` duplication.** The generator reads the route from the same file as the attribute, or
+from `[Route(...)]` on the same class. `[WebsiteSitemap("/explicit")]` exists for the case where neither
+is visible.
+
+**Parameterised routes warn.** `/signals/{slug}` is a template, not a URL, so it cannot go into the
+XML — and the build says so by name:
+
+```
+warning ZONITSM0001: 'Signals.Details' declares [WebsiteSitemap] but its route '/signals/{slug}' has a
+                     parameter. Enumerate the real URLs with an ISitemapSource, or remove [WebsiteSitemap].
+```
+
+**Authorized pages need nothing.** `[Authorize]`, `[RequirePermission]` and `[RequireRole]` imply
+`noindex, follow` on the rendered page. Not a `Disallow`: that file is written for anyone to read,
+so listing gated paths publishes a map of where the interesting parts are — and it would not work
+anyway, since a disallowed URL can still be indexed bare, the crawler being forbidden from
+fetching the page that would have told it not to.
+
+**`noindex` on a public page** stays where it was: `PageMeta.NoIndex`, or `PageMeta.Robots` for a
+directive the framework does not model.
+
+## `[WebsiteLlms]` — the site briefed for an agent
+
+Separate attribute, because it answers a different question. A sitemap is an inventory of
+everything worth crawling; `llms.txt` is a briefing — the handful of pages that explain what the
+site is and where its real answers live. Most pages want only `[WebsiteSitemap]`.
+
+Write the description about **when** to read the page. An agent picks a source by its description,
+not its name.
+
+Entries merge with anything the host declared through `x.Llms.AddLink(...)`, which covers what no
+page can: an external doc, a dataset, a section that is not one route. `Section` groups them; the
+summary block comes from `x.Llms.Summary`, then the tenant's `Site.About`, then its meta
+description.
 
 ## A source
 

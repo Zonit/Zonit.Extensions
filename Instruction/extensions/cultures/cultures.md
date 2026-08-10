@@ -96,7 +96,7 @@ There is no middleware and no automatic detection here — culture is set progra
 | --- | --- | --- |
 | `DefaultCulture` | `"en-US"` | Initial culture of every scope **and** the fallback language of the lookup. Compared `OrdinalIgnoreCase`. An unparseable value degrades to `en-US` instead of throwing. |
 | `DefaultTimeZone` | `"Europe/Warsaw"` | IANA or Windows id, or a fixed offset (`"UTC-5"`). Unparseable → `Zone.Utc`. |
-| `SupportedCultures` | all 17 built-ins, lowercase | The allow-list. `SetCulture` and the middleware reject anything not in it. A configured list **replaces** the defaults (see below); an absent or empty one keeps them. Keep entries lowercase — `DetectCultureService` lowercases the URL segment before an **ordinal** `HashSet` lookup, so an uppercase entry is unreachable from URL detection. |
+| `SupportedCultures` | all 25 built-ins, lowercase | The allow-list. `SetCulture` and the middleware reject anything not in it. A configured list **replaces** the defaults (see below); an absent or empty one keeps them. Keep entries lowercase — `DetectCultureService` lowercases the URL segment before an **ordinal** `HashSet` lookup, so an uppercase entry is unreachable from URL detection. |
 | `TrackMissingTranslations` | `false` | Opt-in recording of unresolved keys. |
 | `MaxTrackedMissingTranslations` | `1000` (`MissingTranslationRepository.DefaultCapacity`) | Hard ceiling on distinct recorded keys. `<= 0` throws `ArgumentOutOfRangeException` on first resolve. |
 
@@ -133,7 +133,7 @@ reload, `ICultureProvider` re-emits it and `ExtensionsBase` re-renders through
 - **Narrowing evicts the active culture.** A scope sitting on `de-de` when `de-de` leaves the list
   is re-resolved to `DefaultCulture` on the spot rather than left on a language the configuration
   no longer permits.
-- **A new language must be one of the 17 built-ins** to get a real picker entry — `ILanguageProvider`
+- **A new language must be one of the 25 built-ins** to get a real picker entry — `ILanguageProvider`
   is a frozen registry, so anything else renders as "English". See the traps section.
 - **`MaxTrackedMissingTranslations` is the one option that does not reload.** It sizes the bounded
   missing-key buffer at construction; changing it needs a restart.
@@ -153,7 +153,7 @@ without touching configuration.
 | `DefaultTranslationRepository` | Singleton | Registered but never read by the framework. Ignore it. |
 | `MissingTranslationRepository` | Singleton | Bounded diagnostic buffer, see below. |
 | `ITranslationManager` | Singleton | Safe to inject into an `IHostedService`. |
-| `ILanguageProvider` | Singleton | Frozen registry of the 17 built-ins. |
+| `ILanguageProvider` | Singleton | Frozen registry of the 25 built-ins. |
 | `DetectCultureService` | Singleton | Rebuilds its `SupportedCultures` set on configuration reload, so URL detection follows the live config. |
 | `ICultureState` / `ICultureManager` | Scoped | The **same object** under both contracts, so a writer and a reader in one request/circuit share state and `OnChange`. |
 | `ICultureProvider` | Scoped | Subscribes to the state's `OnChange` and re-emits it. |
@@ -327,10 +327,10 @@ now — `Zone` is unambiguous in a plain `using Zonit.Extensions;` file and in `
 - `ICultureState.Supported` is `ImmutableArray<LanguageModel>`, one entry per configured tag, built
   through `ILanguageProvider.GetByCode`. That lookup **never fails**: an unknown tag silently yields
   the English model, so `SupportedCultures = ["pl-pl", "uk-ua"]` renders a picker with two entries
-  where the second says "English". Only the 17 built-ins are real:
-  `ar-sa cs-cz da-dk de-de en-us es-es fi-fi fr-fr hu-hu it-it nl-nl no-no pl-pl pt-pt ru-ru sk-sk sv-se`.
-- `LanguageModel.NativeName` falls back to `EnglishName` on every built-in (`"Polish"`, not
-  `"polski"`), and `IsRightToLeft` is `false` even for `ar-sa`. If you want a real endonym, use the
+  where the second says "English". Only the 25 built-ins are real:
+  `ar-sa bg-bg bn-bd cs-cz da-dk de-de el-gr en-us es-es et-ee fi-fi fr-fr hu-hu it-it lt-lt lv-lv mt-mt nl-nl no-no pl-pl pt-pt ro-ro ru-ru sk-sk sv-se`.
+- `LanguageModel.NativeName` falls back to `EnglishName` on the older built-ins (`"Polish"`, not
+  `"polski"`); the eight added in preview.18 set it properly, and `IsRightToLeft` is `false` even for `ar-sa`. If you want a real endonym, use the
   `Culture` VO: `((Culture)"pl-pl").NativeName` → `"polski (Polska)"`.
 - `LanguageModel.IconFlag` is an inline `<svg>` string — wrap it in `(MarkupString)`.
 

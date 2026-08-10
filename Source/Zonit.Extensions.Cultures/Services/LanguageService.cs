@@ -18,27 +18,67 @@ public sealed class LanguageService : ILanguageProvider
     /// <summary>The default language returned when no other match is found.</summary>
     private const string DefaultCode = "en-us";
 
+    /// <summary>
+    /// Built-in languages, in declaration order. The order is load-bearing: the primary-subtag
+    /// index below keeps the FIRST model registered for a subtag, so when two regional variants of
+    /// one language are both present, whichever is listed first here is what a bare <c>en</c> or
+    /// <c>es</c> resolves to.
+    /// </summary>
+    /// <remarks>
+    /// An array rather than the dictionary's own enumeration. <see cref="FrozenDictionary{TKey,
+    /// TValue}"/> guarantees no ordering, so building the subtag index by walking it would decide
+    /// "which English is <c>en</c>" by hash layout — stable within a build, silently different
+    /// after adding an unrelated entry, and impossible to see in code review.
+    /// </remarks>
+    private static readonly LanguageModel[] Registry =
+    [
+        new Arabic(),
+        new Bengali(),
+        new Bulgarian(),
+        new Czech(),
+        new Danish(),
+        new Dutch(),
+        new English(),
+        new Estonian(),
+        new Finnish(),
+        new French(),
+        new German(),
+        new Greek(),
+        new Hungarian(),
+        new Italian(),
+        new Latvian(),
+        new Lithuanian(),
+        new Maltese(),
+        new Norwegian(),
+        new Polish(),
+        new Portuguese(),
+        new Romanian(),
+        new Russian(),
+        new Slovak(),
+        new Spanish(),
+        new Swedish(),
+    ];
+
     /// <summary>Built-in registry — exact code (lower-cased BCP 47) → model. Frozen, AOT-safe.</summary>
-    private static readonly FrozenDictionary<string, LanguageModel> ByCode = new Dictionary<string, LanguageModel>(StringComparer.OrdinalIgnoreCase)
+    private static readonly FrozenDictionary<string, LanguageModel> ByCode = BuildCodeIndex();
+
+    private static FrozenDictionary<string, LanguageModel> BuildCodeIndex()
     {
-        ["ar-sa"] = new Arabic(),
-        ["cs-cz"] = new Czech(),
-        ["da-dk"] = new Danish(),
-        ["nl-nl"] = new Dutch(),
-        ["en-us"] = new English(),
-        ["fi-fi"] = new Finnish(),
-        ["fr-fr"] = new French(),
-        ["de-de"] = new German(),
-        ["hu-hu"] = new Hungarian(),
-        ["it-it"] = new Italian(),
-        ["no-no"] = new Norwegian(),
-        ["pl-pl"] = new Polish(),
-        ["pt-pt"] = new Portuguese(),
-        ["ru-ru"] = new Russian(),
-        ["sk-sk"] = new Slovak(),
-        ["es-es"] = new Spanish(),
-        ["sv-se"] = new Swedish(),
-    }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
+        var seed = new Dictionary<string, LanguageModel>(StringComparer.OrdinalIgnoreCase);
+        foreach (var model in Registry)
+        {
+            seed[model.Code] = model;
+
+            // AlternativeCodes was documented as part of resolution and was never read — a model
+            // could declare "en-gb" and the lookup would still fall through to the primary subtag.
+            // Folded into the exact index so it resolves before the subtag guess, which is the
+            // order the contract always claimed. First declaration wins, so an alias can never
+            // displace a language that owns the tag outright.
+            foreach (var alias in model.AlternativeCodes)
+                seed.TryAdd(alias, model);
+        }
+        return seed.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
+    }
 
     /// <summary>Secondary index: primary subtag (<c>en</c>) → first registered model with that subtag.</summary>
     private static readonly FrozenDictionary<string, LanguageModel> ByPrimarySubtag = BuildPrimarySubtagIndex();
@@ -46,8 +86,9 @@ public sealed class LanguageService : ILanguageProvider
     private static FrozenDictionary<string, LanguageModel> BuildPrimarySubtagIndex()
     {
         var seed = new Dictionary<string, LanguageModel>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (code, model) in ByCode)
+        foreach (var model in Registry)
         {
+            var code = model.Code;
             var dash = code.IndexOf('-');
             var primary = dash >= 0 ? code[..dash] : code;
             seed.TryAdd(primary, model);

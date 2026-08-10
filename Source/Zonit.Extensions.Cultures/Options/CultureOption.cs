@@ -24,13 +24,13 @@ public class CultureOption
 
     /// <summary>
     /// The allow-list. <c>SetCulture</c>, <c>CultureMiddleware</c> and the language picker all
-    /// reject anything absent from it. Defaults to the 17 built-in languages.
+    /// reject anything absent from it. Defaults to all 25 built-in languages.
     /// </summary>
     /// <remarks>
     /// <para>A <c>"Culture:SupportedCultures"</c> section <b>replaces</b> this list rather than
     /// extending it — configure <c>[ "en-us", "pl-pl" ]</c> and exactly those two remain. That
     /// takes a deliberate step in <c>AddCulturesExtension</c>, because <c>ConfigurationBinder</c>
-    /// appends to an already-populated collection; without it the same section would produce 19
+    /// appends to an already-populated collection; without it the same section would produce 27
     /// entries with two duplicates. An absent or empty section keeps the defaults, so there is no
     /// way to configure an allow-list nothing can match.</para>
     ///
@@ -57,7 +57,15 @@ public class CultureOption
         "cs-cz",
         "hu-hu",
         "sk-sk",
-        "pt-pt"
+        "pt-pt",
+        "el-gr",
+        "ro-ro",
+        "bg-bg",
+        "lt-lt",
+        "lv-lv",
+        "et-ee",
+        "mt-mt",
+        "bn-bd"
     ];
 
     /// <summary>

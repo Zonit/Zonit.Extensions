@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using System.IO.Compression;
+using Zonit.Extensions.Website.Sitemaps;
 using System.Text.Encodings.Web;
 using System.Text.Unicode;
 using Microsoft.Extensions.WebEncoders;
@@ -145,6 +146,12 @@ public static class WebsiteServiceCollectionExtensions
         services.AddToastsExtension();
         services.AddCookiesExtension();
         services.AddLayoutsExtension();
+
+        // robots.txt / sitemap.xml / llms.txt. Registered unconditionally, because after the
+        // merge there is no package to forget: a Site opts in per mount with o.Indexing(...), and
+        // a host that never calls it pays a generator and a cache object that are never resolved.
+        // Call AddSitemap(...) explicitly only to change the generation limits or cache duration.
+        services.AddSitemap();
 
         // Domain cores (idempotent — TryAdd-based + Null*Source safety net inside).
         services.AddCulturesExtension();
@@ -647,11 +654,12 @@ public static class WebsiteServiceCollectionExtensions
             // stripping.
             ep.MapStaticAssets();
 
-            // Before the Razor host, so a page routed at "/robots.txt" cannot shadow the
-            // generated one. Both files describe the Site's crawl policy and are derived from
-            // the same options the middleware obeys.
-            RobotsEndpoints.Map(ep, site, urlPolicy);
-
+            // robots.txt / llms.txt / sitemap.xml are mapped by the Site's own hooks below, via
+            // SiteOptions.Indexing(...) in Zonit.Extensions.Website.Sitemaps. They sit outside the
+            // kernel because the three files are one statement in three formats and only work if
+            // they agree — robots.txt has to name the sitemap's real address, and neither may
+            // contradict the culture policy about which languages are indexed. Splitting them
+            // across a package boundary made that agreement something a host retyped by hand.
             if (opts.RazorComponents)
             {
                 var razor = ep.MapRazorComponents<TApp>();

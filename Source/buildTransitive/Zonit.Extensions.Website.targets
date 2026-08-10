@@ -61,13 +61,23 @@
       <Area>website</Area>
       <Summary>Culture in the URL, PageMeta, structured data (JSON-LD), indexability and the generated robots.txt / llms.txt.</Summary>
       <Glob>**/*.razor</Glob>
-      <SourceFile>$(MSBuildThisFileDirectory)..Instructionextensionswebsiteseo.md</SourceFile>
+      <SourceFile>$(MSBuildThisFileDirectory)..\Instruction\extensions\website\seo.md</SourceFile>
     </ZonitExtDoc>
     <ZonitExtDoc Include="document">
       <Area>website</Area>
       <Summary>The document shell: AppBase, DocumentOptions, the client-side appearance system and the culture / theme switcher base classes.</Summary>
       <Glob>**/App.razor</Glob>
-      <SourceFile>$(MSBuildThisFileDirectory)..Instructionextensionswebsitedocument.md</SourceFile>
+      <SourceFile>$(MSBuildThisFileDirectory)..\Instruction\extensions\website\document.md</SourceFile>
+    </ZonitExtDoc>
+    <ZonitExtDoc Include="sitemaps">
+      <Area>website</Area>
+      <Summary>robots.txt, sitemap.xml and llms.txt as one subsystem: the [Seo] attribute, Crawl states and ISitemapSource for dynamic content.</Summary>
+      <SourceFile>$(MSBuildThisFileDirectory)..\Instruction\extensions\website\sitemaps.md</SourceFile>
+    </ZonitExtDoc>
+    <ZonitExtDoc Include="changelog">
+      <Area>website</Area>
+      <Summary>What changed in each release — read this before assuming an API exists, was renamed, or was removed.</Summary>
+      <SourceFile>$(MSBuildThisFileDirectory)..\Instruction\extensions\website\changelog.md</SourceFile>
     </ZonitExtDoc>
     <ZonitExtDoc Include="aot">
       <Area>website</Area>

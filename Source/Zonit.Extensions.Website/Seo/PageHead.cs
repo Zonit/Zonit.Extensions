@@ -75,6 +75,17 @@ public sealed class PageHead : ComponentBase, IDisposable
         _markup = new MarkupString(Render(next));
     }
 
+    /// <summary>
+    /// The routed page's type, supplied by <c>ZonitRouteView</c>. Carries the page's own
+    /// <c>[Seo]</c> declaration and its authorization attributes.
+    /// </summary>
+    /// <remarks>
+    /// The type rather than the component instance: the declaration is metadata, and reading it
+    /// off the type is what lets the same answer be produced while assembling the sitemap, where
+    /// there is nothing to render.
+    /// </remarks>
+    [Parameter] public Type? PageType { get; set; }
+
     private SeoDocument Compose() => SeoDocumentBuilder.Build(
         Meta.Current,
         Tenant.Settings.Site,
@@ -82,7 +93,8 @@ public sealed class PageHead : ComponentBase, IDisposable
         Culture.Current.ValueOrDefault ?? string.Empty,
         Tenant.Settings.SocialMedia,
         Breadcrumbs.Get(),
-        s => Translator.Translate(s).Value);
+        s => Translator.Translate(s).Value,
+        PageType is not null && PageIndexing.RequiresAuthorization(PageType));
 
     protected override void BuildRenderTree(RenderTreeBuilder builder)
     {

@@ -169,17 +169,9 @@ public class SiteOptions
     /// </summary>
     public DocumentOptions Document { get; } = new();
 
-    /// <summary>
-    /// Generated <c>robots.txt</c> and <c>llms.txt</c> for this Site. Derived from
-    /// <see cref="Indexable"/> and the culture policy, so the crawl directives cannot drift away
-    /// from what the pipeline actually does.
-    /// </summary>
-    /// <remarks>
-    /// Code, not configuration: the file is generated per request from live state — which
-    /// cultures are indexed, whether the Site is closed — so there is nothing here an operator
-    /// would edit that is not already derived from something they can edit.
-    /// </remarks>
-    public RobotsOptions Robots { get; } = new();
+    // robots.txt, sitemap.xml and llms.txt are configured through SiteOptions.Indexing(...) in
+    // Zonit.Extensions.Website.Sitemaps — one tree, because the three files have to agree with
+    // each other and the kernel cannot enforce that from one of them.
 
     /// <inheritdoc cref="SiteSettings.Indexable"/>
     public bool? Indexable

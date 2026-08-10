@@ -68,6 +68,19 @@ public sealed class PageMeta
     public bool NoIndex { get; set; }
 
     /// <summary>
+    /// Replaces the whole <c>robots</c> directive for this page. <see langword="null"/> uses the
+    /// Site's default; an empty string emits no tag at all.
+    /// </summary>
+    /// <remarks>
+    /// The escape hatch for directives the framework does not model — <c>noarchive</c>,
+    /// <c>unavailable_after</c>, a per-crawler rule. It wins outright over <see cref="NoIndex"/>,
+    /// so a page setting both is stating the full string on purpose. Site-level withholding still
+    /// takes precedence: a Site that is not indexable, or a language deliberately kept out of the
+    /// index, cannot be talked into <c>index</c> by a page.
+    /// </remarks>
+    public string? Robots { get; set; }
+
+    /// <summary>
     /// Overrides the canonical URL. <see langword="null"/> — the default — derives it from the
     /// request, which is right for almost every page.
     /// </summary>

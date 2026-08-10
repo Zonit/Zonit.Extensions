@@ -7,6 +7,16 @@ namespace Zonit.Extensions.Website.Sitemaps;
 /// </summary>
 public enum ChangeFrequency
 {
+    /// <summary>
+    /// Not stated. The default, and the honest answer for most pages — the element is omitted
+    /// rather than filled with a guess.
+    /// </summary>
+    /// <remarks>
+    /// Zero on purpose, so <c>[Seo]</c> and <c>SitemapEntry</c> both default to "say nothing"
+    /// without either of them special-casing it.
+    /// </remarks>
+    Unset = 0,
+
     /// <summary>Changes on every access.</summary>
     Always,
     /// <summary>Hourly.</summary>

@@ -116,6 +116,10 @@ public static class SeoDocumentBuilder
     /// <see cref="PageMeta.Translate"/> to <see langword="false"/>. <see langword="null"/> leaves
     /// the text alone — which is what a caller outside a request scope should pass.
     /// </param>
+    /// <param name="gated">
+    /// Whether reaching the routed page needs an authenticated principal. Such a page is kept out
+    /// of the index without being disallowed — see <see cref="PageIndexing"/>.
+    /// </param>
     public static SeoDocument Build(
         PageMeta? meta,
         SiteSettingsModel site,
@@ -123,7 +127,8 @@ public static class SeoDocumentBuilder
         string culture,
         SocialMediaModel? social = null,
         IReadOnlyList<BreadcrumbsModel>? breadcrumbs = null,
-        Func<string, string>? translate = null)
+        Func<string, string>? translate = null,
+        bool gated = false)
     {
         ArgumentNullException.ThrowIfNull(site);
 
@@ -152,12 +157,19 @@ public static class SeoDocumentBuilder
         var prefix = origin + url.SitePathBase;
 
         var canonical = ResolveCanonical(meta, url, culture, prefix);
-        var robots = ResolveRobots(meta, url, culture);
+        var robots = ResolveRobots(meta, url, culture, gated);
 
         // A cluster is only meaningful when the page is actually a candidate for the index and
         // the languages live at distinct addresses. On a noindex page it is ignored at best and
         // contradictory at worst.
-        var indexable = robots is null;
+        //
+        // Test the directive's CONTENT, not its presence. This used to read `robots is null`,
+        // which was true exactly while the indexable case emitted no tag — the moment that case
+        // started emitting `index, follow, ...`, every page would have looked non-indexable and
+        // the whole hreflang cluster plus x-default would have vanished from the site. Silently:
+        // valid HTML, no error, just no alternates.
+        var indexable = robots is null
+            || !robots.Contains("noindex", StringComparison.OrdinalIgnoreCase);
         var alternates = indexable && url.Policy.IsPrefixed
             ? BuildAlternates(meta, url, prefix)
             : [];
@@ -244,25 +256,49 @@ public static class SeoDocumentBuilder
     }
 
     /// <summary>
-    /// <see langword="null"/> means "emit no robots tag", which is the honest encoding of
-    /// "index, follow" — the tag adds nothing a crawler does not already assume.
+    /// Default directive for a page that is free to be indexed.
     /// </summary>
-    private static string? ResolveRobots(PageMeta? meta, ICultureUrlFeature url, string culture)
+    /// <remarks>
+    /// <para><c>index, follow</c> on its own would be noise — it is what a crawler assumes from an
+    /// absent tag. The three limits after it are not: <c>max-image-preview:large</c> is what makes
+    /// a result eligible for the large image thumbnail, and the two <c>-1</c>s lift the default
+    /// caps on snippet length and video preview. All three default to a conservative value, so a
+    /// site that says nothing is opting into the smaller presentation without meaning to.</para>
+    ///
+    /// <para>Emitting the positive form also makes indexability visible in the page itself. "No
+    /// tag" and "the head renderer never ran" look identical in view-source, and that ambiguity
+    /// costs an afternoon every time someone audits why a page is missing from the index.</para>
+    /// </remarks>
+    public const string DefaultRobots = "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1";
+
+    /// <summary>
+    /// Resolves the <c>robots</c> directive. <see langword="null"/> means "emit no tag".
+    /// </summary>
+    private static string? ResolveRobots(PageMeta? meta, ICultureUrlFeature url, string culture, bool gated)
     {
         // A closed Site is closed outright: its links lead to more of the same, so there is
-        // nothing to gain from letting them be followed.
+        // nothing to gain from letting them be followed. Checked before the page override —
+        // withholding is a Site-level decision a page must not be able to reverse.
         if (!url.Indexable)
             return "noindex, nofollow";
 
-        // A page or a language withheld from the index still wants its links crawled — that is
-        // how the indexed languages are discovered from it.
-        if (meta?.NoIndex == true)
-            return "noindex, follow";
-
+        // A language withheld from the index still wants its links crawled — that is how the
+        // indexed languages are discovered from it. Same reasoning: not a page's call.
         if (url.Policy.IsPrefixed && !url.Policy.IsIndexed(culture))
             return "noindex, follow";
 
-        return null;
+        // Explicit page directive wins over NoIndex; empty means "emit nothing".
+        if (meta?.Robots is { } robots)
+            return robots.Length == 0 ? null : robots;
+
+        if (meta?.NoIndex == true)
+            return "noindex, follow";
+
+        // Behind authorization: keep it out of the index, keep its links followable.
+        if (gated)
+            return "noindex, follow";
+
+        return DefaultRobots;
     }
 
     private static SeoAlternate[] BuildAlternates(PageMeta? meta, ICultureUrlFeature url, string prefix)

@@ -92,6 +92,19 @@ public interface ICurrentSite
     WebsiteMode Mode { get; }
 
     /// <summary>
+    /// Whether the active Site may be indexed: the explicit setting when present, otherwise
+    /// "indexable unless this Site requires a permission".
+    /// </summary>
+    /// <remarks>
+    /// Read per request, not captured at startup, so an operator flipping <c>Indexable</c> in the
+    /// <c>Website</c> section reaches a running process. Exposed publicly because the packages that
+    /// have to agree with it — the one generating <c>robots.txt</c>, the one generating the
+    /// sitemap — live outside the kernel, and a crawl directive that disagrees with the pipeline
+    /// is worse than no directive at all.
+    /// </remarks>
+    bool Indexable { get; }
+
+    /// <summary>
     /// Called once by the per-Site branch middleware. Subsequent calls overwrite
     /// and pin the explicit Site, so the singleton fallback is no longer consulted
     /// on this scope.
@@ -111,6 +124,7 @@ internal sealed class CurrentSite : ICurrentSite
     private static readonly DocumentOptions DefaultDocument = new();
 
     private bool _explicit;
+    private SiteOptions? _site;
     private UrlPath _directory = UrlPath.Empty;
     private string? _permission;
     private AppearanceOptions _appearance = DefaultAppearance;
@@ -141,6 +155,7 @@ internal sealed class CurrentSite : ICurrentSite
     public void Set(SiteOptions site)
     {
         ArgumentNullException.ThrowIfNull(site);
+        _site = site;
         _directory = site.Directory;
         _permission = site.Permission;
         _areas = site.Areas;
@@ -175,6 +190,14 @@ internal sealed class CurrentSite : ICurrentSite
     public WebsiteMode Mode => _explicit
         ? _mode
         : ResolveSnapshot()?.Mode ?? WebsiteMode.Server;
+
+    // Settings are read through the live provider on every access rather than snapshotted in
+    // Set(), so a configuration reload lands without a restart. Outside a mount there is no
+    // settings resolver to consult, and "no permission required" is the honest fallback — the
+    // same rule ResolveIndexable applies when nothing was declared.
+    public bool Indexable => _site?.Settings is { } settings
+        ? SiteOptions.ResolveIndexable(settings.Current, _permission)
+        : _permission is null;
 
     public bool IsSet => _explicit || ResolveSnapshot() is not null;
 

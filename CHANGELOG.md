@@ -10,6 +10,164 @@ Every package in this repository versions together — there is no partial upgra
 
 ## 10.0.0-preview.18 — 2026-08-10
 
+### Changed — `Zonit.Extensions.Website.Sitemaps` is gone; it is part of the kernel
+
+The package could never work on its own — it needs `ICurrentSite`, the culture policy and the
+localized-route table — so "a package for people who only want sitemaps" described nothing that
+could exist. Meanwhile the split cost a package to forget, a version to skew, and made
+`robots.txt` conditional on installing it. Sitemaps, robots and llms are web-only concerns, unlike
+`Cultures` or `Tenants`, which is what makes the kernel their right home.
+
+- **Breaking.** Remove the `Zonit.Extensions.Website.Sitemaps` `PackageReference`. Namespaces are
+  unchanged (`Zonit.Extensions.Website.Sitemaps`), so `using` directives keep compiling.
+- `AddSitemap()` now runs inside `AddWebsite()`. Call it explicitly only to change the generation
+  limits or the cache duration.
+- The package is withdrawn at `10.0.0-preview.17`.
+
+### Added — `[WebsiteSitemap]` and `[WebsiteLlms]`, collected at build time
+
+Both carry the `Website` prefix on purpose: typing `Webs` in an editor lists every attribute this
+package contributes, next to `WebsiteMode` and `WebsiteHydrator`. An unprefixed `[Sitemap]` would
+also collide with the `WebsiteSitemap` class name projects commonly give their `ISitemapSource`.
+
+```csharp
+[Route(Route)]
+[WebsiteSitemap(Change = ChangeFrequency.Monthly, Priority = 0.8)]
+[WebsiteLlms("Settled outcomes for every signal — the source for hit-rate questions.")]
+public sealed partial class Signals : PageBase { public const string Route = "/signals"; }
+```
+
+Two attributes, because they answer different questions: a sitemap is an inventory of everything
+worth crawling, `llms.txt` is a briefing of the handful of pages that explain what the site is.
+Most pages want only the first.
+
+**Opt-in.** A page is published because someone wrote `[WebsiteSitemap]`. The opt-out default reads as
+safer and is not — its failure mode is a page written in a hurry being *advertised to search
+engines* before anyone decided it should be public. Forgetting the attribute costs a listing and
+shows up in Search Console; forgetting to remove one publishes something.
+
+**Collected by a source generator, not at start-up.** The set of static pages in an assembly is
+fixed the moment it compiles; rediscovering it by reflection each run costs start-up time,
+produces the same answer every time, and is opaque to trimming. `SitemapPageGenerator` emits an
+array literal and a `[ModuleInitializer]` that hands it to `StaticPageRegistry`.
+
+It reads two shapes: `@page` + `@attribute [WebsiteSitemap]` out of the `.razor` text (the Razor SDK puts
+every `.razor` into `AdditionalFiles`), and `[Route(...)]` + `[WebsiteSitemap]` off the C# symbol — where
+`[Route(Route)]` against a `const string` resolves to its value, which a text parser could not do.
+A generator cannot see another generator's output, so the `[Route]` the Razor compiler emits is
+invisible here; that is why the template is parsed rather than the generated class.
+
+**Parameterised routes warn at build time.** `ZONITSM0001` names the page: a route template is not
+a URL and cannot go into the XML. `ZONITSM0002` covers an attribute with no route in sight.
+
+- Static pages are served by a built-in `ISitemapSource` scoped to the areas the Site mounts, so
+  a host running a public site and an admin panel publishes different sitemaps. The hand-written
+  three-entry source every project used to carry is now the attributes themselves.
+- `[WebsiteLlms]` entries merge with `x.Llms.AddLink(...)`, grouped by `Section`.
+- `Site.About` (tenant) — what the site *is*, in prose, for `llms.txt`. Separate from
+  `MetaDescription`, which is a 160-character snippet written to earn a click and the wrong text
+  for an agent deciding whether the site can answer a question at all.
+- `ChangeFrequency.Unset` is new and is now the zero value.
+
+### Removed — the `[Seo]` attribute and the `Crawl` enum
+
+Both existed for a day. `Crawl` modelled four states only because the sitemap was opt-out; with
+opt-in, "not in the sitemap" is simply the default and the enum has nothing left to say.
+`noindex` stays on `PageMeta.NoIndex`, a `Disallow` stays on `x.Robots.Disallow(...)`, and
+`[Authorize]` / `[RequirePermission]` / `[RequireRole]` still imply `noindex` — see `PageIndexing`.
+
+
+### Added — eight languages in `Zonit.Extensions.Cultures`
+
+`bg-bg` Bulgarian · `bn-bd` Bengali · `el-gr` Greek · `et-ee` Estonian · `lt-lt` Lithuanian ·
+`lv-lv` Latvian · `mt-mt` Maltese · `ro-ro` Romanian. Registry goes 17 → 25, and all eight are
+added to `CultureOption.SupportedCultures`.
+
+This matters more than a list of tags because `ILanguageProvider.GetByCode` **never fails**: a tag
+outside the registry silently resolves to the English model, so a picker configured with `ro-ro`
+before this release rendered an entry labelled "English" with an American flag and no warning
+anywhere. Each new model ships its own inline SVG flag and a real `NativeName`.
+
+### Fixed — `AlternativeCodes` was documented but never read
+
+`LanguageModel.AlternativeCodes` has always said resolution goes "exact code, then primary subtag,
+then anything in `AlternativeCodes`". `LanguageService` only ever consulted the first two — a model
+declaring an alias got nothing. Aliases now fold into the exact-match index, which is the order the
+contract always claimed.
+
+### Fixed — which regional variant owns a bare subtag was decided by hash order
+
+The primary-subtag index (`en` → some `en-*`) was built by enumerating a `FrozenDictionary`, which
+guarantees no ordering. With one variant per language that was invisible; the moment a second
+arrives — `en-gb` beside `en-us`, `es-mx` beside `es-es` — which one a bare `en` resolves to would
+have been decided by hash layout: stable within a build, silently different after adding an
+unrelated entry, and invisible in review. The registry is now an explicitly ordered array and first
+declaration wins.
+
+### Documentation
+
+- `CHANGELOG.md` now ships **inside the package** and installs into a consumer's `.zonit/` tree as
+  `changelog.md`. An assistant working in a consumer repository could see the current API surface
+  and the consumer's code, but nothing about which release moved what — so "is this new, renamed,
+  or gone?" was unanswerable without leaving the repository. Packed from the repo file, so there
+  is one changelog and no copy to drift.
+- `sitemaps.md` moved from its own area into `website/`, and now documents the attributes, the
+  `Crawl`-free model, the generator diagnostics and the authorization rule.
+
+### Fixed
+
+- **`hreflang` and `x-default` would have disappeared from every page.** `SeoDocumentBuilder`
+  inferred indexability from `robots is null`, which held only while the indexable case emitted no
+  tag. The positive default introduced in this same release made every page look non-indexable, so
+  the whole alternates cluster was suppressed — silently, with valid HTML and no error. It now
+  tests the directive's content.
+- The AI-context installer shipped two broken paths: `seo.md` and `document.md` had their
+  directory separators stripped (`..Instructionextensionswebsiteseo.md`), so neither doc ever
+  installed into a consumer repository.
+
+### Changed — robots, sitemap and llms are now one subsystem
+
+`robots.txt` and `llms.txt` moved out of the kernel into **`Zonit.Extensions.Website.Sitemaps`**,
+joining `sitemap.xml` under a single options tree. The three files are one statement in three
+formats and only work if they agree: `robots.txt` has to name the sitemap's real address, and
+neither may contradict the culture policy about which languages are indexed. Configured
+separately, that agreement was a convention the host maintained by hand — and the failure is
+silent, because a `robots.txt` naming a sitemap that moved is a *valid file* crawlers simply
+believe.
+
+```csharp
+app.UseWebsite("/", o => o.Indexing(x =>
+{
+    x.Robots.Disallow("/search");
+    x.Llms.Summary = "…";
+    x.Llms.AddLink("Docs", "/docs", "API reference — for parameter-level questions.");
+}));
+```
+
+- **Breaking.** `SiteOptions.Robots` is gone. `o.Robots.Disallow/Allow` → `x.Robots.…`;
+  `o.Robots.Summary` → `x.Llms.Summary`; `o.Robots.AddLlmsLink(…)` → `x.Llms.AddLink(…)`;
+  `o.Robots.Sitemap("/sitemap.xml")` → **delete it**, `Indexing()` derives it; and
+  `o.MapEndpoints(ep => ep.MapSitemap())` → **delete it**, `Indexing()` maps it.
+- **Breaking.** A Site that never calls `Indexing()` no longer serves `robots.txt`. It used to be
+  mapped by the kernel for every mount.
+- `ICurrentSite.Indexable` is new and public — the resolved verdict, read per request so a
+  configuration reload reaches a running process. It exists so packages outside the kernel can
+  agree with the pipeline instead of re-deriving the rule.
+- `MapSitemap()` remains, for the rare Site that publishes a sitemap `robots.txt` must not name.
+
+### Changed — pages now emit a positive `robots` directive
+
+The normal case used to emit no tag, on the grounds that `index, follow` is what a crawler assumes.
+It now emits `index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1`. The
+first half is indeed redundant; the three limits are not — they default to conservative values, so
+a site that said nothing was opting into a smaller SERP presentation without meaning to.
+`max-image-preview:large` is what makes a result eligible for the large image thumbnail. It also
+removes a real ambiguity: "no tag" and "the head renderer never ran" look identical in view-source.
+
+`PageMeta.Robots` is new — a string that replaces the directive outright (`""` emits no tag). Site
+level still wins: a closed Site, or a language kept out of the index, cannot be talked into
+`index` by a page.
+
 ### Added
 
 - **`IWebsiteArea.ConfigureDocument(IDocumentAssets)`** — an area declares its own stylesheets,

@@ -26,6 +26,21 @@ public sealed class SiteSettingsModel
     [StringLength(160, MinimumLength = 10, ErrorMessage = "Meta description must be 10-160 characters.")]
     public string MetaDescription { get; set; } = "This is a new website created";
 
+    /// <summary>
+    /// What this site actually is, in prose, for a reader who has never seen it. Fills the
+    /// summary block of <c>llms.txt</c>; falls back to <see cref="MetaDescription"/>.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately separate from <see cref="MetaDescription"/> rather than reusing it. That one
+    /// is a 160-character search snippet written to earn a click, and it is the wrong text for an
+    /// agent deciding whether this site can answer a question at all. This one has room to say
+    /// what the product does, who it is for and what makes its data trustworthy — the paragraph a
+    /// human would give if asked "what is this?".
+    /// </remarks>
+    [Display(Name = "About", Description = "What this site is, in prose — used to brief AI agents in llms.txt. Longer and more explanatory than the meta description.")]
+    [StringLength(1000, ErrorMessage = "About must be at most 1000 characters.")]
+    public string? About { get; set; }
+
     [Display(Name = "Default Language", Description = "Language used when the visitor has expressed no preference (BCP 47, e.g. 'en-US', 'pl-PL'). Must be one of the site's supported cultures.")]
     [Required(ErrorMessage = "Default language is required.")]
     [StringLength(10, MinimumLength = 2, ErrorMessage = "Default language code must be 2-10 characters.")]
