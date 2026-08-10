@@ -27,15 +27,30 @@ internal static class IndexingEndpoints
             : NotFound(context))
             .AllowAnonymous().ExcludeFromDescription();
 
-        endpoints.MapGet("/llms.txt", context => options.Llms.Enabled
+        // Enabled is not the whole story: a page carrying [WebsiteLlms] is content declared for
+        // this file just as much as an AddLink call is, and the flag only ever tracked the latter.
+        // Gating on it alone made a Site whose pages all declare themselves — the shape the
+        // attribute exists to encourage — answer 404 on a file it had plenty to say in.
+        endpoints.MapGet("/llms.txt", context => HasLlmsContent(context, options)
             ? Write(context, BuildLlms(context, options), "text/markdown; charset=utf-8")
             : NotFound(context))
             .AllowAnonymous().ExcludeFromDescription();
     }
 
+    private static bool HasLlmsContent(HttpContext context, IndexingOptions options)
+        => options.Llms.Enabled
+        || StaticPageRegistry.For(Assemblies(context)).Any(static p => p.LlmsDescription is not null);
+
     private static Task Write(HttpContext context, string body, string contentType)
     {
         context.Response.ContentType = contentType;
+
+        // Generation is a StringBuilder over an in-memory registry, so there is nothing to cache
+        // server-side. The header is for the FETCHER: llms.txt is pulled on demand by agent
+        // tooling — an IDE assistant, an MCP server — which may re-read it per session or per
+        // question, and this is the only way to tell it not to. One hour matches the sitemap's own
+        // regeneration window, so the two never disagree about how fresh the site claims to be.
+        context.Response.Headers.CacheControl = "public, max-age=3600";
         return context.Response.WriteAsync(body, context.RequestAborted);
     }
 
@@ -134,6 +149,24 @@ internal static class IndexingEndpoints
         if (!string.IsNullOrWhiteSpace(summary))
             text.Append("> ").Append(summary.ReplaceLineEndings(" ")).Append("\n\n");
 
+        // Which languages exist, and how to ask for one. An agent cannot work this out by reading a
+        // page: the hreflang cluster sits in the head of pages it has not fetched, and the prefix
+        // shape is a policy rather than a link. One line saves it guessing or crawling to find out.
+        var site = context.RequestServices.GetRequiredService<ICurrentSite>();
+        if (site.UrlPolicy is { IsPrefixed: true } policy)
+        {
+            var segments = policy.IndexedCultures
+                .Select(policy.SegmentFor)
+                .Where(static segment => segment is not null)
+                .ToArray();
+
+            if (segments.Length > 1)
+                text.Append("Available in ").Append(segments.Length)
+                    .Append(" languages — prefix any path with the language segment: ")
+                    .Append(string.Join(", ", segments.Select(static s => "/" + s + "/")))
+                    .Append(". An unprefixed path serves the reader's own language.\n\n");
+        }
+
         // Two inputs, one list. Pages carrying [Llms] arrive from the build-time registry, scoped
         // to the areas this Site mounts; x.Llms.AddLink(...) covers what no page can declare — an
         // external doc, a downloadable dataset, a section that is not a single route. Declared
@@ -165,12 +198,24 @@ internal static class IndexingEndpoints
             text.Append('\n');
         }
 
-        // An agent that reads llms.txt and wants the full URL inventory should not have to guess
-        // that a sitemap exists.
+        // "## Optional" is the convention's marker for material an agent may skip when short of
+        // context. Both entries below belong there: neither answers a question about the product,
+        // and both are worth having when the question is about identity or coverage.
+        var optional = new StringBuilder(128);
+
         if (options.Sitemap)
-            text.Append("\n## Optional\n\n- [Sitemap](")
+            optional.Append("- [Sitemap](")
                 .Append(Absolute(IndexingOptions.SitemapPath, origin))
                 .Append("): every indexable URL, with per-language alternates.\n");
+
+        // Social profiles, custom entries included — this is the one place they are described
+        // rather than asserted as identity, so a "Facebook group" or a community forum can appear
+        // without becoming a schema.org sameAs claim.
+        foreach (var (label, url) in tenant.Settings.SocialMedia?.All() ?? [])
+            optional.Append("- [").Append(label).Append("](").Append(url).Append(")\n");
+
+        if (optional.Length > 0)
+            text.Append("## Optional\n\n").Append(optional);
 
         return text.ToString();
     }

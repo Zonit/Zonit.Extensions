@@ -197,26 +197,18 @@ public static class SchemaComposer
     /// organization node: it is how a search engine connects a name on a page to an entity it
     /// already knows, instead of inferring one from the string.
     /// </summary>
+    /// <summary>
+    /// <c>sameAs</c> from the tenant's profiles. Custom links are excluded: <c>sameAs</c> asserts
+    /// "this page unambiguously identifies the same organisation", which an official profile does
+    /// and an arbitrary link may not — a partner site or a status page would make the claim false.
+    /// </summary>
     private static List<string>? BuildSameAs(SocialMediaModel? social)
     {
         if (social is null)
             return null;
 
-        var links = new List<string>(6);
-        Add(social.Facebook);
-        Add(social.X);
-        Add(social.Instagram);
-        Add(social.LinkedIn);
-        Add(social.YouTube);
-        Add(social.TikTok);
-
+        var links = social.All(includeCustom: false).Select(static p => p.Url).ToList();
         return links.Count == 0 ? null : links;
-
-        void Add(string? url)
-        {
-            if (!string.IsNullOrWhiteSpace(url))
-                links.Add(url.Trim());
-        }
     }
 
     private static string? Absolute(string? value, string origin)
