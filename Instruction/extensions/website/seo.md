@@ -36,6 +36,7 @@ app.UseWebsite("/", o =>
 | `/pl/app.css`, `/pl/report.glb`, `/pl/api/ping` — anything that is not a page | 404 — the prefix is valid for page routes only, decided from the endpoint table (`CultureRouteGate`), not from an extension list |
 | `/pl/_framework/…`, `/pl/_blazor…` | served — the client resolves these against the prefixed base URI (WASM boot, circuits, hot reload); both are robots-disallowed |
 | `/en-gb/x` when only `en-us` is supported | falls through — an unknown region is never folded into a neighbour |
+| `/pl/does-not-exist` | 404 rendered by the error page **in Polish**, under `<base href="/pl/">`, `noindex, follow`, no canonical and no cluster |
 
 `Short` degrades to the full tag **per language** when a primary subtag is ambiguous: with `pt-pt`
 and `pt-br` both supported, those two keep their regions and `/de/`, `/fr/` stay short. `/pt/` is
@@ -107,6 +108,7 @@ protected override async Task OnInitializedAsync(CancellationToken token)
 | `Image` | `og:image`. Relative paths resolve against the canonical origin. |
 | `Type` | `og:type`. `"article"` also switches the derived schema node to `Article`. |
 | `NoIndex` | `noindex, follow` — reachable but not a search result. Not an access control. |
+| `Cultures` | Languages the **content** exists in. Outside the set → `noindex, follow`, and the cluster on the versions that exist lists only those. `null` = all. |
 | `Canonical` | Overrides the derived canonical (paginated listing → page 1). |
 | `Alternates` | Per-culture paths when the **slug** is translated. |
 | `Schema` | Extra structured-data nodes; replaces the derived node of the same type. |
@@ -215,9 +217,37 @@ Precedence, highest first — the first three are Site-level and a page cannot a
 | --- | --- | --- |
 | Site not indexable | `noindex, nofollow` | `Disallow: /` |
 | culture not in `IndexedCultures` | `noindex, follow` | `Disallow: /{segment}/` |
+| an error re-execution (404 / 500 page) | `noindex, follow`, and no canonical, cluster or JSON-LD | — |
 | `Metadata.Robots = "…"` | that string verbatim (`""` → no tag) | — |
 | `Metadata.NoIndex` | `noindex, follow` | — |
+| current culture not in `Metadata.Cultures` | `noindex, follow` | — |
 | otherwise | `SeoDocument.DefaultRobots` | normal |
+
+### Content that is not translated everywhere
+
+`Metadata.Cultures` declares the languages the page's **content** actually exists in. `null` — the
+default — means all of them, which is the truth for anything translated from resource files. Set it
+when translations live in a row and arrive unevenly:
+
+```csharp
+protected override async Task OnInitializedAsync(CancellationToken token)
+{
+    _signal = await _signals.GetAsync(Id, token);
+    Meta.Cultures = _signal.Translations.Keys.Select(c => new Culture(c)).ToArray();
+}
+```
+
+Two consequences from one declaration, so they cannot drift:
+
+- a language outside the set renders the fallback rendition as `noindex, follow` — reachable,
+  crawlable, not a search result;
+- the `hreflang` cluster on the versions that exist lists **only** those. This half matters more
+  than it looks: a cluster naming a version that answers `noindex` is discarded whole, so without
+  the filter the real translations lose their clustering because of the missing ones.
+
+With content in `en` + `pl` on a three-language Site: `/en/` and `/pl/` index and cluster
+`[en, pl, x-default]`; `/de/` is `noindex, follow` with no cluster. Feed this and
+`SitemapEntry.Cultures` from the same place — they answer the same question.
 
 `DefaultRobots` is `index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1`.
 The `index, follow` half is what a crawler assumes anyway; the three limits are **not** — they

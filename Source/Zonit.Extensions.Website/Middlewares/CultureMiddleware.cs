@@ -83,6 +83,26 @@ internal sealed class CultureMiddleware(
         if (string.IsNullOrEmpty(path))
             path = "/";
 
+        // Status-code re-execution and the exception handler re-run this pipeline with the error
+        // route in Request.Path — but with Request.PathBase still carrying whatever the first pass
+        // moved into it. Resolving from scratch is wrong twice over, and both ways silently:
+        //
+        //   the culture segment is no longer in Path, so /pl/missing looks unprefixed and a Polish
+        //   visitor's 404 renders in English;
+        //
+        //   PathBase is then read as the mount, so SitePathBase becomes "/pl" and every URL the
+        //   SEO layer builds gains a SECOND language segment — canonical came out as
+        //   /pl/en/not-found/404, an address that cannot exist.
+        //
+        // The first pass already resolved all of this correctly. Reuse it: keep the culture, keep
+        // PathBase, and re-point the feature at the error route.
+        if (IsReExecuting(context) && context.Features.Get<ICultureUrlFeature>() is { } resolved)
+        {
+            Apply(resolved.Culture, cultureManager);
+            InstallFeature(context, resolved.Culture, resolved.Segment, path, path, resolved.SitePathBase);
+            return _next(context);
+        }
+
         // A file is not a page: it has no language, so it has no language segment. Static and
         // framework traffic therefore skips every piece of culture work — resolution, the cookie,
         // the feature — and a prefixed spelling is not an address at all.
@@ -245,6 +265,15 @@ internal sealed class CultureMiddleware(
         InstallFeature(context, culture, segment: string.Empty, routePath: path, localizedPath: path);
         return _next(context);
     }
+
+    /// <summary>
+    /// Whether the pipeline is replaying this request with an error route
+    /// (<c>UseStatusCodePagesWithReExecute</c> / <c>UseExceptionHandler</c>), both of which are
+    /// registered upstream of this middleware and therefore run it a second time.
+    /// </summary>
+    internal static bool IsReExecuting(HttpContext context)
+        => context.Features.Get<IStatusCodeReExecuteFeature>() is not null
+        || context.Features.Get<IExceptionHandlerPathFeature>() is not null;
 
     /// <summary>
     /// <c>/signals/</c> and <c>/signals///</c> become <c>/signals</c>; the root stays <c>/</c>.

@@ -105,6 +105,136 @@ markup keeps the old URLs. Rebuild every project whose components use `@Assets`.
 casts to `ComponentBase` before reading `Assets` — hiding is not virtual dispatch. Root those by
 hand (`/_content/…` on a Site mounted at `/`).
 
+### Added — `PageMeta.Cultures`: content that is not translated everywhere
+
+Content translated per item arrives unevenly — a signal exists in eight of ten languages. The Site
+still routes `/cs/signals/x`, the page still renders with its fallback rendition and a notice, and
+the same English text now answers at three addresses, each claiming through `hreflang` to be a
+distinct language version. That is a claim a crawler can check and find false.
+
+```csharp
+protected override async Task OnInitializedAsync(CancellationToken token)
+{
+    _signal = await _signals.GetAsync(Id, token);
+    Meta.Cultures = _signal.Translations.Keys.Select(c => new Culture(c)).ToArray();
+}
+```
+
+One declaration, two consequences that cannot drift apart:
+
+- rendering in a language outside the set is `noindex, follow` — the fallback page stays reachable
+  and its links crawlable, it is just not offered as a result;
+- the `hreflang` cluster on the versions that *do* exist lists only those. This is the half that is
+  easy to miss: a cluster naming a version that answers `noindex` is discarded whole, so without
+  the filter the eight real translations lose their clustering because of the two missing ones.
+
+Verified: with content in `en` + `pl` on a three-language Site, `/en/` and `/pl/` are indexable and
+cluster `[en, pl, x-default]`; `/de/` is `noindex, follow` with no cluster at all.
+
+`Meta.NoIndex = true` remains the blunt form for a page that should never be a result regardless of
+language. `Meta.Robots` still overrides both.
+
+### Breaking — `SitemapEntry.Cultures` moved to the front and changed type
+
+One way to declare it, not two. The languages come first because they scope everything after them —
+they decide which files the entry appears in at all, which is not the same kind of fact as
+`Priority`, and as a trailing optional it read like one:
+
+```csharp
+// content translated per item
+yield return new SitemapEntry(
+    signal.Translations.Keys.Select(c => new Culture(c)).ToArray(),
+    $"/signals/{day:yyyy-MM-dd}/{signal.Id}",
+    LastModified: signal.ClosedAt ?? signal.CreatedAt);
+
+// literal set
+yield return new SitemapEntry(["en-us", "pl-pl"], "/about/press-kit");
+
+// everywhere — no ceremony
+yield return new SitemapEntry("/about");
+```
+
+`IReadOnlyList<Culture>`, not `IReadOnlyList<string>`. `PageMeta.Cultures` answers the same question
+for the rendered page and was already typed; one typed and one not is how the two drift apart, and
+they must be fed from the same place. The value object converts from a string literal implicitly, so
+collection expressions need nothing extra.
+
+The two constructors deliberately share parameter *names*, capitals included, so `LastModified:`
+means the same thing in both. The first draft used camelCase in the second constructor and the
+mismatch surfaced as an overload-resolution error pointing two arguments away from the cause.
+
+**This is a binary break, and it fails loudly.** An assembly compiled against `preview.19` throws
+`MissingMethodException` naming the old signature the first time its source is walked — one stale
+plug-in takes the whole `/sitemap.xml` to 500 rather than silently dropping its URLs. Rebuild every
+project that implements `ISitemapSource`.
+
+### Changed — one sitemap file per language, and the `hreflang` cluster left to the page
+
+Two independent changes to `SitemapOptions`, both aimed at the same symptom: on a prefixed Site the
+sitemap grew as the square of the language count.
+
+**`GroupByCulture` (new, default `true`).** Parts are now named `/sitemap/news-pl-1.xml` instead of
+`/sitemap/news-1.xml`. Search Console reports index coverage *per submitted file*, so a combined
+sitemap answers "20 000 URLs, 14 000 indexed" — which names no problem — while split by language it
+answers "de 400/400, pl 380/400, bg 12/400", which names one. It also stabilises file identity:
+ungrouped, adding a page shifts every later entry across part boundaries and every part changes;
+grouped, a page added in Polish rewrites the Polish parts only. A language a source contributes
+nothing to produces no file at all.
+
+Streaming is preserved — one writer stays open per language rather than the source being walked
+once per language, since a source is a database query. Peak memory is `languages × current part`;
+lower `MaxBytesPerFile` on a very large multilingual source rather than raising it.
+
+**`Alternates` (new, default `false`) — breaking.** The `xhtml:link` cluster is no longer written
+into the sitemap. Sitemap and HTML are alternative ways to declare the same thing, and this package
+already emits the HTML form on every indexable page: complete, reciprocal by construction (one
+policy generates every page's cluster, so no page can disagree with another), and including
+`x-default`, which the sitemap form never had. Declaring it twice added no signal and cost a
+square — measured here, 1 000 pages in 20 languages is 400 000 link elements and ~38 MB against a
+50 MB protocol ceiling; without them, 1.8 MB. Set `Alternates = true` if the shell was replaced
+with one that does not render `PageHead`.
+
+**Partial translations were already supported and are now documented.** `SitemapEntry.Cultures`
+takes the languages an entry actually exists in — read it from wherever the page reads its
+translations:
+
+```csharp
+yield return new SitemapEntry(
+    $"/signals/{day:yyyy-MM-dd}/{signal.Id}",
+    LastModified: signal.ClosedAt ?? signal.CreatedAt,
+    Cultures: signal.Translations.Keys);
+```
+
+An entry translated into English and Polish is listed in those two files and absent from the German
+one; an empty list drops it everywhere; tags outside the Site's indexed set are ignored, so a stale
+row cannot conjure a language the Site does not serve. When `Alternates` is on, the cluster is
+built from the languages that exist rather than the Site's full list — a cluster naming a version
+that does not answer is discarded whole by search engines, taking the working languages with it.
+
+### Fixed — the error page lost the language and emitted an impossible canonical
+
+`UseStatusCodePagesWithReExecute` and `UseExceptionHandler` replay the request with the error route
+in `Request.Path` — but with `Request.PathBase` still carrying what the first pass moved into it.
+The middleware resolved from scratch on that second pass and was wrong twice, silently:
+
+- the culture segment was no longer in `Path`, so `/pl/missing` looked unprefixed and a Polish
+  visitor's 404 rendered in English (`<html lang="en-US">` under `<base href="/pl/">`);
+- `PathBase` was then read as the mount, so `SitePathBase` became `/pl` and every URL built on top
+  of it gained a second language segment — the canonical came out as `/pl/en/not-found/404`, an
+  address that cannot exist.
+
+The first pass already resolved all of this. The second now reuses it: same culture, same
+`PathBase`, feature re-pointed at the error route. `/pl/missing`, `/de/missing` and `/missing` are
+now the same page in three languages instead of three different documents.
+
+**An error render also emits no canonical and no cluster.** A canonical asserts that content lives
+at a URL; on a 404 there is no content, and the address it stands in for does not exist. Pointing
+it at a real page invites consolidation onto that page, and pointing it at the error route
+advertises the error route as content. The page is `noindex, follow` — which already suppressed
+`hreflang`, `x-default` and structured data — and the canonical is now withheld too. Nothing in a
+page's own declaration can know it is being rendered for a failed address; the pipeline can, so the
+decision is made there.
+
 ### Fixed — `/pl/signals/` rendered next to `/pl/signals`, each claiming to be canonical
 
 A trailing slash was invisible to the canonical comparison, so both spellings rendered — and each

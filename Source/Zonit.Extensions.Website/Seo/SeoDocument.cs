@@ -120,6 +120,11 @@ public static class SeoDocumentBuilder
     /// Whether reaching the routed page needs an authenticated principal. Such a page is kept out
     /// of the index without being disallowed — see <see cref="PageIndexing"/>.
     /// </param>
+    /// <param name="error">
+    /// Whether this render is the pipeline replaying a failed request with an error route. Such a
+    /// page emits no canonical and no cluster: it is not content, and the address it is standing
+    /// in for does not exist.
+    /// </param>
     public static SeoDocument Build(
         PageMeta? meta,
         SiteSettingsModel site,
@@ -128,7 +133,8 @@ public static class SeoDocumentBuilder
         SocialMediaModel? social = null,
         IReadOnlyList<BreadcrumbsModel>? breadcrumbs = null,
         Func<string, string>? translate = null,
-        bool gated = false)
+        bool gated = false,
+        bool error = false)
     {
         ArgumentNullException.ThrowIfNull(site);
 
@@ -156,8 +162,14 @@ public static class SeoDocumentBuilder
         var origin = ResolveOrigin(site, url);
         var prefix = origin + url.SitePathBase;
 
-        var canonical = ResolveCanonical(meta, url, culture, prefix);
-        var robots = ResolveRobots(meta, url, culture, gated);
+        // An error page is the same component rendered under whatever address failed, so every
+        // signal that says "this is a page" has to be withheld. A canonical is the sharpest of
+        // them: it asserts that content lives at a URL, and on a 404 there is no content and no
+        // URL it lives at. The status code alone does not cover this — a canonical pointing at a
+        // real address invites consolidation onto it, and one pointing at the error route
+        // advertises the error route as a page.
+        var canonical = error ? null : ResolveCanonical(meta, url, culture, prefix);
+        var robots = error ? "noindex, follow" : ResolveRobots(meta, url, culture, gated);
 
         // A cluster is only meaningful when the page is actually a candidate for the index and
         // the languages live at distinct addresses. On a noindex page it is ignored at best and
@@ -294,11 +306,35 @@ public static class SeoDocumentBuilder
         if (meta?.NoIndex == true)
             return "noindex, follow";
 
+        // Rendering outside the languages the content exists in: the page is showing its fallback
+        // rendition, so this address holds a copy of another language's text. Reachable and
+        // crawlable, not a search result.
+        if (!Exists(meta, culture))
+            return "noindex, follow";
+
         // Behind authorization: keep it out of the index, keep its links followable.
         if (gated)
             return "noindex, follow";
 
         return DefaultRobots;
+    }
+
+    /// <summary>
+    /// Whether the page's content exists in <paramref name="culture"/>. No declaration means every
+    /// language, which is the truth for anything translated from resource files.
+    /// </summary>
+    private static bool Exists(PageMeta? meta, string culture)
+    {
+        if (meta?.Cultures is not { } cultures)
+            return true;
+
+        foreach (var declared in cultures)
+        {
+            if (string.Equals(declared.Value, culture, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
     }
 
     private static SeoAlternate[] BuildAlternates(PageMeta? meta, ICultureUrlFeature url, string prefix)
@@ -308,6 +344,13 @@ public static class SeoDocumentBuilder
 
         foreach (var culture in indexed)
         {
+            // A version that does not exist is not an alternate. Listing it points the crawler at
+            // a page serving another language's text under a noindex directive, and a cluster with
+            // a member like that is dropped whole — so this filter is what keeps the translations
+            // that DO exist clustered together.
+            if (!Exists(meta, culture))
+                continue;
+
             // A page-supplied alternate wins: it is the only source that can know a translated
             // slug, because the slug lives in the content store rather than in configuration.
             var path = meta is not null && meta.Alternates.TryGetValue(culture, out var custom)

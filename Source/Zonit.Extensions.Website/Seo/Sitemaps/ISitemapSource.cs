@@ -50,11 +50,6 @@ public enum ChangeFrequency
 /// Relative importance within <em>this site</em>, 0.0–1.0. Has no effect between sites and very
 /// little within one; leave it unset unless a section genuinely outranks the rest.
 /// </param>
-/// <param name="Cultures">
-/// Cultures this entry exists in, as BCP-47 tags. <see langword="null"/> — the usual case — means
-/// every indexed culture, and the package emits the whole <c>hreflang</c> cluster from the Site's
-/// culture policy. Supply a subset for content that is not translated everywhere.
-/// </param>
 /// <param name="PathsByCulture">
 /// Per-culture paths, for content whose <em>slug</em> is translated. Cultures absent from the map
 /// use <paramref name="Path"/>. Routes whose static segment is translated need nothing here —
@@ -65,8 +60,83 @@ public readonly record struct SitemapEntry(
     DateTimeOffset? LastModified = null,
     ChangeFrequency? ChangeFrequency = null,
     double? Priority = null,
-    IReadOnlyList<string>? Cultures = null,
-    IReadOnlyDictionary<string, string>? PathsByCulture = null);
+    IReadOnlyDictionary<string, string>? PathsByCulture = null)
+{
+    /// <summary>
+    /// The languages this entry exists in, first, because they scope everything after them.
+    /// </summary>
+    /// <remarks>
+    /// <para>Content whose translations live in a row rather than a resource file is translated
+    /// per item and unevenly: a signal published in English and Polish while the German rendition
+    /// is still missing exists in two languages. Listing the third sends a crawler to a page that
+    /// can only serve another language's text, and — where the sitemap carries the cluster — it
+    /// breaks the cluster the other two belong to, because a cluster naming a version that does
+    /// not answer is discarded whole.</para>
+    ///
+    /// <code>
+    /// yield return new SitemapEntry(
+    ///     signal.Translations.Keys.Select(c => new Culture(c)).ToArray(),
+    ///     $"/signals/{day:yyyy-MM-dd}/{signal.Id}",
+    ///     LastModified: signal.ClosedAt ?? signal.CreatedAt);
+    ///
+    /// yield return new SitemapEntry(["en-us", "pl-pl"], "/about/press-kit");
+    /// </code>
+    ///
+    /// <para>Omit the whole overload for content that exists everywhere — that is the common case
+    /// and it needs no ceremony. An empty list drops the entry entirely, the honest answer for an
+    /// item translated into nothing. Tags outside the Site's indexed set are ignored rather than
+    /// trusted, so a stale value in a row cannot conjure a language the Site does not serve.</para>
+    ///
+    /// <para><see cref="Culture"/> rather than <c>string</c>: <c>PageMeta.Cultures</c> answers the
+    /// same question for the rendered page, and the two must be fed from the same place — one
+    /// typed and one not is how they drift. The value object converts from a string literal
+    /// implicitly, so a collection expression needs no ceremony.</para>
+    /// </remarks>
+    // Parameter names match the primary constructor's, capital letters and all. They are the
+    // record's property names, so a caller writing LastModified: must not have to know which
+    // overload it landed on — that difference is invisible at the call site and shows up as an
+    // overload-resolution error two arguments away from the cause.
+#pragma warning disable IDE1006 // naming rule: parameters are camelCase
+    public SitemapEntry(
+        IReadOnlyList<Culture> Cultures,
+        string Path,
+        DateTimeOffset? LastModified = null,
+        ChangeFrequency? ChangeFrequency = null,
+        double? Priority = null,
+        IReadOnlyDictionary<string, string>? PathsByCulture = null)
+        : this(Path, LastModified, ChangeFrequency, Priority, PathsByCulture)
+    {
+        ArgumentNullException.ThrowIfNull(Cultures);
+        this.Cultures = Cultures;
+    }
+#pragma warning restore IDE1006
+
+    /// <summary>
+    /// Languages this entry exists in, or <see langword="null"/> for every indexed language.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately not a positional parameter and settable only through the constructor above.
+    /// As a trailing optional it read as one more attribute of the entry, alongside
+    /// <see cref="Priority"/>; it is not — it decides which files the entry appears in at all, and
+    /// a scope that can be appended as an afterthought is one that gets forgotten.
+    /// </remarks>
+    public IReadOnlyList<Culture>? Cultures { get; private init; }
+
+    /// <summary>Whether this entry should be listed for <paramref name="culture"/>.</summary>
+    internal bool Exists(string culture)
+    {
+        if (Cultures is not { } declared)
+            return true;
+
+        foreach (var candidate in declared)
+        {
+            if (string.Equals(candidate.Value, culture, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
+}
 
 /// <summary>
 /// Contributes URLs to the sitemap. Implement one per content type, register it, and the package

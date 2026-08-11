@@ -94,7 +94,10 @@ public sealed class PageHead : ComponentBase, IDisposable
         Tenant.Settings.SocialMedia,
         Breadcrumbs.Get(),
         s => Translator.Translate(s).Value,
-        PageType is not null && PageIndexing.RequiresAuthorization(PageType));
+        PageType is not null && PageIndexing.RequiresAuthorization(PageType),
+        // The error page is a normal page that happens to be rendered for a failed address, and
+        // nothing in its own declaration can know that. The pipeline does.
+        Http.HttpContext is { } http && Middlewares.CultureMiddleware.IsReExecuting(http));
 
     protected override void BuildRenderTree(RenderTreeBuilder builder)
     {

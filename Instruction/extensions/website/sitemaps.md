@@ -127,12 +127,49 @@ categories) and `TryAdd` would keep only the first.
 
 | Member | Notes |
 | --- | --- |
+| `Cultures` | Languages this entry exists in — **first constructor parameter**, `IReadOnlyList<Culture>`. Omit the overload for every language. |
 | `Path` | Site-relative, no culture segment. Required. |
 | `LastModified` | The one field crawlers use to decide whether re-fetching is worth it. Supply it. |
 | `ChangeFrequency` | Hint. Omit rather than guessing. |
 | `Priority` | 0.0–1.0, relative **within this site**. Very little effect; leave unset. |
-| `Cultures` | Subset this entry exists in. `null` = every indexed culture. |
 | `PathsByCulture` | Per-culture path when the **slug** is translated. Routes whose static segment is translated are resolved from the area's `Routes` automatically. |
+
+### Content that is not translated everywhere
+
+Translations that live in a row rather than a resource file arrive unevenly. Read `Cultures` from
+the same place the page reads its renditions:
+
+Languages come **first**, because they scope everything after them — they decide which files the
+entry appears in at all. There is one way to write it:
+
+```csharp
+yield return new SitemapEntry(
+    signal.Translations.Keys.Select(c => new Culture(c)).ToArray(),
+    $"/signals/{day:yyyy-MM-dd}/{signal.Id}",
+    LastModified: signal.ClosedAt ?? signal.CreatedAt);
+
+yield return new SitemapEntry(["en-us", "pl-pl"], "/about/press-kit");   // literal set
+
+yield return new SitemapEntry("/about");                                 // every language
+```
+
+`IReadOnlyList<Culture>`, matching `PageMeta.Cultures` — one typed and one not is how the two drift.
+
+The page renders its own half of this with `Meta.Cultures` — same question, same source, see
+`.zonit/extensions/website/seo.md`. A sitemap that omits a language while the page still clusters
+it is the one inconsistency worth avoiding here.
+
+| `Cultures` value | Result |
+| --- | --- |
+| `null` | listed in every indexed language |
+| `["en-us", "pl-pl"]` | in the `en` and `pl` files, absent from `de` |
+| `[]` | dropped everywhere — nothing to crawl |
+| contains `fr-fr`, not served | ignored; a stale row cannot invent a language |
+
+Listing a language whose rendition is missing sends a crawler to a page that cannot render, and —
+with `Alternates` on — invalidates the whole cluster it belongs to, taking the working languages
+down with it. When `Alternates` is on the cluster is built from the languages that exist, not from
+the Site's full list.
 
 ### `ISitemapSource.IsEnabled`
 
@@ -141,9 +178,9 @@ conditionally registering it.
 
 ## What the package does for you
 
-Absolute URLs, mount path base, expansion across indexed cultures, the full `hreflang` cluster per
-URL, translated route segments, both size limits, splitting into numbered parts, the sitemap
-index, and an origin-keyed cache with stampede protection.
+Absolute URLs, mount path base, expansion across indexed cultures, translated route segments, both
+size limits, grouping per language, splitting into numbered parts, the sitemap index, and an
+origin-keyed cache with stampede protection.
 
 Only **indexed** cultures are listed: a sitemap is a list of pages a crawler should fetch, and
 listing one that answers `noindex` wastes the fetch and contradicts the page.
@@ -156,6 +193,8 @@ builder.Services.AddSitemap(o =>
     o.MaxUrlsPerFile  = 45_000;                  // protocol limit 50 000, margin left
     o.MaxBytesPerFile = 45 * 1024 * 1024;        // protocol limit 50 MB
     o.CacheDuration   = TimeSpan.FromHours(1);
+    o.GroupByCulture  = true;                    // default: one file per language
+    o.Alternates      = false;                   // default: hreflang stays in the page
 });
 ```
 
@@ -166,11 +205,33 @@ inject `SitemapCache` and call `Invalidate()`.
 ## Output
 
 ```
-/sitemap.xml            → sitemapindex → /sitemap/news-1.xml, /sitemap/pages-1.xml
-/sitemap/{name}-{n}.xml → urlset with xhtml:link alternates
+/sitemap.xml                    → sitemapindex
+/sitemap/{name}-{culture}-{n}.xml   grouped (default, prefixed Sites)
+/sitemap/{name}-{n}.xml             ungrouped, or a Site with no culture prefix
 ```
 
 Unknown part names answer 404.
+
+### Why one file per language
+
+Search Console reports index coverage **per submitted file**. Combined, it says "20 000 URLs,
+14 000 indexed" and names no problem; split, it says "de 400/400, pl 380/400, bg 12/400" and names
+one. File identity is also stable: ungrouped, adding a page shifts every later entry across part
+boundaries; grouped, a page added in Polish rewrites the Polish parts only.
+
+One writer stays open per language while a source streams — peak memory is
+`languages × current part`. On a very large multilingual source lower `MaxBytesPerFile`, don't
+raise it.
+
+### Why `hreflang` is not in the sitemap by default
+
+Sitemap and HTML are alternative ways to declare the same thing, and every indexable page already
+carries the HTML form — complete, reciprocal by construction, with `x-default`. Emitting both adds
+no signal and costs a square: 1 000 pages × 20 languages is 400 000 link elements and ~38 MB
+against a 50 MB ceiling. Without them: 1.8 MB.
+
+Turn `Alternates = true` on only when the HTML cluster is not there to be found — a shell replaced
+with one that does not render `PageHead`.
 
 ### One address per Site, never one per language
 

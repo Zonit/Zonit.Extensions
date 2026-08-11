@@ -82,6 +82,17 @@ public sealed class SitemapGenerator(
         return new SitemapSet(BuildIndex(prefix, files.Values), files);
     }
 
+    /// <summary>
+    /// Streams one source into its files, opening a separate stream per language when
+    /// <see cref="SitemapOptions.GroupByCulture"/> is set.
+    /// </summary>
+    /// <remarks>
+    /// Grouped, the writers run concurrently rather than the source being walked once per language:
+    /// a source is a database query, and re-running it twenty times to sort rows the first pass
+    /// already had is the expensive way to reach the same files. The trade is memory — one open
+    /// part per language instead of one — which is why <see cref="SitemapOptions.MaxBytesPerFile"/>
+    /// is the knob to lower, not raise, on a very large multilingual source.
+    /// </remarks>
     private async IAsyncEnumerable<SitemapFile> BuildFilesAsync(
         ISitemapSource source,
         string prefix,
@@ -89,28 +100,50 @@ public sealed class SitemapGenerator(
         LocalizedRouteTable routes,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var part = 1;
-        var writer = new PartWriter(_options);
+        // Keyed by group: the language segment when grouping, otherwise one shared "" bucket, so
+        // both modes run the same loop.
+        var groups = new Dictionary<string, Group>(StringComparer.Ordinal);
 
         await foreach (var entry in source.GetAsync(cancellationToken).WithCancellation(cancellationToken))
         {
             foreach (var url in Expand(entry, prefix, policy, routes))
             {
-                if (!writer.TryWrite(url))
-                {
-                    yield return writer.Close($"{source.Name}-{part++}");
-                    writer = new PartWriter(_options);
+                var key = _options.GroupByCulture ? url.Segment : string.Empty;
 
-                    // The freshly-opened part is empty, so this write cannot fail for the same
-                    // reason. If a single URL ever exceeded a whole file's budget the entry would
-                    // be pathological, and dropping it beats looping forever.
-                    writer.TryWrite(url);
-                }
+                if (!groups.TryGetValue(key, out var group))
+                    groups[key] = group = new Group(_options);
+
+                if (group.Writer.TryWrite(url))
+                    continue;
+
+                yield return group.Writer.Close(Name(source, key, group.Part++));
+                group.Writer = new PartWriter(_options);
+
+                // The freshly-opened part is empty, so this write cannot fail for the same
+                // reason. If a single URL ever exceeded a whole file's budget the entry would
+                // be pathological, and dropping it beats looping forever.
+                group.Writer.TryWrite(url);
             }
         }
 
-        if (writer.UrlCount > 0)
-            yield return writer.Close($"{source.Name}-{part}");
+        // Ordered by key so the index lists languages the same way on every generation — a
+        // sitemapindex that reshuffles itself looks like it changed to anything diffing it.
+        foreach (var (key, group) in groups.OrderBy(static g => g.Key, StringComparer.Ordinal))
+        {
+            if (group.Writer.UrlCount > 0)
+                yield return group.Writer.Close(Name(source, key, group.Part));
+        }
+    }
+
+    private static string Name(ISitemapSource source, string group, int part)
+        => group.Length == 0
+            ? $"{source.Name}-{part}"
+            : $"{source.Name}-{group}-{part}";
+
+    private sealed class Group(SitemapOptions options)
+    {
+        public PartWriter Writer { get; set; } = new(options);
+        public int Part { get; set; } = 1;
     }
 
     /// <summary>
@@ -118,12 +151,12 @@ public sealed class SitemapGenerator(
     /// Site, each carrying the full alternate cluster, or exactly one when the Site does not
     /// encode culture in its paths.
     /// </summary>
-    private static IEnumerable<SitemapUrl> Expand(
+    private IEnumerable<SitemapUrl> Expand(
         SitemapEntry entry, string prefix, CultureUrlPolicy? policy, LocalizedRouteTable routes)
     {
         if (policy is null || !policy.IsPrefixed)
         {
-            yield return new SitemapUrl(prefix + Rooted(entry.Path), entry, []);
+            yield return new SitemapUrl(prefix + Rooted(entry.Path), string.Empty, entry, []);
             yield break;
         }
 
@@ -133,8 +166,7 @@ public sealed class SitemapGenerator(
         var cultures = new List<string>(policy.IndexedCultures.Length);
         foreach (var culture in policy.IndexedCultures)
         {
-            if (entry.Cultures is not null &&
-                !entry.Cultures.Contains(culture, StringComparer.OrdinalIgnoreCase))
+            if (!entry.Exists(culture))
                 continue;
 
             cultures.Add(culture);
@@ -143,7 +175,7 @@ public sealed class SitemapGenerator(
         if (cultures.Count == 0)
             yield break;
 
-        var byCulture = new List<(string Culture, string Url)>(cultures.Count);
+        var byCulture = new List<(string Segment, string Url)>(cultures.Count);
         foreach (var culture in cultures)
         {
             var path = entry.PathsByCulture is not null && entry.PathsByCulture.TryGetValue(culture, out var custom)
@@ -152,15 +184,23 @@ public sealed class SitemapGenerator(
 
             var built = policy.BuildPath(culture, path);
             if (built is not null)
-                byCulture.Add((culture, prefix + built));
+                byCulture.Add((policy.SegmentFor(culture) ?? culture, prefix + built));
         }
 
-        var alternates = new List<(string Hreflang, string Url)>(byCulture.Count);
-        foreach (var (culture, url) in byCulture)
-            alternates.Add((Hreflang(policy, culture), url));
+        // Built from the cultures this entry ACTUALLY has, not from the Site's full list: a cluster
+        // is a set of mutually-declaring versions, and naming a translation that was never
+        // published points the crawler at a 404 and invalidates the cluster it belongs to.
+        IReadOnlyList<(string, string)> alternates = [];
+        if (_options.Alternates)
+        {
+            var cluster = new List<(string Hreflang, string Url)>(byCulture.Count);
+            foreach (var (segment, url) in byCulture)
+                cluster.Add((Hreflang(segment), url));
+            alternates = cluster;
+        }
 
-        foreach (var (_, url) in byCulture)
-            yield return new SitemapUrl(url, entry, alternates);
+        foreach (var (segment, url) in byCulture)
+            yield return new SitemapUrl(url, segment, entry, alternates);
     }
 
     private static string BuildIndex(string prefix, IEnumerable<SitemapFile> files)
@@ -214,9 +254,8 @@ public sealed class SitemapGenerator(
     /// <c>pl</c>. Claiming a regional target the URLs do not distinguish splits signals the site
     /// never meant to split.
     /// </summary>
-    private static string Hreflang(CultureUrlPolicy policy, string culture)
+    private static string Hreflang(string segment)
     {
-        var segment = policy.SegmentFor(culture) ?? culture;
         var dash = segment.IndexOf('-');
         return dash < 0
             ? segment
@@ -226,8 +265,14 @@ public sealed class SitemapGenerator(
     private static string Rooted(string path)
         => string.IsNullOrEmpty(path) || path[0] == '/' ? path : "/" + path;
 
+    /// <summary>
+    /// One <c>&lt;url&gt;</c> to write. <c>Segment</c> is the language this URL belongs to
+    /// (<c>"pl"</c>), empty on an unprefixed Site, and decides which file it lands in when
+    /// grouping.
+    /// </summary>
     private readonly record struct SitemapUrl(
         string Location,
+        string Segment,
         SitemapEntry Entry,
         IReadOnlyList<(string Hreflang, string Url)> Alternates);
 

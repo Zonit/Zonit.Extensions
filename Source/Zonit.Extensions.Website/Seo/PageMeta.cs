@@ -68,6 +68,45 @@ public sealed class PageMeta
     public bool NoIndex { get; set; }
 
     /// <summary>
+    /// The languages this page's <em>content</em> actually exists in. <see langword="null"/> — the
+    /// default — means every indexed language, which is right for anything translated from
+    /// resource files.
+    /// </summary>
+    /// <remarks>
+    /// <para><b>The problem it solves.</b> Content translated per item, in a row rather than a
+    /// resource file, arrives unevenly: a signal exists in eight of ten languages. The Site still
+    /// routes <c>/cs/signals/x</c>, the page still renders — with the fallback rendition and a
+    /// notice — and now the same English text answers at three addresses. Each is a separate
+    /// indexable URL of identical content, and each claims through <c>hreflang</c> to be a distinct
+    /// language version, which is a claim a crawler can check and find false.</para>
+    ///
+    /// <para><b>What setting it does.</b> Two things, from one declaration, so they cannot drift:</para>
+    /// <list type="bullet">
+    ///   <item>Rendering in a language outside the set is <c>noindex, follow</c> — the fallback
+    ///         page stays reachable and its links stay crawlable, but it is not offered as a
+    ///         result.</item>
+    ///   <item>The <c>hreflang</c> cluster on the versions that <em>do</em> exist lists only those.
+    ///         A cluster naming a version that answers <c>noindex</c> is discarded whole, taking
+    ///         the working languages down with it — so filtering here is what keeps the eight
+    ///         real translations clustered.</item>
+    /// </list>
+    ///
+    /// <code>
+    /// protected override async Task OnInitializedAsync(CancellationToken token)
+    /// {
+    ///     _signal = await _signals.GetAsync(Id, token);
+    ///     Meta.Cultures = _signal.Translations.Keys.Select(c => new Culture(c)).ToArray();
+    /// }
+    /// </code>
+    ///
+    /// <para>Assign it as soon as the data is loaded — <see cref="PageMeta"/> is re-announced after
+    /// the page's own lifecycle, so a value set past an <c>await</c> still reaches the head. The
+    /// matching declaration for the sitemap is <c>SitemapEntry.Cultures</c>; the two answer the
+    /// same question and should be fed from the same place.</para>
+    /// </remarks>
+    public IReadOnlyList<Culture>? Cultures { get; set; }
+
+    /// <summary>
     /// Replaces the whole <c>robots</c> directive for this page. <see langword="null"/> uses the
     /// Site's default; an empty string emits no tag at all.
     /// </summary>

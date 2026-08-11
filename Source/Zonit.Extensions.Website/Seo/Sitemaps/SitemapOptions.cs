@@ -43,6 +43,51 @@ public sealed class SitemapOptions
     /// is well inside the interval any crawler actually re-reads at.
     /// </remarks>
     public TimeSpan CacheDuration { get; set; } = TimeSpan.FromHours(1);
+
+    /// <summary>
+    /// One file per language on a prefixed Site — <c>/sitemap/news-pl-1.xml</c> — instead of one
+    /// stream carrying every language. Ignored where the Site does not encode culture in its paths.
+    /// </summary>
+    /// <remarks>
+    /// <para><b>What it buys.</b> Search Console reports index coverage <em>per submitted file</em>.
+    /// One combined sitemap answers "20 000 URLs, 14 000 indexed", which names no problem; split by
+    /// language it answers "de 400/400, pl 380/400, bg 12/400", which names one. On a site aiming at
+    /// twenty markets that is the difference between having the diagnostic and not.</para>
+    ///
+    /// <para>It also makes file identity stable. Ungrouped, adding one page shifts every later
+    /// entry across part boundaries, so every part's contents change and a crawler re-reads the
+    /// whole set. Grouped, a page added in Polish rewrites the Polish parts only.</para>
+    ///
+    /// <para>A language a source contributes nothing to simply produces no file, so a partially
+    /// translated source lists what exists and nothing else — see
+    /// <see cref="SitemapEntry.Cultures"/>.</para>
+    ///
+    /// <para><b>Cost.</b> One writer stays open per language while the source streams, so peak
+    /// memory is roughly <c>languages × the current part</c> rather than one part. Parts flush at
+    /// <see cref="MaxBytesPerFile"/>; a very large multilingual source should lower that limit
+    /// rather than raise it.</para>
+    /// </remarks>
+    public bool GroupByCulture { get; set; } = true;
+
+    /// <summary>
+    /// Emit the <c>hreflang</c> cluster as <c>xhtml:link</c> elements inside the sitemap. Off by
+    /// default, because the rendered page already carries the same cluster.
+    /// </summary>
+    /// <remarks>
+    /// <para><b>Why off.</b> Sitemap and HTML are alternative ways to declare the same thing, and
+    /// this package emits the HTML form on every indexable page — complete, reciprocal by
+    /// construction (one policy generates every page's cluster, so no page can disagree with
+    /// another), and including <c>x-default</c>, which the sitemap form here does not. Declaring it
+    /// twice adds no signal and costs a square: each of N languages gets its own <c>&lt;url&gt;</c>
+    /// carrying N alternates. Measured on this generator, 1 000 pages in 20 languages is 400 000
+    /// link elements and about 38 MB — against a protocol ceiling of 50 MB. The same sitemap
+    /// without them is 1.8 MB.</para>
+    ///
+    /// <para><b>When to turn it on.</b> When the HTML cluster is not there to be found: a Site
+    /// whose shell was replaced with one that does not render <c>PageHead</c>, or content a crawler
+    /// is unlikely to fetch soon enough for the cluster to be discovered from the page itself.</para>
+    /// </remarks>
+    public bool Alternates { get; set; }
 }
 
 /// <summary>
