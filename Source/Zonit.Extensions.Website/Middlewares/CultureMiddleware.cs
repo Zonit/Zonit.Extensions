@@ -38,16 +38,16 @@ namespace Zonit.Extensions.Website.Middlewares;
 /// redirect permanently if the request does not already match it. Anything else leaves the page
 /// living at several indexable addresses.</para>
 ///
-/// <para><b>The unprefixed form redirects, it does not render.</b> <c>/pricing</c> answers 302
-/// to the visitor's language rather than serving a second copy of the page. That keeps the
-/// short link usable between people while giving search engines exactly one indexable URL per
-/// language, and it is the documented target for <c>hreflang="x-default"</c>. The redirect
-/// carries <c>Vary: Cookie, Accept-Language</c> and is marked uncacheable, because its target
-/// legitimately differs per visitor. Only <c>GET</c>/<c>HEAD</c> requests that explicitly accept
-/// <c>text/html</c> are redirected — that bounds the behaviour to browsers and crawlers without
-/// a hand-maintained list of API paths to exclude, and a client sending <c>*/*</c> still gets
-/// the page (with a canonical tag pointing at the prefixed form) rather than a surprise
-/// redirect.</para>
+/// <para><b>The unprefixed form of a page redirects, it does not render.</b> <c>/pricing</c>
+/// answers 302 to the visitor's language rather than serving a second copy of the page. That
+/// keeps the short link usable between people while giving search engines exactly one indexable
+/// URL per language, and it is the documented target for <c>hreflang="x-default"</c>. The
+/// redirect carries <c>Vary: Cookie, Accept-Language</c> and is marked uncacheable, because its
+/// target legitimately differs per visitor. The decision is made by
+/// <see cref="CultureRouteGate"/> after routing — a page redirects; an asset, a descriptor or a
+/// consumer endpoint serves, because its unprefixed address is the only one it has — and only
+/// for <c>GET</c>/<c>HEAD</c> requests that explicitly accept <c>text/html</c>, so an API client
+/// sending <c>*/*</c> still gets the page rather than a surprise redirect.</para>
 ///
 /// <para><b>Cookie write discipline.</b> The cookie is written only when the resolved value
 /// differs from what the browser sent. Under <see cref="CultureUrlStrategy.Prefix"/> that means
@@ -83,18 +83,11 @@ internal sealed class CultureMiddleware(
         if (string.IsNullOrEmpty(path))
             path = "/";
 
-        // Static and framework traffic skips the *culture work* — resolution, the cookie, the
-        // feature, redirects — but NOT the path split. Those are two different things, and
-        // conflating them broke every asset on a prefixed Site.
-        //
-        // <base href> is "/pl/", so a relative src="_framework/blazor.web.js" makes the browser
-        // request "/pl/_framework/blazor.web.js". Returning early here left the "/pl" in
-        // Request.Path, the static-asset endpoint had no route for it, and the answer was 404 —
-        // silently, on the framework script itself, on every prefixed page. A mount prefix does
-        // not have this problem because UsePathBase is real middleware that runs unconditionally;
-        // the culture segment is moved by this method, so this method has to run too.
+        // A file is not a page: it has no language, so it has no language segment. Static and
+        // framework traffic therefore skips every piece of culture work — resolution, the cookie,
+        // the feature — and a prefixed spelling is not an address at all.
         if (WebsiteRequestFilter.ShouldSkip(context))
-            return _policy.IsPrefixed ? SplitPrefixOnly(context, path) : _next(context);
+            return _policy.IsPrefixed ? NotFoundUnlocalized(context, path) : _next(context);
 
         var options = _settings.CurrentValue;
 
@@ -104,25 +97,55 @@ internal sealed class CultureMiddleware(
     }
 
     /// <summary>
-    /// Moves a culture segment out of the path and does nothing else — the asset path for a
-    /// prefixed Site.
+    /// Answers a language-prefixed request for a file with <c>404</c>: a file has no language, so
+    /// that address does not exist. Fast path only — <see cref="CultureRouteGate"/> enforces the
+    /// same rule after routing for everything this extension list does not recognise.
     /// </summary>
     /// <remarks>
-    /// No canonical redirect: <c>/pl-pl/app.css</c> is served, not 301'd. An asset URL is not an
-    /// indexable address, nobody links to it from outside, and bouncing it costs a round trip on
-    /// the critical path for no benefit. No cookie, no feature, no culture applied either —
-    /// nothing downstream of a static file reads any of it.
+    /// <para><b>This used to split the segment and serve.</b> It had to: <c>&lt;base href&gt;</c> is
+    /// <c>/pl/</c>, every asset URL the shell emitted was relative, so the browser asked for
+    /// <c>/pl/_framework/blazor.web.js</c> and anything but a split broke the framework script on
+    /// every prefixed page. The cost was that one file answered at as many addresses as the Site
+    /// had languages. Nothing emits those URLs any more — the shell, <c>@Assets[…]</c> and the
+    /// import map all root at the mount — so the prefixed form is not a second address for a
+    /// file; it is an address that was never real.</para>
+    ///
+    /// <para><b>The <c>_framework</c> carve-out is not optional.</b> WebAssembly boot resources
+    /// and the dev-time hot-reload script are fetched by the runtime relative to
+    /// <c>document.baseURI</c>, which on a prefixed Site carries the language. No server-side
+    /// rooting can reach those fetches, so <c>/pl/_framework/…</c> must split and serve or WASM
+    /// mode and hot reload break under a prefix. Robots disallows the path; nothing under it is
+    /// content.</para>
+    ///
+    /// <para><b>Why not a redirect.</b> A 301 would also keep the duplicate out of an index, and it
+    /// would quietly paper over the one thing worth finding: markup still emitting a relative asset
+    /// URL, which happens whenever a project is upgraded without being rebuilt — <c>@Assets</c>
+    /// rooting is a compile-time binding. Under a redirect that ships and works; under 404 it fails
+    /// on the first page load, in development, where it is a one-line fix.</para>
+    ///
+    /// <para>The body stays empty on purpose: status-code re-execution would render the styled
+    /// error page for a URL only ever fetched as bytes, so it is suppressed here the same way
+    /// the gate suppresses it.</para>
     /// </remarks>
-    private Task SplitPrefixOnly(HttpContext context, string path)
+    private Task NotFoundUnlocalized(HttpContext context, string path)
     {
         var match = _policy.Match(path);
         if (match is null)
             return _next(context);
 
-        context.Request.PathBase = context.Request.PathBase.Add("/" + match.Value.Segment);
-        context.Request.Path = match.Value.Remainder;
+        if (match.Value.Remainder.StartsWith("/_framework/", StringComparison.OrdinalIgnoreCase))
+        {
+            context.Request.PathBase = context.Request.PathBase.Add("/" + match.Value.Segment);
+            context.Request.Path = match.Value.Remainder;
+            return _next(context);
+        }
 
-        return _next(context);
+        var statusPages = context.Features.Get<IStatusCodePagesFeature>();
+        if (statusPages is not null)
+            statusPages.Enabled = false;
+
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+        return Task.CompletedTask;
     }
 
     /// <summary>
@@ -134,6 +157,19 @@ internal sealed class CultureMiddleware(
     private Task InvokeUnprefixed(
         HttpContext context, string path, CultureOption options, ICultureManager cultureManager, ITenantProvider tenant)
     {
+        // The same one-address rule the prefixed flow gets from its canonical comparison. Guarded
+        // to browser-shaped requests: framework endpoints are never spelled with a trailing slash
+        // by anything this stack generates, and a re-executed error page must keep its status.
+        var normalized = NormalizeTrailingSlash(path);
+        if (!ReferenceEquals(normalized, path)
+            && (HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method))
+            && !path.StartsWith("/_", StringComparison.Ordinal)
+            && context.Features.Get<IStatusCodeReExecuteFeature>() is null
+            && context.Features.Get<IExceptionHandlerPathFeature>() is null)
+        {
+            return RedirectPermanent(context, normalized);
+        }
+
         var culture = ResolveFromRequest(context, options, tenant);
 
         Apply(culture, cultureManager);
@@ -153,7 +189,13 @@ internal sealed class CultureMiddleware(
             return InvokeWithoutPrefix(context, path, options, cultureManager, tenant);
 
         var found = match.Value;
-        var routePath = _routes.ToRoute(found.Culture, found.Remainder);
+
+        // Trailing slashes fold into the same canonical comparison as the culture spelling.
+        // Without this, /pl/signals/ rendered next to /pl/signals — and worse than rendering, each
+        // spelling emitted ITSELF as canonical, so the two were not even competing for one entry
+        // in the index; they were both claiming to be it.
+        var remainder = NormalizeTrailingSlash(found.Remainder);
+        var routePath = _routes.ToRoute(found.Culture, remainder);
         var localizedPath = _routes.ToLocalized(found.Culture, routePath);
 
         // One comparison covers the culture spelling, the language-root trailing slash and an
@@ -178,28 +220,23 @@ internal sealed class CultureMiddleware(
     }
 
     /// <summary>
-    /// A prefixed Site reached through an unprefixed path. Normally a redirect into the
-    /// visitor's language; falls through to rendering when redirects are disabled, when the
-    /// request is not a browser navigation, or when the pipeline is re-executing an error page.
+    /// A prefixed Site reached through an unprefixed path. Culture is resolved and published, and
+    /// the request proceeds to routing — whether it then <em>redirects</em> into the visitor's
+    /// language is <see cref="CultureRouteGate"/>'s call, because only the router knows whether
+    /// the path is a page.
     /// </summary>
+    /// <remarks>
+    /// The redirect used to be decided here, before routing, from request shape alone — method,
+    /// <c>Accept</c>, a <c>/_</c> prefix. That heuristic sent every browser-shaped GET into the
+    /// language, including consumer endpoints mapped via <c>MapEndpoints</c>, whose prefixed
+    /// address then correctly answered 404: a download link clicked in a browser bounced to a
+    /// dead URL. The gate decides from the matched endpoint instead, so a page redirects and
+    /// everything else serves at the one address it has.
+    /// </remarks>
     private Task InvokeWithoutPrefix(
         HttpContext context, string path, CultureOption options, ICultureManager cultureManager, ITenantProvider tenant)
     {
         var culture = ResolveFromRequest(context, options, tenant);
-
-        if (ShouldRedirect(context, path))
-        {
-            var target = _policy.BuildPath(culture, _routes.ToLocalized(culture, path));
-            if (target is not null)
-            {
-                // Temporary, not permanent: the target depends on who is asking, so a cache or a
-                // browser must not pin one language onto this URL forever.
-                AddVary(context);
-                context.Response.Headers.CacheControl = "private, no-store";
-                context.Response.Redirect(context.Request.PathBase + target + context.Request.QueryString, permanent: false);
-                return Task.CompletedTask;
-            }
-        }
 
         Apply(culture, cultureManager);
         PersistCookieIfChanged(context, culture);
@@ -210,43 +247,19 @@ internal sealed class CultureMiddleware(
     }
 
     /// <summary>
-    /// Whether an unprefixed request should be answered with a redirect rather than rendered.
+    /// <c>/signals/</c> and <c>/signals///</c> become <c>/signals</c>; the root stays <c>/</c>.
+    /// Returns the same instance when nothing changes, so callers can test with
+    /// <see cref="object.ReferenceEquals(object?, object?)"/> instead of comparing content.
+    /// Internal because <see cref="CultureRouteGate"/> normalizes its redirect target with the
+    /// same rule — two spellings of "canonical" would fight each other with redirects.
     /// </summary>
-    /// <remarks>
-    /// <para>Deliberately conservative. Requiring an explicit <c>text/html</c> in <c>Accept</c>
-    /// admits every browser navigation and every major crawler while excluding API clients,
-    /// health probes and anything sending <c>*/*</c> — without a list of endpoint paths that
-    /// would silently rot as areas add their own.</para>
-    ///
-    /// <para>The error-page guard is not theoretical: <c>UseStatusCodePagesWithReExecute</c> and
-    /// <c>UseExceptionHandler</c> are registered upstream of this middleware, so a re-executed
-    /// error path runs through here again. Redirecting at that point discards the status code
-    /// and turns every 404 into a 302.</para>
-    /// </remarks>
-    private static bool ShouldRedirect(HttpContext context, string path)
+    internal static string NormalizeTrailingSlash(string path)
     {
-        var request = context.Request;
+        if (path.Length <= 1 || path[^1] != '/')
+            return path;
 
-        if (!HttpMethods.IsGet(request.Method) && !HttpMethods.IsHead(request.Method))
-            return false;
-
-        // Framework endpoints (/_blazor, /_framework, /_content) are never page navigations.
-        // WebsiteRequestFilter already skipped most of them; "/_blazor" has no extension and no
-        // trailing slash in its negotiate form, so it needs this.
-        if (path.StartsWith("/_", StringComparison.Ordinal))
-            return false;
-
-        if (context.Features.Get<IStatusCodeReExecuteFeature>() is not null ||
-            context.Features.Get<IExceptionHandlerPathFeature>() is not null)
-            return false;
-
-        foreach (var accept in request.Headers.Accept)
-        {
-            if (accept is not null && accept.Contains("text/html", StringComparison.OrdinalIgnoreCase))
-                return true;
-        }
-
-        return false;
+        var trimmed = path.TrimEnd('/');
+        return trimmed.Length == 0 ? "/" : trimmed;
     }
 
     private static Task RedirectPermanent(HttpContext context, string canonicalPath)

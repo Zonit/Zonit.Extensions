@@ -13,17 +13,54 @@ Every package in this repository versions together — there is no partial upgra
 Everything here is `Zonit.Extensions.Website` and `Zonit.Extensions.Tenants`. No API is removed;
 the two additions are opt-in.
 
-### Fixed — the descriptors answered at every language prefix
+### Breaking — the culture prefix is valid for pages, and for nothing else
 
-On a prefixed Site, `/pl/llms.txt`, `/de/robots.txt` and `/pl-pl/sitemap.xml` all served a
-byte-identical copy of a file that is not translated. The culture middleware moves the language
-segment into `PathBase` for skipped extensions too — it has to, or an asset fetched relative to
-`<base href="/pl/">` would 404 — so routing saw a bare `/llms.txt` and answered it. A twenty-language
-Site published twenty-one addresses for one file, none of them canonical.
+The rule is enforced from the endpoint table, not from the path's spelling. `CultureRouteGate` runs
+right after routing on prefixed Sites: the matched endpoint either carries
+`ComponentTypeMetadata` — the marker every Razor Components page endpoint has — or the prefixed
+address does not exist.
 
-Every prefixed spelling now answers `301` to the unprefixed form, before generation runs, so a
-prefixed `/sitemap.xml` cannot trigger the source walk. Query strings survive; a Site mounted at
-`/shop` keeps its mount.
+```
+/pl/pricing                      → 200 — a page, the point of the prefix
+/pl/_content/acme/app.css        → 404
+/pl/llms.txt                     → 404
+/pl/api/ping (MapEndpoints)      → 404 — consumer endpoints have one address, unprefixed
+/pl/anything.glb                 → 404 — no extension list to outrun
+/pl/_framework/… , /pl/_blazor…  → served — see the carve-out below
+```
+
+An earlier draft of this rule keyed on a static-extension list. That list is a losing race — there
+are thousands of file formats, and every one it does not name becomes a page-shaped request that
+splits the segment and serves a duplicate. The set that may carry a language is the set of page
+routes, and that set already exists: it is the router's. `WebsiteRequestFilter`'s extension list is
+demoted to a fast path (answers the obvious cases before routing, empty-body, no error-page
+re-execution); correctness no longer depends on it.
+
+**The framework carve-out.** `/_blazor*` (circuit negotiate, WebSocket, initializers) and
+`/_framework/*` (WebAssembly boot resources, dev hot-reload) are fetched by the client relative to
+`document.baseURI`, which on a prefixed Site deliberately carries the language — no server-side
+rooting can reach those fetches. They split and serve under any prefix; `robots.txt` already
+disallows both paths, and nothing under them is content. Without the carve-out, WebAssembly render
+modes and dev hot reload break under a culture prefix — the extension-list draft had exactly that
+latent bug.
+
+**The unprefixed redirect is endpoint-typed too.** The 302 that sends `/pricing` into the
+visitor's language used to be decided before routing, from request shape — and sent every
+browser-shaped GET into the language, including consumer endpoints, whose prefixed address then
+correctly answered 404: a download link clicked in a browser bounced to a dead URL. The gate now
+decides both directions from the matched endpoint: a page reached without its language redirects
+into it; anything else serves at the one address it has. A side effect worth having: a garbage
+path like `/xx/foo` answers a plain 404 instead of a 302-then-404 hop.
+
+**What this breaks.** (1) Markup still emitting a relative asset URL — `@Assets` rooting is a
+compile-time binding, so rebuild every project and check a prefixed page's network tab. (2) A
+consumer minimal-API endpoint that was reachable under `/pl/…` by accident: it now has exactly one
+address. There is deliberately no opt-in to put a non-page endpoint under the prefix — an endpoint
+that wants the visitor's language reads it from the culture cookie or `Accept-Language`, not from a
+URL that multiplies its addresses. (3) An unprefixed *localized* route spelling
+(`/aktualnosci/x` where the canonical route is `/news/{slug}`) no longer bounces into the
+language — routing cannot match it, so it 404s; the canonical unprefixed spelling (`/news/x`)
+still redirects, translated, in one hop.
 
 ### Fixed — assets carried the culture segment
 
@@ -47,8 +84,12 @@ The mount is kept because `MapStaticAssets` is registered inside the Site's bran
 
 The import map needed the same treatment and could only get it here: an import map resolves against
 the document base URL exactly like `src` does, and the specifier a module is imported under is the
-map's *key*, so no call site can correct it. Override `AppBase.AssetBase` or
-`AppBase.RootedImportMap()` to change either.
+map's *key*, so no call site can correct it. Every entry now appears under **both** spellings —
+`/_content/lib/x.js` and `./_content/lib/x.js` — pointing at the same rooted URL, because a library
+loading itself with `JS.InvokeAsync<IJSObjectReference>("import", "./_content/lib/x.js")` would
+otherwise go unmatched, lose its fingerprint and look for a file under the language segment.
+
+Override `AppBase.AssetBase` or `AppBase.RootedImportMap()` to change either.
 
 `@Assets["…"]` written in markup is covered too: `ExtensionsBase` now hides
 `ComponentBase.Assets` with a rooted lookup, so `<img src="@Assets["_content/acme/logo.png"]">`
@@ -63,6 +104,34 @@ markup keeps the old URLs. Rebuild every project whose components use `@Assets`.
 **Not covered:** components on `LayoutComponentBase` or plain `ComponentBase`, and code that
 casts to `ComponentBase` before reading `Assets` — hiding is not virtual dispatch. Root those by
 hand (`/_content/…` on a Site mounted at `/`).
+
+### Fixed — `/pl/signals/` rendered next to `/pl/signals`, each claiming to be canonical
+
+A trailing slash was invisible to the canonical comparison, so both spellings rendered — and each
+emitted *itself* as canonical, so they were not even competing for one index entry; both were
+claiming it. Trailing slashes now fold into the same comparison as the culture spelling:
+`/pl/signals/` and `/pl/signals///` answer `301 → /pl/signals`, query preserved. The language root
+keeps its slash (`/pl/`), which is what `PathBase + Path` reconstruct to. Unprefixed Sites get the
+same rule for browser-shaped requests (GET/HEAD, not `/_*`, not an error re-execution), and the
+unprefixed redirect normalizes before building its target so `/signals/` reaches `/pl/signals` in
+one hop, not two.
+
+### Fixed — `HEAD` on `robots.txt` / `llms.txt` / `sitemap*.xml` answered 404
+
+`MapGet` registers GET alone; an unmatched HEAD does not become 405 — it falls off the endpoint
+table and reads as "this site has no robots.txt" to every link checker and uptime probe that HEADs
+before it GETs. All four endpoints now register GET and HEAD; Kestrel discards the body on HEAD by
+itself. (HEAD on *pages* still answers 404 — that is `MapRazorComponents`, upstream.)
+
+### Fixed — `.avif` and `.webmanifest` missing from the static-extension list
+
+Both fell through to the page pipeline, so under a language prefix they split-and-served — the
+exact duplicate the 404 rule exists to prevent, surviving on two file types. Added to
+`WebsiteRequestFilter`.
+
+`AssetPaths` also gained `Versioned(path)` — hiding `ComponentBase.Assets` hid the collection the
+`AssetVersioning.Versioned` extension binds to, so `@Assets.Versioned(…)` would have stopped
+compiling in exactly the components the hiding covers. The result is rooted like the indexer's.
 
 ### Fixed — `llms.txt` answered 404 on a Site whose pages all declared themselves
 

@@ -30,8 +30,11 @@ app.UseWebsite("/", o =>
 | `/pl/pricing` | 200, canonical, self-referencing `hreflang` |
 | `/pl-pl/pricing` | 301 → `/pl/pricing` (non-canonical spelling) |
 | `/pl` | 301 → `/pl/` (language root keeps its slash) |
+| `/pl/pricing/` | 301 → `/pl/pricing` (trailing slash; unprefixed Sites 301 GET/HEAD the same way) |
 | `/pl/news/x` where Polish translates the route | 301 → `/pl/aktualnosci/x` |
 | `/pricing` | 302 → the visitor's language, `Vary: Cookie, Accept-Language`, `no-store` |
+| `/pl/app.css`, `/pl/report.glb`, `/pl/api/ping` — anything that is not a page | 404 — the prefix is valid for page routes only, decided from the endpoint table (`CultureRouteGate`), not from an extension list |
+| `/pl/_framework/…`, `/pl/_blazor…` | served — the client resolves these against the prefixed base URI (WASM boot, circuits, hot reload); both are robots-disallowed |
 | `/en-gb/x` when only `en-us` is supported | falls through — an unknown region is never folded into a neighbour |
 
 `Short` degrades to the full tag **per language** when a primary subtag is ambiguous: with `pt-pt`

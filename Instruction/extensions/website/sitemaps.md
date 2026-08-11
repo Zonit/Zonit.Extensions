@@ -174,18 +174,16 @@ Unknown part names answer 404.
 
 ### One address per Site, never one per language
 
-`robots.txt`, `sitemap.xml`, `llms.txt` and the sitemap parts are not translated, so on a prefixed
-Site every language-prefixed spelling answers `301` to the unprefixed form:
-
 ```
-/pl/llms.txt         → 301 → /llms.txt
-/pl-pl/sitemap.xml   → 301 → /sitemap.xml
-/de/robots.txt       → 301 → /robots.txt
+/pl/llms.txt         → 404
+/pl-pl/sitemap.xml   → 404
+/de/robots.txt       → 404
 ```
 
-Nothing to configure. The redirect fires before generation, so a prefixed request never triggers
-the sitemap walk. Query strings are preserved; a Site mounted at `/shop` keeps its mount
-(`/shop/pl/robots.txt` → `/shop/robots.txt`).
+Nothing to configure, and nothing specific to these three: `CultureMiddleware` answers *any*
+static-extension request carrying a language segment with 404, before routing. A Site mounted at
+`/shop` still serves `/shop/robots.txt`. See `.zonit/extensions/website/document.md` for the asset
+side of the same rule.
 
 ## Where the rest lives
 

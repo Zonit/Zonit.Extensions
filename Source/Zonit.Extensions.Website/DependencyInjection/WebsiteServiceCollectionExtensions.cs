@@ -579,6 +579,14 @@ public static class WebsiteServiceCollectionExtensions
 
         branch.UseRouting();
 
+        // The culture prefix is valid for PAGES and for nothing else, and "is this a page" is the
+        // router's knowledge — so the gate sits immediately after UseRouting, where the matched
+        // endpoint is known, and before authentication, so a 404 costs no auth work. Prefixed
+        // Sites only: on every other mount the gate would be a per-request feature read that can
+        // never fire.
+        if (urlPolicy.IsPrefixed)
+            branch.UseMiddleware<CultureRouteGate>();
+
         // Auth must come AFTER UseRouting in endpoint-routing model.
         branch.UseAuthentication();
         branch.UseAuthorization();

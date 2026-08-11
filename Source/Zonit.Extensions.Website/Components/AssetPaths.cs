@@ -30,6 +30,14 @@ public readonly struct AssetPaths(ResourceAssetCollection inner, string mount)
     /// for a Razor class library, or a plain <c>wwwroot</c>-relative path.
     /// </param>
     public string this[string key] => AssetBaseResolver.Root(inner[key], mount);
+
+    /// <summary>
+    /// <see cref="AssetVersioning.Versioned"/>, rooted. Exists because hiding
+    /// <c>ComponentBase.Assets</c> also hides the collection an extension method would bind to —
+    /// without this, <c>@Assets.Versioned(…)</c> stops compiling in exactly the components the
+    /// hiding covers.
+    /// </summary>
+    public string Versioned(string path) => AssetBaseResolver.Root(inner.Versioned(path), mount);
 }
 
 /// <summary>

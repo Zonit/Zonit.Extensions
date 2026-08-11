@@ -72,26 +72,18 @@ public static class SitemapExtensions
         // RequestDelegate overloads, not the Delegate ones: minimal-API parameter binding
         // reflects over the handler signature and is neither trim- nor AOT-safe.
         //
-        // Both guard with SiteRootDescriptor: on a prefixed Site the culture segment is already in
-        // PathBase by the time routing runs, so /pl/sitemap.xml arrives here as a plain
-        // /sitemap.xml. The entries inside are absolute and identical whichever language asked, so
-        // serving it under a prefix would publish the same URL set at as many addresses as the Site
-        // has languages — and the guard runs before ResolveAsync so a prefixed request cannot warm
-        // (or wait on) a generation it is not going to use.
-        endpoints.MapGet("/sitemap.xml", async context =>
+        // No language guard is needed: both paths carry a skipped extension, so CultureMiddleware
+        // answers /pl/sitemap.xml with 404 before routing runs and a prefixed request never
+        // reaches the generator. GET+HEAD for the same reason as robots.txt — an unmatched HEAD
+        // reads as "no sitemap here" to anything that probes before it fetches.
+        endpoints.MapMethods("/sitemap.xml", IndexingEndpoints.GetAndHead, async context =>
         {
-            if (SiteRootDescriptor.Redirected(context))
-                return;
-
             var set = await ResolveAsync(context);
             await WriteAsync(context, set.Index);
         }).AllowAnonymous().ExcludeFromDescription();
 
-        endpoints.MapGet("/sitemap/{name}.xml", async context =>
+        endpoints.MapMethods("/sitemap/{name}.xml", IndexingEndpoints.GetAndHead, async context =>
         {
-            if (SiteRootDescriptor.Redirected(context))
-                return;
-
             var name = context.Request.RouteValues["name"] as string;
             var set = await ResolveAsync(context);
 

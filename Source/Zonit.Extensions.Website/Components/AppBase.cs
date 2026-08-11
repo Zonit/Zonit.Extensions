@@ -162,7 +162,7 @@ public abstract class AppBase : ComponentBase
             var map = ImportMapDefinition.FromResourceCollection(assets);
 
             return new ImportMapDefinition(
-                Rewrite(map.Imports, @base),
+                RewriteImports(map.Imports, @base),
                 map.Scopes?.ToDictionary(
                     scope => RootSpecifier(scope.Key, @base),
                     scope => (IReadOnlyDictionary<string, string>)Rewrite(scope.Value, @base)!,
@@ -173,6 +173,37 @@ public abstract class AppBase : ComponentBase
 
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, ImportMapDefinition> RootedImportMaps =
         new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Rewrites the import specifiers, keeping the original <c>./</c> spelling as a second key
+    /// pointing at the same rooted URL.
+    /// </summary>
+    /// <remarks>
+    /// The rooted key is what our own emission uses. The <c>./</c> key is for everyone else:
+    /// libraries commonly load their module with
+    /// <c>JS.InvokeAsync&lt;IJSObjectReference&gt;("import", "./_content/Lib/lib.js")</c>, and that
+    /// specifier resolves against the document base — <c>/pl/_content/Lib/lib.js</c> on a prefixed
+    /// Site. Dropping the relative key would leave that import unmatched, so it would lose its
+    /// fingerprint and go looking for a URL under the language segment. Both keys map to the same
+    /// value, so either spelling fetches the one real file.
+    /// </remarks>
+    private static Dictionary<string, string> RewriteImports(IReadOnlyDictionary<string, string>? imports, string @base)
+    {
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (imports is null)
+            return result;
+
+        foreach (var (key, value) in imports)
+        {
+            var rooted = RootSpecifier(value, @base);
+            result[RootSpecifier(key, @base)] = rooted;
+
+            if (key.StartsWith("./", StringComparison.Ordinal))
+                result[key] = rooted;
+        }
+
+        return result;
+    }
 
     private static Dictionary<string, string>? Rewrite(IReadOnlyDictionary<string, string>? entries, string @base)
         => entries?.ToDictionary(

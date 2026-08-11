@@ -98,6 +98,20 @@ Not rooted: `LayoutComponentBase` / plain `ComponentBase` components, and any co
 `ComponentBase` before reading `Assets` (hiding is not virtual dispatch). Write `/_content/…` by
 hand there.
 
+Because nothing generates a prefixed asset URL any more, a language prefix is valid for **pages
+only** — `CultureRouteGate` checks the matched endpoint after routing, so this covers every file
+format and every consumer endpoint without an extension list to maintain:
+
+```
+/pl/_content/acme/app.css        → 404
+/panel/de/_content/acme/logo.png → 404
+/pl/api/anything                 → 404   (non-page endpoint)
+/pl/_framework/…, /pl/_blazor…   → served (client resolves these against the prefixed base URI)
+```
+
+So markup still emitting a relative asset URL fails immediately and visibly. That is the intended
+signal: rebuild the project, or root the URL by hand.
+
 ### Extending, in increasing order of power
 
 0. `IWebsiteArea.ConfigureDocument(IDocumentAssets)` — an area's *own* assets, declared by the area

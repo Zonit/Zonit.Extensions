@@ -48,16 +48,20 @@ internal static class WebsiteRequestFilter
         "/lib/",
     };
 
-    // Conservative whitelist: a file with one of these extensions is, in practice, never
-    // a Razor page route in this stack. Keep ordered roughly by frequency to short-circuit.
+    // FAST PATH, not a correctness gate. A file with one of these extensions is, in practice,
+    // never a page route in this stack, so the middlewares skip their per-request work early.
+    // An extension this list misses costs only that work — the culture rule ("a language prefix
+    // is valid for pages and nothing else") is enforced after routing by CultureRouteGate, which
+    // decides from the matched endpoint rather than from the path's spelling. Keep ordered
+    // roughly by frequency to short-circuit.
     private static readonly string[] StaticExtensions =
     {
         ".css", ".js", ".map",
-        ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".ico",
+        ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".avif", ".ico",
         ".woff", ".woff2", ".ttf", ".otf", ".eot",
         ".mp4", ".webm", ".ogg", ".mp3", ".wav",
         ".pdf", ".zip", ".wasm",
-        ".txt", ".xml", ".json",
+        ".txt", ".xml", ".json", ".webmanifest",
     };
 
     /// <summary>

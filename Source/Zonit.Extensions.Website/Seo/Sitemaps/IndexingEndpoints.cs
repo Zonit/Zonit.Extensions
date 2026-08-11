@@ -23,27 +23,30 @@ internal static class IndexingEndpoints
         // endpoint table is fixed once the host is built, so gating registration would make
         // "Enabled" the one setting in the section that silently needs a restart.
         //
-        // SiteRootDescriptor first, before anything is generated: on a prefixed Site the culture
-        // segment has already been moved into PathBase by the time routing runs, so /pl/robots.txt
-        // reaches this handler as a plain /robots.txt. One address per Site, not one per language.
-        endpoints.MapGet("/robots.txt", context => SiteRootDescriptor.Redirected(context)
-            ? Task.CompletedTask
-            : options.Robots.Enabled
-                ? Write(context, BuildRobots(context, options), "text/plain; charset=utf-8")
-                : NotFound(context))
+        // Nothing here guards against a language prefix. It cannot arrive: these paths carry a
+        // skipped extension, so CultureMiddleware answers /pl/robots.txt with 404 before routing
+        // ever runs. One rule, in one place, for every file the Site serves.
+        //
+        // GET and HEAD both, explicitly — MapGet registers GET alone, and an unmatched HEAD does
+        // not become 405, it falls off the endpoint table entirely and reads as "this site has no
+        // robots.txt" to every link checker and uptime probe that HEADs before it GETs. Kestrel
+        // discards the body on a HEAD by itself; the handlers need no second code path.
+        endpoints.MapMethods("/robots.txt", GetAndHead, context => options.Robots.Enabled
+            ? Write(context, BuildRobots(context, options), "text/plain; charset=utf-8")
+            : NotFound(context))
             .AllowAnonymous().ExcludeFromDescription();
 
         // Enabled is not the whole story: a page carrying [WebsiteLlms] is content declared for
         // this file just as much as an AddLink call is, and the flag only ever tracked the latter.
         // Gating on it alone made a Site whose pages all declare themselves — the shape the
         // attribute exists to encourage — answer 404 on a file it had plenty to say in.
-        endpoints.MapGet("/llms.txt", context => SiteRootDescriptor.Redirected(context)
-            ? Task.CompletedTask
-            : HasLlmsContent(context, options)
-                ? Write(context, BuildLlms(context, options), "text/markdown; charset=utf-8")
-                : NotFound(context))
+        endpoints.MapMethods("/llms.txt", GetAndHead, context => HasLlmsContent(context, options)
+            ? Write(context, BuildLlms(context, options), "text/markdown; charset=utf-8")
+            : NotFound(context))
             .AllowAnonymous().ExcludeFromDescription();
     }
+
+    internal static readonly string[] GetAndHead = ["GET", "HEAD"];
 
     private static bool HasLlmsContent(HttpContext context, IndexingOptions options)
         => options.Llms.Enabled
