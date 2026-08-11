@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -21,6 +22,35 @@ public abstract class ExtensionsBase : Base, IDisposable
 
     [Inject]
     protected NavigationManager Navigation { get; set; } = default!;
+
+    private string? _assetBase;
+
+    /// <summary>
+    /// Asset URLs rooted at the Site's mount, with no culture segment — what
+    /// <c>@Assets["_content/acme/logo.png"]</c> resolves to inside any component deriving from
+    /// this class.
+    /// </summary>
+    /// <remarks>
+    /// <para><b>Deliberately hides <see cref="ComponentBase.Assets"/>.</b> The base property is not
+    /// virtual, and the value it returns is base-relative by contract, so under
+    /// <c>&lt;base href="/pl/"&gt;</c> every file it names acquires one URL per language: separate
+    /// cache entries in every intermediary, separately indexable images, and a second download of
+    /// a file the browser already holds. Pages keep the culture because their address is part of
+    /// what they say; files do not.</para>
+    ///
+    /// <para>Markup binds to the most derived member, so <c>@Assets[…]</c> in a component whose
+    /// <c>@inherits</c> reaches this class picks this up with no change at the call site. Code that
+    /// deliberately casts to <see cref="ComponentBase"/> still sees the framework's own collection
+    /// — hiding cannot be virtual dispatch, and pretending otherwise would be worse than saying
+    /// so.</para>
+    ///
+    /// <para>The mount is resolved once per component and reused; the struct itself is free.</para>
+    /// </remarks>
+    protected new AssetPaths Assets
+        => new(base.Assets, _assetBase ??= AssetBaseResolver.Resolve(
+            ServiceProvider.GetService<IHttpContextAccessor>()?.HttpContext,
+            Navigation,
+            ServiceProvider.GetService<ICurrentSite>()?.UrlPolicy));
 
     /// <summary>
     /// Określa, czy komponent powinien zarządzać okruszkami (breadcrumbs). <br />

@@ -172,6 +172,21 @@ inject `SitemapCache` and call `Invalidate()`.
 
 Unknown part names answer 404.
 
+### One address per Site, never one per language
+
+`robots.txt`, `sitemap.xml`, `llms.txt` and the sitemap parts are not translated, so on a prefixed
+Site every language-prefixed spelling answers `301` to the unprefixed form:
+
+```
+/pl/llms.txt         → 301 → /llms.txt
+/pl-pl/sitemap.xml   → 301 → /sitemap.xml
+/de/robots.txt       → 301 → /robots.txt
+```
+
+Nothing to configure. The redirect fires before generation, so a prefixed request never triggers
+the sitemap walk. Query strings are preserved; a Site mounted at `/shop` keeps its mount
+(`/shop/pl/robots.txt` → `/shop/robots.txt`).
+
 ## Where the rest lives
 
 - `.zonit/extensions/website/seo.md` — culture URLs, indexed cultures, `robots.txt`.

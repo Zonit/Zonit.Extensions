@@ -8,6 +8,116 @@ Every package in this repository versions together — there is no partial upgra
 
 ---
 
+## 10.0.0-preview.20 — 2026-08-11
+
+Everything here is `Zonit.Extensions.Website` and `Zonit.Extensions.Tenants`. No API is removed;
+the two additions are opt-in.
+
+### Fixed — the descriptors answered at every language prefix
+
+On a prefixed Site, `/pl/llms.txt`, `/de/robots.txt` and `/pl-pl/sitemap.xml` all served a
+byte-identical copy of a file that is not translated. The culture middleware moves the language
+segment into `PathBase` for skipped extensions too — it has to, or an asset fetched relative to
+`<base href="/pl/">` would 404 — so routing saw a bare `/llms.txt` and answered it. A twenty-language
+Site published twenty-one addresses for one file, none of them canonical.
+
+Every prefixed spelling now answers `301` to the unprefixed form, before generation runs, so a
+prefixed `/sitemap.xml` cannot trigger the source walk. Query strings survive; a Site mounted at
+`/shop` keeps its mount.
+
+### Fixed — assets carried the culture segment
+
+`<base href>` is `/pl/` on a prefixed Site, and every asset the document shell emitted was a
+relative URL, so the browser fetched `/pl/_content/acme/app.css`, `/de/_content/acme/app.css`, and
+so on. One stylesheet, one script, one image — as many URLs as the Site has languages, each its own
+cache entry in every intermediary, each separately indexable. The culture belongs to what a page
+says, not to the files it loads.
+
+The shell now roots what it emits at the Site's **mount**, culture excluded — stylesheets, scripts,
+the scoped-CSS bundle, the favicon, `blazor.web.js` and the import map:
+
+```
+/pl/            → /_content/acme/app.css          (was /pl/_content/acme/app.css)
+/panel/de/      → /panel/_content/acme/app.css    (was /panel/de/_content/acme/app.css)
+```
+
+The mount is kept because `MapStaticAssets` is registered inside the Site's branch — a bare
+`/_content/…` would leave the branch and 404 wherever no root Site exists. The value comes from
+`ICultureUrlFeature.SitePathBase`, which is the path base from before the culture was appended.
+
+The import map needed the same treatment and could only get it here: an import map resolves against
+the document base URL exactly like `src` does, and the specifier a module is imported under is the
+map's *key*, so no call site can correct it. Override `AppBase.AssetBase` or
+`AppBase.RootedImportMap()` to change either.
+
+`@Assets["…"]` written in markup is covered too: `ExtensionsBase` now hides
+`ComponentBase.Assets` with a rooted lookup, so `<img src="@Assets["_content/acme/logo.png"]">`
+in any component deriving from it (`PageBase`, `PageViewBase`, `PageEditBase`, or
+`@inherits ExtensionsBase`) emits `/_content/acme/logo.png` with no change at the call site.
+Off-site URLs and fingerprints pass through untouched.
+
+**Requires a recompile, not just a new binary.** Member lookup is resolved by the compiler, so an
+assembly still built against `preview.19` keeps binding to the framework's own collection and its
+markup keeps the old URLs. Rebuild every project whose components use `@Assets`.
+
+**Not covered:** components on `LayoutComponentBase` or plain `ComponentBase`, and code that
+casts to `ComponentBase` before reading `Assets` — hiding is not virtual dispatch. Root those by
+hand (`/_content/…` on a Site mounted at `/`).
+
+### Fixed — `llms.txt` answered 404 on a Site whose pages all declared themselves
+
+`Llms.Enabled` was only ever set by `AddLink`, so a Site relying on `[WebsiteLlms]` — the shape the
+attribute exists to encourage — had plenty to say and returned 404 saying it. The endpoint now also
+counts declared pages.
+
+### Fixed — `schema.org` `sameAs` listed 6 of 12 social platforms
+
+`SchemaComposer` enumerated its own subset, so Reddit, Twitch, Threads, Discord, Pinterest and
+Snapchat were filled in by the tenant and silently dropped from structured data. Both callers now
+go through `SocialMediaModel.All()`; the list exists once.
+
+### Added — `SocialMediaSetting.Custom`
+
+Named properties cover the twelve platforms worth a first-class name. Anything else — a Facebook
+group, a community forum, a status page — goes in `Custom` as label → URL:
+
+```json
+"SocialMedia": {
+  "Facebook": "https://www.facebook.com/acme/",
+  "Custom": { "Facebook group": "https://www.facebook.com/groups/acme/" }
+}
+```
+
+`All()` enumerates named entries then custom ones; `All(includeCustom: false)` is what `sameAs`
+uses. Custom links stay out of structured data on purpose: `sameAs` asserts *this page identifies
+this organisation*, which is true of a profile and not of a status page.
+
+### Added — `llms.txt` gained a languages line and an `## Optional` section
+
+```
+Available in 3 languages — prefix any path with the language segment: /en/, /pl/, /de/.
+An unprefixed path serves the reader's own language.
+
+## Optional
+- [Sitemap](https://example.com/sitemap.xml): every indexable URL, with per-language alternates.
+- [Facebook](https://www.facebook.com/acme/)
+```
+
+The languages line is the one fact an agent cannot derive by reading a page — the `hreflang`
+cluster sits in the head of pages it has not fetched, and the prefix shape is policy, not a link.
+`## Optional` is the convention's marker for material to skip when context is short, which is where
+social profiles belong: they answer questions about identity, not about the product.
+
+### Changed — `robots.txt` and `llms.txt` send `Cache-Control: public, max-age=3600`
+
+`llms.txt` is not crawled on a schedule; it is pulled on demand by agent tooling (IDE assistants,
+MCP servers) that may re-read it per session or per question, and the header is the only way to
+tell it not to. One hour matches the sitemap's regeneration window, so the two never disagree about
+how fresh the Site claims to be. Nothing is cached server-side — generation is a `StringBuilder`
+over an in-memory registry.
+
+---
+
 ## 10.0.0-preview.18 — 2026-08-10
 
 ### Changed — `Zonit.Extensions.Website.Sitemaps` is gone; it is part of the kernel

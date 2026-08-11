@@ -65,6 +65,39 @@ the blocking appearance script, preconnects, metas, stylesheets, the scoped-CSS 
 `ImportMap`, head components, `HeadOutlet`; then the state bridge (only when there is an
 interactive pass), the router, `blazor.web.js`, declared scripts, body-end components.
 
+### Assets do not carry the culture
+
+`<base href>` carries the culture because links must. Files must not: a relative
+`_content/acme/app.css` under `<base href="/pl/">` becomes `/pl/_content/acme/app.css`, so one file
+acquires one URL per language — separate cache entries, separately indexable images.
+
+Everything the shell emits — stylesheets, scripts, scoped-CSS bundle, favicon, `blazor.web.js`, the
+import map — is therefore rooted at `AppBase.AssetBase`: the Site's **mount**, culture excluded.
+
+```
+Site at "/",      request /pl/          →  /_content/acme/app.css
+Site at "/panel", request /panel/de/    →  /panel/_content/acme/app.css
+```
+
+The mount stays because `MapStaticAssets` is registered inside the Site's branch; a bare
+`/_content/…` 404s wherever no root Site exists. Override `AssetBase` (or `RootedImportMap()`) to
+change it.
+
+`@Assets["…"]` in markup is rooted too — `ExtensionsBase` hides `ComponentBase.Assets`, so any
+component deriving from it (`PageBase`, `PageViewBase`, `PageEditBase`, `@inherits
+ExtensionsBase`) needs no change:
+
+```razor
+<img src="@Assets["_content/acme/logo.png"]" />   →  /_content/acme/logo.png
+```
+
+Member lookup is a compile-time decision, so this **requires rebuilding** the project whose
+markup uses `@Assets` — a binary still compiled against an older package keeps the old URLs.
+
+Not rooted: `LayoutComponentBase` / plain `ComponentBase` components, and any code that casts to
+`ComponentBase` before reading `Assets` (hiding is not virtual dispatch). Write `/_content/…` by
+hand there.
+
 ### Extending, in increasing order of power
 
 0. `IWebsiteArea.ConfigureDocument(IDocumentAssets)` — an area's *own* assets, declared by the area
@@ -72,8 +105,9 @@ interactive pass), the router, `blazor.web.js`, declared scripts, body-end compo
    shell never becomes a list of what is installed. See `.zonit/extensions/website/areas.md`.
 1. `SiteOptions.Document` — covers most of what a hand-written shell contains.
 2. `AddHeadComponent<T>()` / `AddBodyEndComponent<T>()` for anything needing Razor or services.
-3. Derive from `AppBase` and override a virtual: `Lang`, `BaseHref`, `PageRenderMode`,
-   `BuildRoutes`, `Hydrate`, `HeadStart`, `HeadEnd`, `BodyStart`, `BodyEnd`, `Document`.
+3. Derive from `AppBase` and override a virtual: `Lang`, `BaseHref`, `AssetBase`,
+   `RootedImportMap`, `PageRenderMode`, `BuildRoutes`, `Hydrate`, `HeadStart`, `HeadEnd`,
+   `BodyStart`, `BodyEnd`, `Document`.
 4. Pass your own root component to `UseWebsite<TApp>` — nothing here is mandatory.
 
 Nothing the shell emits names a framework or a product. Cookie names and JS globals are visible in

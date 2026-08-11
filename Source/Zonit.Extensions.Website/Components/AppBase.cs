@@ -105,6 +105,97 @@ public abstract class AppBase : ComponentBase
     }
 
     /// <summary>
+    /// Path base every framework-emitted asset URL is rooted at — the Site's mount, and
+    /// deliberately <em>not</em> the culture segment.
+    /// </summary>
+    /// <remarks>
+    /// <para><b>Why assets do not follow <see cref="BaseHref"/>.</b> A relative
+    /// <c>src="_content/acme/app.css"</c> resolves against <c>&lt;base href="/pl/"&gt;</c>, so the
+    /// browser fetches <c>/pl/_content/acme/app.css</c> — and every other language fetches its own
+    /// spelling of the same bytes. That is right for links, where the prefix is the whole point,
+    /// and wrong for files: one stylesheet acquires as many URLs as the Site has languages, each
+    /// its own cache entry in every intermediary, and an image indexable at twenty addresses. The
+    /// culture belongs to what a page <em>says</em>, not to the files it loads.</para>
+    ///
+    /// <para><b>Why the mount is kept.</b> <c>MapStaticAssets</c> is registered inside the Site's
+    /// branch, not on the parent app, so a Site mounted at <c>/admin</c> genuinely serves its
+    /// assets from <c>/admin/_content/…</c>; a bare <c>/_content/…</c> would leave the branch and
+    /// 404 wherever no root Site exists. The value comes from
+    /// <see cref="Cultures.ICultureUrlFeature.SitePathBase"/>, which records the path base from
+    /// before the culture segment was appended — the mount exactly, whatever the language.</para>
+    /// </remarks>
+    protected virtual string AssetBase
+        => AssetBaseResolver.Resolve(Http.HttpContext, navigation: null, Site.UrlPolicy);
+
+    /// <summary>
+    /// Roots a framework-emitted asset URL at <see cref="AssetBase"/>, leaving anything that is
+    /// already absolute alone.
+    /// </summary>
+    /// <remarks>
+    /// An author who wrote a leading slash asked for a host-absolute URL and gets one — including
+    /// the consequence that it bypasses the mount. Off-site URLs, protocol-relative URLs and
+    /// inline data are returned untouched.
+    /// </remarks>
+    private string Root(string? url) => AssetBaseResolver.Root(url, AssetBase);
+
+    /// <summary>
+    /// The import map with every entry rooted at <see cref="AssetBase"/>.
+    /// </summary>
+    /// <remarks>
+    /// Blazor builds the map from the resource collection with <c>./</c>-relative specifiers, and
+    /// an import map resolves against the document base URL exactly like an <c>src</c> does — so
+    /// on a prefixed Site every JS module was imported from <c>/pl/_content/…</c>, a second copy of
+    /// a module the browser had already fetched under another language. Rewriting the map here is
+    /// the only place to fix it: the specifier a module is imported under is the map's key, so a
+    /// consumer cannot correct it at the call site.
+    /// </remarks>
+    protected virtual ImportMapDefinition RootedImportMap()
+    {
+        // Memoised per mount, not per request. The resource collection is fixed for the process,
+        // so the rewrite has exactly one answer per Site — and the shell renders on every page
+        // view, which is the wrong place to rebuild three dictionaries.
+        //
+        // An empty base is NOT a shortcut: "./_content/x.js" against <base href="/pl/"> is the bug
+        // being fixed, and rooting it to "/_content/x.js" is the whole point.
+        return RootedImportMaps.GetOrAdd(AssetBase, static (@base, assets) =>
+        {
+            var map = ImportMapDefinition.FromResourceCollection(assets);
+
+            return new ImportMapDefinition(
+                Rewrite(map.Imports, @base),
+                map.Scopes?.ToDictionary(
+                    scope => RootSpecifier(scope.Key, @base),
+                    scope => (IReadOnlyDictionary<string, string>)Rewrite(scope.Value, @base)!,
+                    StringComparer.Ordinal),
+                Rewrite(map.Integrity, @base));
+        }, Assets);
+    }
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, ImportMapDefinition> RootedImportMaps =
+        new(StringComparer.Ordinal);
+
+    private static Dictionary<string, string>? Rewrite(IReadOnlyDictionary<string, string>? entries, string @base)
+        => entries?.ToDictionary(
+            entry => RootSpecifier(entry.Key, @base),
+            entry => RootSpecifier(entry.Value, @base),
+            StringComparer.Ordinal);
+
+    /// <summary>
+    /// Turns a <c>./relative</c> import specifier into one rooted at the mount. Absolute and
+    /// off-site specifiers are left alone; so are bare module names, which are not URLs at all.
+    /// </summary>
+    private static string RootSpecifier(string specifier, string @base)
+    {
+        if (specifier.StartsWith("./", StringComparison.Ordinal))
+            return @base + specifier[1..];
+
+        if (specifier.Length == 0 || specifier[0] == '/' || specifier.Contains("://", StringComparison.Ordinal))
+            return specifier;
+
+        return @base + "/" + specifier;
+    }
+
+    /// <summary>
     /// Render mode applied to the routed page, the head outlet and the state bridge. Derived from
     /// <c>SiteOptions.Mode</c>; <see langword="null"/> means static server rendering.
     /// </summary>
@@ -260,6 +351,10 @@ public abstract class AppBase : ComponentBase
         if (document.ImportMap)
         {
             builder.OpenComponent<ImportMap>(7);
+            // "ImportMapDefinition" is the parameter name; the component itself is ImportMap.
+            // Getting it wrong is silent — the value lands in AdditionalAttributes and is splatted
+            // onto the <script> tag as markup while the default map still renders inside it.
+            builder.AddAttribute(11, "ImportMapDefinition", RootedImportMap());
             builder.CloseComponent();
         }
 
@@ -296,7 +391,7 @@ public abstract class AppBase : ComponentBase
         // navigation and streaming rendering both live in it, and without it every link becomes
         // a full page load.
         builder.OpenElement(3, "script");
-        builder.AddAttribute(4, "src", Assets["_framework/blazor.web.js"]);
+        builder.AddAttribute(4, "src", Root(Assets["_framework/blazor.web.js"]));
         builder.CloseElement();
 
         BuildScripts(builder, document);
@@ -390,7 +485,7 @@ public abstract class AppBase : ComponentBase
             builder.OpenRegion(index);
             builder.OpenElement(0, "link");
             builder.AddAttribute(1, "rel", "stylesheet");
-            builder.AddAttribute(2, "href", bundle);
+            builder.AddAttribute(2, "href", Root(bundle));
             builder.CloseElement();
             builder.CloseRegion();
         }
@@ -406,7 +501,7 @@ public abstract class AppBase : ComponentBase
         builder.AddAttribute(1, "rel", "icon");
         if (document.FaviconType is not null)
             builder.AddAttribute(2, "type", document.FaviconType);
-        builder.AddAttribute(3, "href", document.Favicon);
+        builder.AddAttribute(3, "href", Root(document.Favicon));
         builder.CloseElement();
         builder.CloseRegion();
     }
@@ -468,7 +563,7 @@ public abstract class AppBase : ComponentBase
     private string Resolve(DocumentAsset asset)
     {
         if (!asset.Fingerprint || asset.Url.Contains("://", StringComparison.Ordinal) || asset.Url.StartsWith("//", StringComparison.Ordinal))
-            return asset.Url;
+            return Root(asset.Url);
 
         var resolved = Assets[asset.Url];
 
@@ -487,7 +582,7 @@ public abstract class AppBase : ComponentBase
             }
         }
 
-        return resolved;
+        return Root(resolved);
     }
 
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> WarnedAssets = new(StringComparer.Ordinal);

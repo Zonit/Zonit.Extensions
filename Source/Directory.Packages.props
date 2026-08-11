@@ -8,7 +8,7 @@
       Versioning policy: track .NET major version.
       Currently aligned with .NET 10. When .NET 11 ships, drop net10.0 and bump to 11.x.
     -->
-    <Version>10.0.0-preview.20</Version>
+    <Version>10.0.0-preview.21</Version>
     <!--
       AssemblyVersion stays frozen at 10.0.0.0 for the whole 10.x line. Website references
       five siblings, so a moving AssemblyVersion would force binding-redirect churn on every
@@ -17,7 +17,7 @@
       The identity that carries the full story is InformationalVersion (version + git sha).
     -->
     <AssemblyVersion>10.0.0.0</AssemblyVersion>
-    <FileVersion>10.0.0.20</FileVersion>
+    <FileVersion>10.0.0.21</FileVersion>
     <!-- Package Output -->
     <PackageOutputPath>$(MSBuildThisFileDirectory)..\Packages</PackageOutputPath>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
