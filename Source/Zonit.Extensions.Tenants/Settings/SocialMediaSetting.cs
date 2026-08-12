@@ -84,6 +84,20 @@ public sealed class SocialMediaModel
     public Dictionary<string, string> Custom { get; set; } = [];
 
     /// <summary>
+    /// The named platforms, in declaration order, whether or not this tenant filled them in.
+    /// </summary>
+    /// <remarks>
+    /// For consumers that need the <em>shape</em> rather than the values — the short-link routes
+    /// are built once at start-up, before any tenant exists, and must cover every platform some
+    /// tenant might configure. Same list <see cref="All"/> walks, for the same reason it exists.
+    /// </remarks>
+    public static IReadOnlyList<string> Platforms { get; } =
+    [
+        "Facebook", "X", "Instagram", "LinkedIn", "YouTube", "TikTok",
+        "Pinterest", "Snapchat", "Reddit", "Twitch", "Threads", "Discord",
+    ];
+
+    /// <summary>
     /// Every profile the tenant filled in, as label → URL, in declaration order, blanks skipped.
     /// </summary>
     /// <param name="includeCustom">Include <see cref="Custom"/>. See its remarks for when not to.</param>

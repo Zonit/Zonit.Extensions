@@ -279,6 +279,21 @@ re-renders open Blazor circuits: a reload invalidates hydrated settings and rais
 | `maintenance` | `MaintenanceSetting` | `IsActive` | `false` |
 | | | `MaintenanceMessage` (`string?`, 10–2000) | `null` |
 | `social_media` | `SocialMediaSetting` | `Facebook, X, Instagram, LinkedIn, YouTube, TikTok, Pinterest, Snapchat, Reddit, Twitch, Threads, Discord` — all `string?`, `[Url]`, ≤200 | `null` |
+| | | `Custom` (`Dictionary<string,string>`) — label → URL for a group, a forum, a status page | `{}` |
+| `verification` | `VerificationSetting` | `Google, Bing, Yandex, Pinterest, Facebook` — meta-tag tokens, `string?` | `null` |
+| | | `Custom` (`Dictionary<string,string>`) — `meta name` → token, verbatim | `{}` |
+| | | `AppleAppSiteAssociation`, `AppleMerchant` — raw file bodies | `null` |
+
+`SocialMediaModel.All()` is the one enumeration every consumer walks — `sameAs`, `llms.txt` and the
+short links. Do not write a second list; the structured-data composer once did and had drifted to
+six of the twelve platforms. `All(includeCustom: false)` is for `sameAs`, which asserts identity and
+so must not carry an arbitrary link.
+
+`VerificationModel` tokens are **public identifiers, not secrets** — publishing them is the
+mechanism. Store the token, never the whole `<meta>` snippet a console offers to copy: the framework
+writes the tag, so the `name` cannot be wrong. Search-engine tokens render into every page's head
+with no configuration; Apple's two are files and need `o.Verification()` on the Site. See
+`.zonit/extensions/website/seo.md`.
 
 `MaintenanceSetting` is data only. Nothing in this package or in `Zonit.Extensions.Website`
 short-circuits a request when `IsActive` is true — that is your middleware or your layout.

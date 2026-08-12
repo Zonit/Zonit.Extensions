@@ -169,6 +169,30 @@ public class SiteOptions
     /// </summary>
     public DocumentOptions Document { get; } = new();
 
+    /// <summary>
+    /// Short links to the tenant's social profiles — <c>/instagram</c>, <c>/facebook</c>, one per
+    /// named platform. On by default.
+    /// </summary>
+    /// <remarks>
+    /// <para>Default-on because there is nothing to decide: the tenant is already resolved on every
+    /// request, a platform it left blank answers <c>404</c>, and a page that happens to share a
+    /// platform's name wins the route anyway
+    /// (<see cref="Social.SocialLinkOptions.Order"/>). Asking a host to opt in would be asking it
+    /// to repeat a decision it has already made by filling the setting in.</para>
+    ///
+    /// <code>
+    /// o.Social.Enabled = false;   // no short links on this mount
+    /// o.Social.Prefix  = "go";    // /go/instagram instead of /instagram
+    /// </code>
+    /// </remarks>
+    public Social.SocialLinkOptions Social { get; } = new();
+
+    /// <summary>
+    /// Apple's ownership documents under <c>/.well-known/</c>. On by default; the search-engine
+    /// meta tags need no configuration at all.
+    /// </summary>
+    public Verification.VerificationOptions Verification { get; } = new();
+
     // robots.txt, sitemap.xml and llms.txt are configured through SiteOptions.Indexing(...) in
     // Zonit.Extensions.Website.Sitemaps — one tree, because the three files have to agree with
     // each other and the kernel cannot enforce that from one of them.

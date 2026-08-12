@@ -662,6 +662,17 @@ public static class WebsiteServiceCollectionExtensions
             // stripping.
             ep.MapStaticAssets();
 
+            // Short social links and Apple's ownership files, both on by default. Neither needs a
+            // decision from the host: the tenant is already resolved on every request, an entry it
+            // left blank answers 404, and a page sharing a platform's name wins the route because
+            // the redirects are ordered last. Opting in would be asking the host to repeat a
+            // decision it already made by filling the setting in.
+            if (site.Social.Enabled)
+                Website.Social.SocialLinkEndpoints.Map(ep, site.Social);
+
+            if (site.Verification.Enabled)
+                Website.Verification.VerificationEndpoints.Map(ep);
+
             // robots.txt / llms.txt / sitemap.xml are mapped by the Site's own hooks below, via
             // SiteOptions.Indexing(...) in Zonit.Extensions.Website.Sitemaps. They sit outside the
             // kernel because the three files are one statement in three formats and only work if

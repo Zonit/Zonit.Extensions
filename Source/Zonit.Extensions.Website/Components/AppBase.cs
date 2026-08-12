@@ -481,6 +481,24 @@ public abstract class AppBase : ComponentBase
             }
         }
 
+        // Ownership tokens, straight from the tenant and with no opt-in: a tenant that pasted a
+        // token wants the tag, and a site that silently stops emitting one gets un-verified — which
+        // surfaces weeks later as "Search Console lost access" rather than as a broken page.
+        //
+        // Emitted before the declared metas and unaffected by robots directives. Verification has
+        // to work on every page including a noindex one, because the page a platform happens to
+        // fetch is not the page anyone chose.
+        var verification = 800;
+        foreach (var (name, content) in Tenant.Settings.Verification.Metas())
+        {
+            builder.OpenRegion(verification++);
+            builder.OpenElement(0, "meta");
+            builder.AddAttribute(1, "name", name);
+            builder.AddAttribute(2, "content", content);
+            builder.CloseElement();
+            builder.CloseRegion();
+        }
+
         var index = 1000;
         foreach (var meta in document.Metas)
         {

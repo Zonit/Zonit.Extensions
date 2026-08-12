@@ -105,6 +105,73 @@ markup keeps the old URLs. Rebuild every project whose components use `@Assets`.
 casts to `ComponentBase` before reading `Assets` — hiding is not virtual dispatch. Root those by
 hand (`/_content/…` on a Site mounted at `/`).
 
+### Added — short social links: `example.com/instagram`
+
+Nothing to call — every Site publishes them:
+
+```
+/facebook   302 → the tenant's Facebook URL     X-Robots-Tag: noindex
+/instagram  302 → …
+/tiktok     404                                 ← tenant left it blank
+/pl/facebook 404                                ← a short link has one address
+```
+
+One redirect per named platform, target read from `Tenant.Settings.SocialMedia` at request time —
+so a multi-site host serves each brand its own profile, and editing the URL in an admin panel takes
+effect without a deployment. A platform the tenant left blank answers `404` rather than redirecting
+nowhere. Slugs come from `SocialMediaModel.Platforms`, the same list `All()` walks.
+
+**On by default, not opt-in.** The tenant is already resolved on every request, a platform it left
+blank answers `404`, and the routes are ordered last so a page that shares a platform's name wins
+outright — verified with a real `/discord` page next to a configured Discord URL: the page renders,
+no ambiguous match. Asking a host to opt in would be asking it to repeat a decision it already made
+by filling the setting in. Off with `o.Social.Enabled = false`, moved with `o.Social.Prefix`.
+
+**Endpoints, not middleware.** Middleware would run a comparison on every request in the
+application to serve a link clicked a few times a day, would be invisible to the endpoint table
+every routing diagnostic reads, and — the part that matters — runs *before* routing, so
+`/pl/instagram` would redirect too. As an endpoint it inherits the rule that gives `robots.txt` one
+address.
+
+`302`, not `301`: the destination is editable configuration, and a permanent redirect to an address
+that can change is a promise the site cannot keep. `X-Robots-Tag: noindex` and a five-minute
+`Cache-Control`.
+
+**Named platforms only.** A `SocialMedia.Custom` entry gets no short link and cannot: a route must
+exist before any tenant is resolved, so a slug typed into an admin panel could only be served by a
+catch-all — and a catch-all matches every otherwise-unmatched path, which turns `/pl/typo` from "no
+endpoint, render the 404 page" into "a non-page endpoint under a language prefix", answering a bare
+empty 404. Custom entries keep working everywhere they already did (`llms.txt`, footers); they are
+simply not addresses on this domain.
+
+### Added — `Tenant.Settings.Verification`: ownership tokens
+
+```json
+"verification": {
+  "Google": "…", "Bing": "…", "Yandex": "…", "Pinterest": "…", "Facebook": "…",
+  "Custom": { "ahrefs-site-verification": "…" },
+  "AppleAppSiteAssociation": "{ \"applinks\": … }",
+  "AppleMerchant": "…"
+}
+```
+
+Search engines verify a domain with a meta tag, so those need **no configuration at all**: a token
+in the tenant is rendered into every page's head, before the declared metas and regardless of the
+robots directive — verification has to work on the page a platform happens to fetch, which is not
+the page anyone chose. Store the token, not the snippet; the framework writes the tag, so the
+`name` cannot be wrong.
+
+Apple does not use meta tags — Universal Links, App Clips and Apple Pay each read a file from a
+fixed address, so those are routes. Mapped by default too
+(`/.well-known/apple-app-site-association`, `…/apple-developer-merchantid-domain-association`; off
+with `o.Verification.Enabled = false`).
+
+Served as `application/json` and `text/plain` respectively, `404` until the tenant supplies the
+value. The association document is stored as raw text rather than modelled: the schema is Apple's,
+it gains keys between OS releases, and a model here would silently drop what it does not know.
+Note that Apple's fetcher does not follow redirects — which is also why these are mapped per Site,
+so a mounted panel never answers for the domain.
+
 ### Added — `PageMeta.Cultures`: content that is not translated everywhere
 
 Content translated per item arrives unevenly — a signal exists in eight of ten languages. The Site

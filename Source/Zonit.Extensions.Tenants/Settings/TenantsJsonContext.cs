@@ -39,4 +39,5 @@ namespace Zonit.Extensions.Tenants.Settings;
 [JsonSerializable(typeof(ThemeSettingsModel))]
 [JsonSerializable(typeof(MaintenanceSettingsModel))]
 [JsonSerializable(typeof(SocialMediaModel))]
+[JsonSerializable(typeof(VerificationModel))]
 public sealed partial class TenantsJsonContext : JsonSerializerContext;

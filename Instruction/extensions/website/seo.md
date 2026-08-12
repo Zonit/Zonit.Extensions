@@ -285,6 +285,54 @@ an agent nothing it could not read from the page, and an empty one is worse than
 authoritative and says nothing. Write link descriptions about **when** the resource is the right
 thing to read; an agent picks a source by its description, not its name.
 
+## Short social links
+
+Built into `UseWebsite` — nothing to call. `example.com/instagram` instead of the profile URL — shareable out loud, and it stays yours if the
+profile moves. Targets come from `Tenant.Settings.SocialMedia` **per request**, so each brand in a
+multi-site host gets its own and an edit in the admin panel needs no deployment. A platform the
+tenant left blank answers `404`.
+
+| | |
+| --- | --- |
+| `302`, not `301` | the destination is editable configuration; a permanent redirect to an address that can change is a promise the site cannot keep |
+| `X-Robots-Tag: noindex` | nothing here belongs in an index — the profile is already `sameAs` in the structured data |
+| `/pl/instagram` → `404` | a short link is not a page; it has one address, from the same rule as `robots.txt` |
+| a page always wins | the redirects are ordered last, so a real `/discord` page is served and that platform simply has no short link — no ambiguous match |
+| named platforms only | a `Custom` entry gets no short link — routing it needs a catch-all, and a catch-all replaces the styled 404 page with a bare one |
+
+```csharp
+o.Social.Enabled = false;   // no short links on this mount
+o.Social.Prefix  = "go";    // /go/instagram instead of /instagram
+```
+
+Endpoints rather than middleware on purpose: middleware runs before routing, so the prefixed form
+would redirect too, and it would cost a comparison on every request in the application to serve a
+link clicked a few times a day.
+
+## Domain verification
+
+```json
+"verification": {
+  "Google": "…", "Bing": "…", "Yandex": "…", "Pinterest": "…", "Facebook": "…",
+  "Custom": { "ahrefs-site-verification": "…" },
+  "AppleAppSiteAssociation": "{ \"applinks\": … }",
+  "AppleMerchant": "…"
+}
+```
+
+**Meta tags need no configuration.** A token in the tenant is rendered into every page's head —
+before the declared metas and regardless of the robots directive, because verification has to work
+on whichever page a platform happens to fetch. Paste the **token**, not the whole `<meta>` snippet
+the console offers; the framework writes the tag, so the `name` cannot be wrong. These are public
+identifiers, not secrets — publishing them *is* the mechanism.
+
+**Apple needs routes**, because Universal Links, App Clips and Apple Pay read files rather than
+tags. Mapped by default; `o.Verification.Enabled = false` to drop them. Serves `/.well-known/apple-app-site-association` (`application/json`) and
+`/.well-known/apple-developer-merchantid-domain-association` (`text/plain`); both `404` until the
+tenant supplies the value. Stored as raw text, not modelled — the schema is Apple's and gains keys
+between OS releases. Apple's fetcher does **not** follow redirects, which is also why these are
+mapped per Site: a mounted panel must never answer for the domain.
+
 A Site that never calls `Indexing()` serves none of the three.
 
 ## Configuration
