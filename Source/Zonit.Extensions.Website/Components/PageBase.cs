@@ -176,8 +176,11 @@ public abstract class PageBase : ExtensionsBase
         // dispose.
         if (disposing && _metaPublished)
         {
-            if (ReferenceEquals(MetaState?.Current, _meta))
-                MetaState.Clear();
+            // Not MetaState?.Current — that reads as "clear when both are null" to the compiler
+            // and to the next reader. The state is only interesting when it exists AND still holds
+            // ours; _meta is non-null here because _metaPublished says it was published.
+            if (MetaState is { } state && ReferenceEquals(state.Current, _meta))
+                state.Clear();
 
             _metaPublished = false;
         }

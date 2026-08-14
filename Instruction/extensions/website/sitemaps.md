@@ -274,6 +274,42 @@ static-extension request carrying a language segment with 404, before routing. A
 `/shop` still serves `/shop/robots.txt`. See `.zonit/extensions/website/document.md` for the asset
 side of the same rule.
 
+## Reading the generated file
+
+`ZonitStaticPages.g.cs` is not written to disk unless asked:
+
+```bash
+dotnet build -t:Rebuild -p:EmitCompilerGeneratedFiles=true -p:CompilerGeneratedFilesOutputPath=obj/gen
+```
+
+The dump is faithful — it updates on rebuild and matches what the compiled assembly does. If it
+shows a shape you do not recognise, the question to ask is **which generator ran**, not whether the
+file is stale.
+
+**Referencing the package? Nothing to configure.** The generator ships inside
+`Zonit.Extensions.Website` as `analyzers/dotnet/cs`, so a `PackageReference` carries it. What you
+get is the generator from the *pinned version* — an old shape in the dump means an old package,
+which is a version question, not a generator bug.
+
+**Referencing the framework by project path** — building against working-tree source — is the one
+case that needs wiring, because analyzers do not flow through a `ProjectReference`:
+
+```xml
+<ProjectReference Include="..\Zonit.Extensions.Website.SourceGenerators\…csproj"
+                  OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+```
+
+Without it the project compiles cleanly, emits nothing and reports no diagnostic — indistinguishable
+from a generator that found your attribute uninteresting. Wire it once in a
+`Directory.Build.targets` rather than per project, conditioned on the reference actually being
+there:
+
+```xml
+<ItemGroup Condition="'@(ProjectReference->WithMetadataValue('Filename','Zonit.Extensions.Website'))' != ''">
+  <ProjectReference Include="$(ZonitWebsiteGenerator)" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+</ItemGroup>
+```
+
 ## Where the rest lives
 
 - `.zonit/extensions/website/seo.md` — culture URLs, indexed cultures, `robots.txt`.
