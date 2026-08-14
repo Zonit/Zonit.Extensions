@@ -39,4 +39,41 @@ public static class PageIndexing
             => t.GetCustomAttribute<AllowAnonymousAttribute>() is null
             && t.GetCustomAttribute<AuthorizeAttribute>() is not null);
     }
+
+    private static readonly ConcurrentDictionary<Type, Culture[]?> CultureCache = new();
+
+    /// <summary>
+    /// The languages declared on the page's <c>[WebsiteSitemap]</c>, or <see langword="null"/> when
+    /// it declares none — meaning every indexed language.
+    /// </summary>
+    /// <remarks>
+    /// <para>This is what makes one attribute drive three things. The sitemap reads the same
+    /// declaration through the build-time registry; the head reads it here, and narrows both the
+    /// <c>robots</c> directive and the <c>hreflang</c> cluster. Two halves that have to agree, from
+    /// one place, so they cannot drift.</para>
+    ///
+    /// <para>Reflection rather than the registry because the registry is keyed by <em>path</em> and
+    /// the renderer knows the <em>type</em>. Cached per type, like the authorization check above:
+    /// this runs on every navigation.</para>
+    ///
+    /// <para>Only the attribute. A page whose languages are not known until data loads sets
+    /// <c>PageMeta.Cultures</c>, which is applied later and wins — see <see cref="PageMeta"/>.</para>
+    /// </remarks>
+    public static IReadOnlyList<Culture>? CulturesOf(Type pageType)
+    {
+        ArgumentNullException.ThrowIfNull(pageType);
+
+        return CultureCache.GetOrAdd(pageType, static t =>
+        {
+            var declared = t.GetCustomAttribute<WebsiteSitemapAttribute>()?.Cultures;
+            if (declared is not { Length: > 0 })
+                return null;
+
+            var cultures = new Culture[declared.Length];
+            for (var i = 0; i < declared.Length; i++)
+                cultures[i] = new Culture(declared[i]);
+
+            return cultures;
+        });
+    }
 }

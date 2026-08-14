@@ -94,6 +94,26 @@ public abstract class PageBase : ExtensionsBase
         set => LayoutContext.SetKey(value);
     }
 
+    /// <summary>
+    /// How wide this page's content should be allowed to grow. The layout reads it and maps it to
+    /// its own design system.
+    /// </summary>
+    /// <remarks>
+    /// <para><b>Prefer the attribute.</b> <c>[WebsiteWidth(PageWidth.Reading)]</c> is read before
+    /// the page is instantiated and applied on the very first render; assigning here after the
+    /// first render costs exactly one re-render with the new width, and the visitor may see the
+    /// change. Use it only when the answer genuinely depends on data — a detail page that goes
+    /// <see cref="PageWidth.Wide"/> once it knows the record has a table.</para>
+    ///
+    /// <para>Reset on navigation by <c>ZonitRouteView</c>, like the layout key, so a page never
+    /// inherits the previous one's width.</para>
+    /// </remarks>
+    protected PageWidth Width
+    {
+        get => LayoutContext.Width;
+        set => LayoutContext.SetWidth(value);
+    }
+
     /// <inheritdoc />
     protected override void OnInitialized()
     {
@@ -147,9 +167,18 @@ public abstract class PageBase : ExtensionsBase
     {
         // Clear on teardown so a page that declares no title cannot inherit the previous page's
         // one during an interactive navigation, where the head component outlives the page.
+        //
+        // Only if the state still holds OUR metadata. Blazor renders the incoming component tree
+        // and disposes the outgoing one afterwards, so on an interactive navigation the new page
+        // has already published its title by the time this runs — an unconditional Clear() wipes
+        // it. The symptom is precise and easy to misread: the heading is correct on a direct load
+        // and blank after every in-app navigation, because only then is there an old page to
+        // dispose.
         if (disposing && _metaPublished)
         {
-            MetaState?.Clear();
+            if (ReferenceEquals(MetaState?.Current, _meta))
+                MetaState.Clear();
+
             _metaPublished = false;
         }
 

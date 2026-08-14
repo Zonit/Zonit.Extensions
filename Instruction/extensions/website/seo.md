@@ -162,6 +162,23 @@ Text with no rendition falls through to itself, so this is safe for dynamic valu
 `Translate = false` for a product or person name that must never be looked up, or for text you
 already passed through `T(…)` yourself.
 
+**Breadcrumbs and the page heading follow the same rule.** `BreadcrumbsModel.Text` and the
+dashboard's `<h1>` are looked up where they render, so a page writes the raw English:
+
+```csharp
+protected override PageMeta Metadata => new() { Title = "Toasts" };
+
+protected override List<BreadcrumbsModel> Breadcrumbs =>
+[
+    new() { Text = "Components" },
+    new() { Text = "Toasts" },
+];
+```
+
+Wrapping these in `T(…)` is not wrong so much as pointless — it looks the string up once at the
+call site and the endpoint looks the result up again, which only matters when a rendition happens
+to be a key for something else. Write the English.
+
 Navigation works the same way: `NavItem.Title`, `NavItem.Tooltip` and the group equivalents are
 translated by `INavigationProvider`, with the same per-node `Translate` opt-out.
 

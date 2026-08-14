@@ -97,7 +97,10 @@ public sealed class PageHead : ComponentBase, IDisposable
         PageType is not null && PageIndexing.RequiresAuthorization(PageType),
         // The error page is a normal page that happens to be rendered for a failed address, and
         // nothing in its own declaration can know that. The pipeline does.
-        Http.HttpContext is { } http && Middlewares.CultureMiddleware.IsReExecuting(http));
+        Http.HttpContext is { } http && Middlewares.CultureMiddleware.IsReExecuting(http),
+        // Languages from [WebsiteSitemap] — the static declaration, the same one the sitemap reads.
+        // Meta.Cultures, set from data the page loaded, wins over it inside Build.
+        PageType is not null ? PageIndexing.CulturesOf(PageType) : null);
 
     protected override void BuildRenderTree(RenderTreeBuilder builder)
     {

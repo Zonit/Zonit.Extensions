@@ -116,6 +116,12 @@ public sealed class ZonitRouteView : ComponentBase, IDisposable
         {
             _previousPageType = page;
             Context.ClearOverride();
+
+            // Static width, applied before the first render so the layout never paints one width
+            // and then another. A page whose width depends on data overrides PageBase.Width, which
+            // costs the one re-render that the attribute path avoids.
+            if (page.GetCustomAttribute<WebsiteWidthAttribute>() is { } width)
+                Context.SetWidth(width.Width);
         }
 
         Resolve();

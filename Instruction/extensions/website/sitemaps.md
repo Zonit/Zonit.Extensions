@@ -134,6 +134,34 @@ categories) and `TryAdd` would keep only the first.
 | `Priority` | 0.0–1.0, relative **within this site**. Very little effect; leave unset. |
 | `PathsByCulture` | Per-culture path when the **slug** is translated. Routes whose static segment is translated are resolved from the area's `Routes` automatically. |
 
+### Static pages: one attribute says everything
+
+```razor
+@page "/terms"
+@using Zonit.Extensions.Website.Sitemaps      @* ChangeFrequency lives here, the attribute in .Website *@
+@attribute [WebsiteSitemap(["en-us", "pl-pl"], Change = ChangeFrequency.Yearly, LastModified = "2026-03-01")]
+```
+
+Languages first, then everything else. The same declaration drives three things — the sitemap, the
+page's `robots` directive and its `hreflang` cluster — so they cannot disagree:
+
+| | `/en/terms` | `/de/terms` |
+| --- | --- | --- |
+| sitemap | listed, with `lastmod` | absent |
+| `robots` | `index, …` | `noindex, follow` |
+| cluster | `en, pl, x-default` | none |
+
+`string[]`, not `Culture[]` — attribute arguments must be compile-time constants and a value object
+is `CS0181`. The generator validates instead: `ZONITSM0003` for an unknown tag, `ZONITSM0004` for an
+unparsable date.
+
+`LastModified` is editorial and stated by hand — the day the terms were revised. It is never derived
+from the build, because that would mark every untouched page fresh on every deployment and a sitemap
+whose dates do not hold up is one a crawler stops believing for every URL in it.
+
+**The rule:** static → attribute; dynamic → `PageMeta.Cultures` (page) and `SitemapEntry.Cultures`
+(map). `PageMeta.Cultures` overrides the attribute where both are present.
+
 ### Content that is not translated everywhere
 
 Translations that live in a row rather than a resource file arrive unevenly. Read `Cultures` from

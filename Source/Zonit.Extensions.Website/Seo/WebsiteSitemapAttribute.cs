@@ -34,7 +34,7 @@ namespace Zonit.Extensions.Website;
 [AttributeUsage(AttributeTargets.Class, AllowMultiple = false, Inherited = false)]
 public sealed class WebsiteSitemapAttribute : Attribute
 {
-    /// <summary>Publishes the page under the route declared by <c>@page</c>.</summary>
+    /// <summary>Publishes the page in every indexed language, under the route from <c>@page</c>.</summary>
     public WebsiteSitemapAttribute()
     {
     }
@@ -46,8 +46,66 @@ public sealed class WebsiteSitemapAttribute : Attribute
     /// </param>
     public WebsiteSitemapAttribute(string path) => Path = path;
 
+    /// <summary>
+    /// Publishes the page only in the languages its content actually exists in.
+    /// </summary>
+    /// <param name="cultures">
+    /// BCP-47 tags — <c>["en-us", "pl-pl"]</c>. Validated at build time; an unknown tag is
+    /// <c>ZONITSM0003</c>, not a silent miss.
+    /// </param>
+    public WebsiteSitemapAttribute(string[] cultures) => Cultures = cultures;
+
+    /// <summary>Both, for a page that states its path and its languages.</summary>
+    /// <param name="cultures">BCP-47 tags.</param>
+    /// <param name="path">Site-relative path, no culture segment, no mount base.</param>
+    public WebsiteSitemapAttribute(string[] cultures, string path)
+    {
+        Cultures = cultures;
+        Path = path;
+    }
+
     /// <summary>Explicit path, when the route is not visible next to the attribute.</summary>
     public string? Path { get; }
+
+    /// <summary>
+    /// Languages this page's content exists in. <see langword="null"/> — the usual case — means
+    /// every indexed language.
+    /// </summary>
+    /// <remarks>
+    /// <para><b>One declaration, three effects.</b> It narrows the sitemap, and it drives the page
+    /// itself: rendering in a language outside the set is <c>noindex, follow</c>, and the
+    /// <c>hreflang</c> cluster on the versions that do exist lists only those. A cluster naming a
+    /// version that answers <c>noindex</c> is discarded whole, so the two halves have to agree —
+    /// which is exactly why they come from one place.</para>
+    ///
+    /// <para><b><c>string[]</c>, not <c>Culture[]</c>.</b> Attribute arguments must be compile-time
+    /// constants, and the language allows only primitives, <c>string</c>, <c>Type</c>, enums and
+    /// arrays of those — a value object is <c>CS0181</c>. The validation the type would have given
+    /// is done by the generator instead, which is strictly better: a squiggle at build time rather
+    /// than an exception at start-up.</para>
+    ///
+    /// <para>This is the declaration for a <b>static</b> page. Content whose translations arrive
+    /// per row is not known at compile time; that is <c>PageMeta.Cultures</c> for the page and
+    /// <c>SitemapEntry.Cultures</c> for the map, and setting <c>PageMeta.Cultures</c> overrides
+    /// whatever is written here.</para>
+    /// </remarks>
+    public string[]? Cultures { get; }
+
+    /// <summary>
+    /// When this page's content last changed, as <c>yyyy-MM-dd</c> or a full ISO-8601 instant.
+    /// </summary>
+    /// <remarks>
+    /// <para>Editorial, and stated by hand on purpose. <c>lastmod</c> is the one field a crawler
+    /// uses to decide whether re-fetching is worth its time, which is exactly why it must not be
+    /// guessed: the build date would mark every untouched page as fresh on every deployment, and a
+    /// sitemap whose dates do not survive contact with reality is one a search engine stops
+    /// believing — for every URL in it, not just the wrong ones.</para>
+    ///
+    /// <para>So it means what it says: the day the terms were revised, the day the guide was
+    /// rewritten. Leave it unset and the element is simply omitted, which is honest. Validated at
+    /// build time — an unparsable value is <c>ZONITSM0004</c>.</para>
+    /// </remarks>
+    public string? LastModified { get; set; }
 
     /// <summary>
     /// Expected update cadence. Leave unset rather than guessing — a page that claims

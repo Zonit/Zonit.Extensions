@@ -35,10 +35,26 @@ internal sealed class StaticPageSitemapSource(ICurrentSite site) : ISitemapSourc
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            yield return new SitemapEntry(
-                page.Path,
-                ChangeFrequency: page.Change == ChangeFrequency.Unset ? null : page.Change,
-                Priority: page.Priority);
+            // The attribute's cultures and date reach the map here, so a static page states both
+            // once and the head reads the same declaration through PageIndexing.CulturesOf.
+            var cultures = page.Cultures is { Length: > 0 } declared
+                ? declared.Select(static c => new Culture(c)).ToArray()
+                : null;
+
+            var modified = StaticPage.ParseDate(page.LastModified);
+
+            yield return cultures is null
+                ? new SitemapEntry(
+                    page.Path,
+                    LastModified: modified,
+                    ChangeFrequency: page.Change == ChangeFrequency.Unset ? null : page.Change,
+                    Priority: page.Priority)
+                : new SitemapEntry(
+                    cultures,
+                    page.Path,
+                    LastModified: modified,
+                    ChangeFrequency: page.Change == ChangeFrequency.Unset ? null : page.Change,
+                    Priority: page.Priority);
         }
 
         await Task.CompletedTask;

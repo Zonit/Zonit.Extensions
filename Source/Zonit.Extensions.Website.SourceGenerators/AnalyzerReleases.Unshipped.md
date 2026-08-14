@@ -11,3 +11,5 @@ ZONITVM0003 | Zonit.Extensions.Website | Info | A view model has required member
 ZONITVM0004 | Zonit.Extensions.Website | Warning | The consuming project pins LangVersion below C# 9, which the emitted [ModuleInitializer] needs, so nothing was generated.
 ZONITSM0001 | Zonit.Sitemap | Warning | A page declares [Sitemap] but its route has a parameter. A route template is not a URL, so it cannot be written into sitemap.xml; enumerate the real URLs with an ISitemapSource.
 ZONITSM0002 | Zonit.Sitemap | Warning | A page declares [Sitemap] or [Llms] but no route was found next to it. Add an @page directive or state the path with [Sitemap("/path")].
+ZONITSM0003 | Zonit.Sitemap | Warning | [WebsiteSitemap] lists a culture .NET does not recognise as a BCP-47 tag. Attribute arguments cannot be a value object, so the validation a Culture would have given is done here instead.
+ZONITSM0004 | Zonit.Sitemap | Warning | [WebsiteSitemap] sets LastModified to something that is not an ISO-8601 date. An unparsable value is omitted from the sitemap entirely.

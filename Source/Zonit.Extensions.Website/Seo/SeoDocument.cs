@@ -125,6 +125,11 @@ public static class SeoDocumentBuilder
     /// page emits no canonical and no cluster: it is not content, and the address it is standing
     /// in for does not exist.
     /// </param>
+    /// <param name="declaredCultures">
+    /// Languages from the page's <c>[WebsiteSitemap]</c> — the static declaration, and the same one
+    /// the sitemap reads. <see cref="PageMeta.Cultures"/> overrides it, because a page that loaded
+    /// its own data knows things the attribute could not.
+    /// </param>
     public static SeoDocument Build(
         PageMeta? meta,
         SiteSettingsModel site,
@@ -134,7 +139,8 @@ public static class SeoDocumentBuilder
         IReadOnlyList<BreadcrumbsModel>? breadcrumbs = null,
         Func<string, string>? translate = null,
         bool gated = false,
-        bool error = false)
+        bool error = false,
+        IReadOnlyList<Culture>? declaredCultures = null)
     {
         ArgumentNullException.ThrowIfNull(site);
 
@@ -169,7 +175,7 @@ public static class SeoDocumentBuilder
         // real address invites consolidation onto it, and one pointing at the error route
         // advertises the error route as a page.
         var canonical = error ? null : ResolveCanonical(meta, url, culture, prefix);
-        var robots = error ? "noindex, follow" : ResolveRobots(meta, url, culture, gated);
+        var robots = error ? "noindex, follow" : ResolveRobots(meta, declaredCultures, url, culture, gated);
 
         // A cluster is only meaningful when the page is actually a candidate for the index and
         // the languages live at distinct addresses. On a noindex page it is ignored at best and
@@ -183,7 +189,7 @@ public static class SeoDocumentBuilder
         var indexable = robots is null
             || !robots.Contains("noindex", StringComparison.OrdinalIgnoreCase);
         var alternates = indexable && url.Policy.IsPrefixed
-            ? BuildAlternates(meta, url, prefix)
+            ? BuildAlternates(meta, declaredCultures, url, prefix)
             : [];
 
         return new SeoDocument
@@ -286,7 +292,7 @@ public static class SeoDocumentBuilder
     /// <summary>
     /// Resolves the <c>robots</c> directive. <see langword="null"/> means "emit no tag".
     /// </summary>
-    private static string? ResolveRobots(PageMeta? meta, ICultureUrlFeature url, string culture, bool gated)
+    private static string? ResolveRobots(PageMeta? meta, IReadOnlyList<Culture>? declared, ICultureUrlFeature url, string culture, bool gated)
     {
         // A closed Site is closed outright: its links lead to more of the same, so there is
         // nothing to gain from letting them be followed. Checked before the page override —
@@ -309,7 +315,7 @@ public static class SeoDocumentBuilder
         // Rendering outside the languages the content exists in: the page is showing its fallback
         // rendition, so this address holds a copy of another language's text. Reachable and
         // crawlable, not a search result.
-        if (!Exists(meta, culture))
+        if (!Exists(meta, declared, culture))
             return "noindex, follow";
 
         // Behind authorization: keep it out of the index, keep its links followable.
@@ -323,21 +329,25 @@ public static class SeoDocumentBuilder
     /// Whether the page's content exists in <paramref name="culture"/>. No declaration means every
     /// language, which is the truth for anything translated from resource files.
     /// </summary>
-    private static bool Exists(PageMeta? meta, string culture)
+    private static bool Exists(PageMeta? meta, IReadOnlyList<Culture>? declared, string culture)
     {
-        if (meta?.Cultures is not { } cultures)
+        // PageMeta first: it is set from data the page loaded, so it knows things the attribute
+        // could not. The attribute is the static declaration and the answer for every page whose
+        // languages are fixed at compile time.
+        var cultures = meta?.Cultures ?? declared;
+        if (cultures is null)
             return true;
 
-        foreach (var declared in cultures)
+        foreach (var candidate in cultures)
         {
-            if (string.Equals(declared.Value, culture, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(candidate.Value, culture, StringComparison.OrdinalIgnoreCase))
                 return true;
         }
 
         return false;
     }
 
-    private static SeoAlternate[] BuildAlternates(PageMeta? meta, ICultureUrlFeature url, string prefix)
+    private static SeoAlternate[] BuildAlternates(PageMeta? meta, IReadOnlyList<Culture>? declared, ICultureUrlFeature url, string prefix)
     {
         var indexed = url.Policy.IndexedCultures;
         var result = new List<SeoAlternate>(indexed.Length);
@@ -348,7 +358,7 @@ public static class SeoDocumentBuilder
             // a page serving another language's text under a noindex directive, and a cluster with
             // a member like that is dropped whole — so this filter is what keeps the translations
             // that DO exist clustered together.
-            if (!Exists(meta, culture))
+            if (!Exists(meta, declared, culture))
                 continue;
 
             // A page-supplied alternate wins: it is the only source that can know a translated

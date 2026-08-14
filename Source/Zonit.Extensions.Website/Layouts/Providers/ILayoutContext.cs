@@ -56,6 +56,23 @@ public interface ILayoutContext
     /// </summary>
     void ClearOverride();
 
-    /// <summary>Raised when <see cref="HasOverride"/> / <see cref="Key"/> / <see cref="IsNoLayout"/> change.</summary>
+    /// <summary>
+    /// Width the routed page asked for. <c>ZonitRouteView</c> sets it from
+    /// <c>[WebsiteWidth]</c> before the first render and from <c>PageBase.Width</c> after; the
+    /// layout reads it and maps it to whatever its design system uses.
+    /// </summary>
+    /// <remarks>
+    /// On the same context as the layout key because it is the same kind of fact — something the
+    /// page says and the chrome around it obeys. A second mechanism would be a second thing to
+    /// learn for no gain.
+    /// </remarks>
+    PageWidth Width { get; }
+
+    /// <summary>
+    /// Sets the page's content width. Fires <see cref="OnChange"/> only on an actual change.
+    /// </summary>
+    void SetWidth(PageWidth width);
+
+    /// <summary>Raised when <see cref="HasOverride"/> / <see cref="Key"/> / <see cref="IsNoLayout"/> / <see cref="Width"/> change.</summary>
     event Action? OnChange;
 }

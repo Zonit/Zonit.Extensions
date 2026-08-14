@@ -172,6 +172,122 @@ it gains keys between OS releases, and a model here would silently drop what it 
 Note that Apple's fetcher does not follow redirects — which is also why these are mapped per Site,
 so a mounted panel never answers for the domain.
 
+### Added — `[WebsiteSitemap]` declares languages and a revision date
+
+One declaration, three effects. A static page's languages are known at compile time, so it says
+them once and the sitemap, the `robots` directive and the `hreflang` cluster all read the same
+thing:
+
+```razor
+@page "/terms"
+@attribute [WebsiteSitemap(["en-us", "pl-pl"], Change = ChangeFrequency.Yearly, LastModified = "2026-03-01")]
+```
+
+```
+/en/terms   index …            hreflang: en, pl, x-default    sitemap: yes, with lastmod
+/pl/terms   index …            hreflang: en, pl, x-default    sitemap: yes, with lastmod
+/de/terms   noindex, follow    no cluster                     sitemap: absent
+```
+
+**`string[]`, not `Culture[]`** — forced by the language: attribute arguments must be compile-time
+constants, and a value object is `CS0181`. The validation the type would have given is done by the
+generator instead, which is strictly better — a squiggle where it is written rather than a silent
+narrowing at run time. Two new diagnostics: `ZONITSM0003` for a tag .NET does not know,
+`ZONITSM0004` for an unparsable date. Note that `CultureInfo.GetCultureInfo` is *not* the check —
+ICU accepts any well-formed tag, so `zz-nope` comes back as a valid "unknown culture"; membership
+in the installed set is what actually catches a typo.
+
+**`LastModified` is stated by hand and never guessed.** The build date would mark every untouched
+page as fresh on every deployment, and a sitemap whose dates do not survive contact with reality is
+one a search engine stops believing — for every URL in it, not just the wrong ones. Unset means the
+element is omitted, which is honest.
+
+`PageMeta.Cultures` still exists and still wins: it is the answer for content whose translations
+arrive per row, which the attribute cannot know. **Static → attribute, dynamic → `PageMeta` and
+`SitemapEntry`.** That is the whole rule.
+
+### Added — `PageWidth` and `[WebsiteWidth]`
+
+Pages declare how wide they want to be; the layout maps it to its design system once, instead of
+every page carrying its own container markup.
+
+```razor
+@attribute [WebsiteWidth(PageWidth.Reading)]
+```
+
+`Narrow`, `Reading`, `Content`, `Wide`, `Full` — named by purpose rather than a t-shirt scale. A
+component library offers `ExtraExtraLarge` because it does not know what you are building; a site
+framework does. `Reading` earns its place precisely because no size name expresses it: the
+constraint is a typographic measure, and it stays right when the pixel values change.
+
+Same mechanism as the layout key — a static attribute applied before the first render, and a
+runtime `PageBase.Width` for the rare page whose answer depends on data. Reset on navigation, so a
+page never inherits the previous one's width.
+
+### Fixed — the page heading vanished after every in-app navigation
+
+`PageBase.Dispose` cleared the shared `IPageMetaState` unconditionally. Blazor renders the incoming
+component tree and disposes the outgoing one *afterwards*, so on an interactive navigation the new
+page had already published its title by the time the old page's teardown wiped it. The teardown now
+clears only when the state still holds its own metadata.
+
+The symptom was precise and easy to misread as a styling problem: correct heading on a direct load,
+blank after every click inside the app — because only then is there an old page to dispose. It hit
+the document title too, not just the dashboard `<h1>`.
+
+### Changed — `Zonit.Dashboard` renders page chrome from what the page already declared
+
+The dashboard's main layout now reads three things a page states anyway, so no page has to carry
+the markup:
+
+| | option | default |
+| --- | --- | --- |
+| content width from `PageWidth` | `Layout.HonourPageWidth` | **on** |
+| `<h1>` from `PageMeta.Title` | `Layout.ShowPageTitle` | **on — breaking** |
+| breadcrumbs | `Layout.ShowBreadcrumbs` | on (unchanged) |
+
+Width is on by default because it cannot collide: `PageWidth.Content` — what a page gets for saying
+nothing — maps to `MaxWidth.False`, exactly what the container was hard-coded to. Only a page that
+asks for something else moves. `Content` and `Wide` resolve to the same width here and that is
+honest rather than an oversight: a dashboard page is full-bleed by nature, so the distinction the
+enum draws for a content site has nothing to separate. The mapping earns its keep at the narrow
+end — a settings form that stops being one input stretched across an ultrawide monitor.
+
+The title is **on** by default, which is breaking for a dashboard that already renders its own
+headings — those now show two. Deliberate: the correct end state is pages that state a title and
+nothing else, and defaulting to off would leave every project one forgotten setting away from never
+getting there. `Layout.ShowPageTitle = false` keeps the old behaviour while the markup is removed.
+
+Rendered as a real `<h1>` carrying the theme's own h1 typography, which `DashboardTypography`
+already sizes at 1.75rem/600 precisely because MudBlazor's stock h1 is 6rem. Not
+`MudText Typo="Typo.h5"`: MudText picks its element from `Typo`, so asking for smaller styling
+emits an `<h5>` — and a page whose only heading is an `<h5>` has no document outline for a screen
+reader or a crawler.
+
+**Breadcrumbs are hand-written markup, not `MudBreadcrumbs`** — `.zcrumbs` in `dashboard.css`,
+the same decision already made for the navigation tree. MudBreadcrumbs renders every crumb as an
+`<a>` and decides clickability from a `Disabled` flag rather than from whether there is anywhere to
+go, so a section with no landing page and the page you are already on both rendered as links. Now a
+crumb without a destination is a `<span>`, the current one carries `aria-current="page"`, and the
+separator is a CSS chevron rather than a body-weight slash. Long titles truncate instead of wrapping
+the trail onto a second line.
+
+**Chrome text is translated where it renders.** The dashboard's `<h1>` and its breadcrumbs now go
+through `ICultureProvider`, so a page states the raw English string — which *is* the translation
+key in this framework — and never wraps it in `T(…)`. The SEO layer already did this for the
+document title; the heading skipping it would have printed English inside an otherwise translated
+page, and only on the dashboard.
+
+**Breadcrumbs stay explicit.** A page declares `ShowBreadcrumbs` and `Breadcrumbs`; the dashboard
+only renders them. Deriving a trail from the navigation tree was tried and reverted — the menu
+knows where a page sits in the *menu*, which is not the same question as where it sits in the
+content, and a page reachable from two places has no single answer. One fix went in: a crumb with
+no `Href` is now marked disabled, because MudBreadcrumbs decides clickability from that flag rather
+than from a null href and was rendering `<a href="">` — a link to the page you are already on.
+
+`.zonit/extensions/website/layouts.md` gains a section on implementing this in a custom layout,
+including the `OnChange` subscription a runtime width change needs to repaint.
+
 ### Added — `PageMeta.Cultures`: content that is not translated everywhere
 
 Content translated per item arrives unevenly — a signal exists in eight of ten languages. The Site

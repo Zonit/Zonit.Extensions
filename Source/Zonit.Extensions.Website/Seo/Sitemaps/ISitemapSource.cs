@@ -1,37 +1,5 @@
 namespace Zonit.Extensions.Website.Sitemaps;
 
-/// <summary>
-/// How often a page's content is expected to change. A hint, not a contract — crawlers weigh it
-/// against what they observe, and a page that claims <see cref="Hourly"/> and never changes is
-/// simply believed less next time.
-/// </summary>
-public enum ChangeFrequency
-{
-    /// <summary>
-    /// Not stated. The default, and the honest answer for most pages — the element is omitted
-    /// rather than filled with a guess.
-    /// </summary>
-    /// <remarks>
-    /// Zero on purpose, so <c>[Seo]</c> and <c>SitemapEntry</c> both default to "say nothing"
-    /// without either of them special-casing it.
-    /// </remarks>
-    Unset = 0,
-
-    /// <summary>Changes on every access.</summary>
-    Always,
-    /// <summary>Hourly.</summary>
-    Hourly,
-    /// <summary>Daily.</summary>
-    Daily,
-    /// <summary>Weekly.</summary>
-    Weekly,
-    /// <summary>Monthly.</summary>
-    Monthly,
-    /// <summary>Yearly.</summary>
-    Yearly,
-    /// <summary>Archived — will not change again.</summary>
-    Never,
-}
 
 /// <summary>
 /// One entry a source contributes to the sitemap.

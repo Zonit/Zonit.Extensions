@@ -66,6 +66,22 @@ public sealed class SitemapPageGenerator : IIncrementalGenerator
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true);
 
+    private static readonly DiagnosticDescriptor UnknownCulture = new(
+        id: "ZONITSM0003",
+        title: "Unknown culture in [WebsiteSitemap]",
+        messageFormat: "'{0}' lists culture '{1}', which .NET does not recognise as a BCP-47 tag. A tag the Site cannot resolve is dropped silently at run time, so the page would quietly lose that language from both the sitemap and its hreflang cluster.",
+        category: "Zonit.Sitemap",
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+
+    private static readonly DiagnosticDescriptor UnparsableDate = new(
+        id: "ZONITSM0004",
+        title: "LastModified in [WebsiteSitemap] is not a date",
+        messageFormat: "'{0}' sets LastModified to '{1}', which is not an ISO-8601 date. Use yyyy-MM-dd or a full instant; an unparsable value is omitted from the sitemap entirely.",
+        category: "Zonit.Sitemap",
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         var fromRazor = context.AdditionalTextsProvider
@@ -172,20 +188,24 @@ public sealed class SitemapPageGenerator : IIncrementalGenerator
         // [WebsiteSitemap("/explicit")] first, then whatever [Route] says. Roslyn hands over the
         // evaluated constant, so `[Route(Route)]` against a `const string` resolves here where a
         // text parser would only ever see the identifier.
-        var route = Positional(sitemap) ?? Routes(attributes).FirstOrDefault();
+        var route = PositionalPath(sitemap) ?? Routes(attributes).FirstOrDefault();
 
         if (route is null)
         {
             diagnostics.Add(Diagnostic.Create(
                 MissingRoute, Locate(type), name, sitemap is not null ? SitemapAttribute : LlmsAttribute));
-            return new PageDeclaration(null, false, "Unset", null, null, null, null, diagnostics);
+            return new PageDeclaration(null, false, "Unset", null, null, null, null, null, null, diagnostics);
         }
 
         if (route.IndexOf('{') >= 0)
         {
             diagnostics.Add(Diagnostic.Create(ParameterisedRoute, Locate(type), name, route));
-            return new PageDeclaration(null, false, "Unset", null, null, null, null, diagnostics);
+            return new PageDeclaration(null, false, "Unset", null, null, null, null, null, null, diagnostics);
         }
+
+        var cultures = CulturesOf(sitemap);
+        var lastModified = Named(sitemap, "LastModified");
+        Validate(name, cultures, lastModified, Locate(type), diagnostics);
 
         return new PageDeclaration(
             route,
@@ -195,6 +215,8 @@ public sealed class SitemapPageGenerator : IIncrementalGenerator
             Positional(llms),
             Named(llms, "Title"),
             Named(llms, "Section"),
+            cultures,
+            lastModified,
             diagnostics);
     }
 
@@ -210,6 +232,57 @@ public sealed class SitemapPageGenerator : IIncrementalGenerator
 
     private static string? Positional(AttributeData? attribute)
         => attribute?.ConstructorArguments.FirstOrDefault().Value as string;
+
+    /// <summary>
+    /// The path argument, whichever overload was used. With cultures first it is the second
+    /// positional; without them, the first.
+    /// </summary>
+    private static string? PositionalPath(AttributeData? attribute)
+    {
+        if (attribute is null || attribute.ConstructorArguments.Length == 0)
+            return null;
+
+        var first = attribute.ConstructorArguments[0];
+        if (first.Kind == TypedConstantKind.Array)
+        {
+            return attribute.ConstructorArguments.Length > 1
+                ? attribute.ConstructorArguments[1].Value as string
+                : null;
+        }
+
+        return first.Value as string;
+    }
+
+    /// <summary>Cultures from the leading array argument, or the named property.</summary>
+    private static string[]? CulturesOf(AttributeData? attribute)
+    {
+        if (attribute is null)
+            return null;
+
+        if (attribute.ConstructorArguments.Length > 0 &&
+            attribute.ConstructorArguments[0] is { Kind: TypedConstantKind.Array } array)
+        {
+            return array.Values
+                .Select(static v => v.Value as string)
+                .Where(static v => !string.IsNullOrWhiteSpace(v))
+                .Select(static v => v!)
+                .ToArray();
+        }
+
+        foreach (var pair in attribute.NamedArguments)
+        {
+            if (pair.Key == "Cultures" && pair.Value.Kind == TypedConstantKind.Array)
+            {
+                return pair.Value.Values
+                    .Select(static v => v.Value as string)
+                    .Where(static v => !string.IsNullOrWhiteSpace(v))
+                    .Select(static v => v!)
+                    .ToArray();
+            }
+        }
+
+        return null;
+    }
 
     private static string? Named(AttributeData? attribute, string name)
     {
@@ -288,14 +361,14 @@ public sealed class SitemapPageGenerator : IIncrementalGenerator
 
         // An explicit path in [WebsiteSitemap("...")] wins — it exists precisely for the cases the
         // directive cannot cover.
-        var explicitPath = FirstStringArgument(sitemapArgs);
+        var explicitPath = PathArgument(sitemapArgs);
         var route = explicitPath ?? FirstRoute(source);
 
         if (route is null)
         {
             diagnostics.Add(Diagnostic.Create(
                 MissingRoute, Location.None, file, hasSitemap ? SitemapAttribute : LlmsAttribute));
-            return new PageDeclaration(null, false, "Unset", null, null, null, null, diagnostics);
+            return new PageDeclaration(null, false, "Unset", null, null, null, null, null, null, diagnostics);
         }
 
         if (route.IndexOf('{') >= 0)
@@ -303,8 +376,12 @@ public sealed class SitemapPageGenerator : IIncrementalGenerator
             // The whole reason opt-in beats opt-out: a template is not a URL, and here that is a
             // named, actionable build warning instead of a template silently reaching the XML.
             diagnostics.Add(Diagnostic.Create(ParameterisedRoute, Location.None, file, route));
-            return new PageDeclaration(null, false, "Unset", null, null, null, null, diagnostics);
+            return new PageDeclaration(null, false, "Unset", null, null, null, null, null, null, diagnostics);
         }
+
+        var cultures = CultureArguments(sitemapArgs);
+        var lastModified = NamedString(sitemapArgs, "LastModified");
+        Validate(file, cultures, lastModified, Location.None, diagnostics);
 
         return new PageDeclaration(
             route,
@@ -314,6 +391,8 @@ public sealed class SitemapPageGenerator : IIncrementalGenerator
             hasLlms ? FirstStringArgument(llmsArgs) : null,
             NamedString(llmsArgs, "Title"),
             NamedString(llmsArgs, "Section"),
+            cultures,
+            lastModified,
             diagnostics);
     }
 
@@ -330,6 +409,50 @@ public sealed class SitemapPageGenerator : IIncrementalGenerator
             return null;
 
         var match = Regex.Match(args!, @"\(\s*""(?<value>(?:[^""\\]|\\.)*)""");
+        return match.Success ? Unescape(match.Groups["value"].Value) : null;
+    }
+
+    /// <summary>
+    /// `(["en-us", "pl-pl"], "/path")` or `(Cultures = ["en-us"])` → the tags.
+    /// </summary>
+    /// <remarks>
+    /// Text, not syntax: the Razor template is read as a string here, so the collection expression
+    /// is matched rather than parsed. Both spellings are accepted because both compile, and a
+    /// author who wrote one and got silence from the other would have no way to tell which.
+    /// </remarks>
+    private static string[]? CultureArguments(string? args)
+    {
+        if (string.IsNullOrEmpty(args))
+            return null;
+
+        var match = Regex.Match(args!, @"(?:Cultures\s*=\s*)?\[(?<items>[^\]]*)\]");
+        if (!match.Success)
+            return null;
+
+        var items = Regex.Matches(match.Groups["items"].Value, @"""(?<value>(?:[^""\\]|\\.)*)""")
+            .Cast<Match>()
+            .Select(m => Unescape(m.Groups["value"].Value))
+            .Where(static v => !string.IsNullOrWhiteSpace(v))
+            .ToArray();
+
+        return items.Length == 0 ? null : items;
+    }
+
+    /// <summary>
+    /// The path literal, skipping a leading culture array so `(["en"], "/x")` still finds `/x`.
+    /// </summary>
+    private static string? PathArgument(string? args)
+    {
+        if (string.IsNullOrEmpty(args))
+            return null;
+
+        // Named arguments go first, then the culture array. Without stripping the named ones,
+        // `LastModified = "2026-03-01"` is the first string literal in the list and was read as the
+        // page's path — the entry landed in the sitemap as /2026-03-01, a URL that does not exist.
+        var stripped = Regex.Replace(args!, @"\w+\s*=\s*""(?:[^""\\]|\\.)*""", string.Empty);
+        stripped = Regex.Replace(stripped, @"(?:Cultures\s*=\s*)?\[[^\]]*\]", string.Empty);
+
+        var match = Regex.Match(stripped, @"""(?<value>(?:[^""\\]|\\.)*)""");
         return match.Success ? Unescape(match.Groups["value"].Value) : null;
     }
 
@@ -387,11 +510,87 @@ public sealed class SitemapPageGenerator : IIncrementalGenerator
                 .Append(Priority(page.Priority)).Append(", ")
                 .Append(Literal(page.LlmsDescription)).Append(", ")
                 .Append(Literal(page.LlmsTitle)).Append(", ")
-                .Append(Literal(page.LlmsSection)).Append("),\n");
+                .Append(Literal(page.LlmsSection)).Append(")")
+                .Append(Initializer(page)).Append(",\n");
         }
 
         text.Append("                });\n        }\n    }\n}\n");
         return text.ToString();
+    }
+
+    /// <summary>
+    /// The object initializer carrying whatever the constructor cannot: `{ Cultures = …, … }`,
+    /// or nothing at all when the page declared neither.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately not constructor arguments — see <c>StaticPage.Cultures</c>. Generated code is
+    /// the one place where adding a parameter is a load-time crash rather than a compile error.
+    /// </remarks>
+    private static string Initializer(PageDeclaration page)
+    {
+        var parts = new List<string>(2);
+
+        if (page.Cultures is { Length: > 0 })
+            parts.Add("Cultures = " + Cultures(page.Cultures));
+
+        if (!string.IsNullOrWhiteSpace(page.LastModified))
+            parts.Add("LastModified = " + Literal(page.LastModified));
+
+        return parts.Count == 0 ? string.Empty : " { " + string.Join(", ", parts) + " }";
+    }
+
+    /// <summary>`["en-us","pl-pl"]` → a C# array literal, or `null`.</summary>
+    private static string Cultures(string[]? values)
+    {
+        if (values is null || values.Length == 0)
+            return "null";
+
+        var text = new StringBuilder("new string[] { ");
+        for (var i = 0; i < values.Length; i++)
+        {
+            if (i > 0) text.Append(", ");
+            text.Append(Literal(values[i]));
+        }
+
+        return text.Append(" }").ToString();
+    }
+
+    /// <summary>
+    /// Every culture this machine's ICU data knows, for membership testing.
+    /// </summary>
+    /// <remarks>
+    /// <c>CultureInfo.GetCultureInfo</c> is the obvious check and the wrong one: ICU accepts any
+    /// well-formed tag, so <c>zz-nope</c> comes back as a perfectly valid "unknown culture" object
+    /// and the typo sails through to run time, where it silently narrows the page to nothing. The
+    /// predicate that actually catches it is membership in the installed set. Built once per
+    /// compilation — around eight hundred entries, read on a path that runs a handful of times.
+    /// </remarks>
+    private static readonly HashSet<string> KnownCultures = new(
+        CultureInfo.GetCultures(CultureTypes.AllCultures).Select(static c => c.Name),
+        StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Validates the author's tags and dates. Both are strings in an attribute because the language
+    /// allows nothing richer there, so the check that a value object would have done at run time is
+    /// done here instead — earlier, and with a squiggle on the line that is wrong.
+    /// </summary>
+    private static void Validate(
+        string name, string[]? cultures, string? lastModified, Location location, List<Diagnostic> diagnostics)
+    {
+        if (cultures is not null)
+        {
+            foreach (var culture in cultures)
+            {
+                if (!KnownCultures.Contains(culture))
+                    diagnostics.Add(Diagnostic.Create(UnknownCulture, location, name, culture));
+            }
+        }
+
+        if (lastModified is not null &&
+            !DateTimeOffset.TryParse(lastModified, CultureInfo.InvariantCulture, DateTimeStyles.None, out _))
+        {
+            diagnostics.Add(Diagnostic.Create(UnparsableDate, location, name, lastModified));
+        }
     }
 
     private static string Priority(string? raw)
@@ -424,6 +623,8 @@ public sealed class SitemapPageGenerator : IIncrementalGenerator
         string? LlmsDescription,
         string? LlmsTitle,
         string? LlmsSection,
+        string[]? Cultures,
+        string? LastModified,
         List<Diagnostic> Diagnostics)
     {
         /// <summary>
@@ -439,6 +640,8 @@ public sealed class SitemapPageGenerator : IIncrementalGenerator
             LlmsDescription ?? other.LlmsDescription,
             LlmsTitle ?? other.LlmsTitle,
             LlmsSection ?? other.LlmsSection,
+            Cultures ?? other.Cultures,
+            LastModified ?? other.LastModified,
             Diagnostics.Concat(other.Diagnostics).ToList());
     }
 }

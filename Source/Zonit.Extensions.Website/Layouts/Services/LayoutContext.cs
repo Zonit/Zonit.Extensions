@@ -11,7 +11,18 @@ internal sealed class LayoutContext : ILayoutContext
     public string? Key { get; private set; }
     public bool IsNoLayout { get; private set; }
 
+    public PageWidth Width { get; private set; } = PageWidth.Content;
+
     public event Action? OnChange;
+
+    public void SetWidth(PageWidth width)
+    {
+        if (Width == width)
+            return;
+
+        Width = width;
+        OnChange?.Invoke();
+    }
 
     public void SetKey(string? key)
     {
@@ -34,12 +45,16 @@ internal sealed class LayoutContext : ILayoutContext
 
     public void ClearOverride()
     {
-        if (!HasOverride && Key is null && !IsNoLayout)
+        // Width resets with the rest: it belongs to the page being left, and a stale value would
+        // silently widen the next one. The route view sets it again from the incoming page's
+        // attribute before anything renders.
+        if (!HasOverride && Key is null && !IsNoLayout && Width == PageWidth.Content)
             return;
 
         HasOverride = false;
         IsNoLayout = false;
         Key = null;
+        Width = PageWidth.Content;
         OnChange?.Invoke();
     }
 }

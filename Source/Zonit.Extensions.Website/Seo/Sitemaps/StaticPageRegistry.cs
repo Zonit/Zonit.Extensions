@@ -21,7 +21,46 @@ public readonly record struct StaticPage(
     double? Priority = null,
     string? LlmsDescription = null,
     string? LlmsTitle = null,
-    string? LlmsSection = null);
+    string? LlmsSection = null)
+{
+    /// <summary>
+    /// BCP-47 tags this page exists in, or <see langword="null"/> for every indexed language.
+    /// </summary>
+    /// <remarks>
+    /// An init-only property rather than a constructor parameter, and that is deliberate. This
+    /// record is called from code the <em>generator</em> wrote, which a consumer cannot edit —
+    /// only rebuilding regenerates it. Adding a parameter changes the constructor's signature, so
+    /// an assembly compiled against an earlier package throws <c>MissingMethodException</c> from
+    /// its module initializer: a crash at assembly load, before any of it runs, for code nobody
+    /// typed. An added property binds against the old constructor untouched.
+    /// </remarks>
+    public string[]? Cultures { get; init; }
+
+    /// <summary>
+    /// Author-stated revision date, verbatim as written in the attribute. Same reasoning as
+    /// <see cref="Cultures"/> for why it is a property.
+    /// </summary>
+    /// <remarks>
+    /// Kept as text because the generator emits a literal and <see cref="DateTimeOffset"/> is not
+    /// a constant expression; parsed on use by <see cref="ParseDate"/>.
+    /// </remarks>
+    public string? LastModified { get; init; }
+
+    /// <summary>
+    /// Parses <see cref="LastModified"/>, or <see langword="null"/> when unset or unparsable.
+    /// </summary>
+    /// <remarks>
+    /// The generator has already warned about anything unparsable (<c>ZONITSM0004</c>), so this is
+    /// the second half of that decision rather than a silent swallow: a bad date is reported where
+    /// it is written and omitted where it would have misled a crawler.
+    /// </remarks>
+    internal static DateTimeOffset? ParseDate(string? value)
+        => DateTimeOffset.TryParse(
+            value, System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.AssumeUniversal, out var parsed)
+            ? parsed
+            : null;
+}
 
 /// <summary>
 /// Build-time page declarations, filled by the source generator through a module initializer.

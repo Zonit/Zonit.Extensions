@@ -134,6 +134,67 @@ The underlying `ILayoutContext` (scoped, one per circuit) is also injectable dir
 `HasOverride`, `Key`, `IsNoLayout`, `SetKey(string?)`, `ClearOverride()`, `event Action? OnChange`.
 `OnChange` fires only on an effective state transition.
 
+## Page chrome the layout renders, not the page
+
+Three things a page already declares can be rendered **once** in the layout, so no page carries the
+markup: the width it wants, its title, and its breadcrumbs. This is the difference between a layout
+and a wrapper — the page states facts, the chrome decides how they look.
+
+### Width
+
+```razor
+@page "/settings"
+@attribute [WebsiteWidth(PageWidth.Narrow)]
+```
+
+`Narrow` → `Reading` → `Content` → `Wide` → `Full`, named by purpose because a layout maps them to
+its own design system once. Read it from `ILayoutContext`:
+
+```razor
+@inherits LayoutComponentBase
+@inject ILayoutContext Layout
+
+<div class="@WidthClass">@Body</div>
+
+@code {
+    private string WidthClass => Layout.Width switch
+    {
+        PageWidth.Narrow  => "mx-auto w-full max-w-md px-4",
+        PageWidth.Reading => "mx-auto w-full max-w-prose px-4",
+        PageWidth.Wide    => "mx-auto w-full max-w-7xl px-4",
+        PageWidth.Full    => "w-full",
+        _                 => "mx-auto w-full max-w-5xl px-4",   // Content
+    };
+}
+```
+
+**Map `Content` to whatever the layout does today.** It is the value every page gets for saying
+nothing, so anything else moves every existing page the moment the feature is switched on.
+
+**Subscribe to `OnChange`.** A page that sets `PageBase.Width` after loading data changes it while
+the layout is already rendered; without the subscription the new width never paints:
+
+```csharp
+protected override void OnInitialized() => Layout.OnChange += StateHasChanged;
+public void Dispose() => Layout.OnChange -= StateHasChanged;
+```
+
+### Title and breadcrumbs
+
+`IPageMetaState.Current?.Title` is the page's **own** title, uncomposed — the browser tab wants
+"Users - Acme", a heading does not, which is why this is not the document title. `IBreadcrumbsProvider.Get()`
+is the trail. Both raise `OnChange` for the same reason width does.
+
+Render the title as a real `<h1>`. A component library's typography helper picks its element from
+the size you ask for, so requesting "h5 styling" yields an `<h5>` — and a page whose only heading
+is an `<h5>` has no document outline for a screen reader or a crawler. Ask for the element you
+mean and style it separately.
+
+**Switching this on is a migration, not a setting.** Every existing page already renders its own
+heading; turning it on for them silently produces two. Do it and delete the markup in the same
+commit — which is why `Zonit.Dashboard` ships `ShowPageTitle` off by default and `HonourPageWidth`
+on (the latter cannot collide: `Content` maps to what the layout already did).
+
 ## Precedence
 
 `ZonitRouteView` resolves in this order; the first match wins.
