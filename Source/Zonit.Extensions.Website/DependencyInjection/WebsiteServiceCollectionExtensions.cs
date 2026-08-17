@@ -476,16 +476,6 @@ public static class WebsiteServiceCollectionExtensions
         if (!string.IsNullOrEmpty(pathBase))
             branch.UsePathBase(pathBase);
 
-        // Stamp the active Site onto the request scope BEFORE anything reads it.
-        // INavigationProvider, breadcrumbs and consumer code rely on ICurrentSite to
-        // filter their output to the current mount-point.
-        branch.Use(async (ctx, next) =>
-        {
-            var current = ctx.RequestServices.GetRequiredService<ICurrentSite>();
-            current.Set(site);
-            await next();
-        });
-
         // Exception handling — must come BEFORE every middleware that could throw.
         //
         // These are two different concerns and they get different treatment:
@@ -499,19 +489,73 @@ public static class WebsiteServiceCollectionExtensions
         //   404 page while building the site — a request for a missing route returned a bare,
         //   empty 404 in dev and a fully styled page in prod, so the first time anyone met the
         //   error pages was in production. Status-code re-execution now runs in both.
+        //
+        // BOTH re-executions ask for a FRESH DI SCOPE, and that is not a tuning knob.
+        // Re-execution replays the request through the same HttpContext; without a new scope it
+        // also reuses the same scoped services, and `NavigationManager` is one of them. It
+        // refuses a second Initialize:
+        //
+        //   InvalidOperationException: '…NavigationManager' already initialized.
+        //     at EndpointHtmlRenderer.InitializeStandardComponentServicesAsync
+        //
+        // The renderer only initializes it when a page actually renders, so the damage is
+        // invisible in the easy case and total in the interesting one. Measured on a Blazor Web
+        // App with a page calling NavigationManager.NotFound() and a page throwing:
+        //
+        //   route unknown to the router  →  404 + error page      (renderer never ran once)
+        //   NotFound() from a page       →  500, shared scope     →  404 + error page, new scope
+        //   exception from a page (prod) →  500 and NO page at all →  500 + error page, new scope
+        //
+        // The names differ per host (RemoteNavigationManager wins the registration as soon as
+        // AddInteractiveServerComponents is present, even on a Static mount), but the failure does
+        // not: HttpNavigationManager throws on the second Initialize in exactly the same way.
+        // Nothing about this is fixable from the consumer side — the two-argument
+        // UseStatusCodePagesWithReExecute overload builds its own options and ignores
+        // Configure<StatusCodePagesOptions>, so the flag has to be passed here.
         if (isDev)
         {
             branch.UseDeveloperExceptionPage();
         }
         else if (!string.IsNullOrEmpty(site.ExceptionHandlerPath))
         {
-            branch.UseExceptionHandler(site.ExceptionHandlerPath);
+            branch.UseExceptionHandler(new ExceptionHandlerOptions
+            {
+                ExceptionHandlingPath = site.ExceptionHandlerPath,
+                CreateScopeForErrors = true,
+            });
         }
 
         if (!string.IsNullOrEmpty(site.ExceptionHandlerPath))
         {
-            branch.UseStatusCodePagesWithReExecute(site.ExceptionHandlerPath + "/{0}");
+            branch.UseStatusCodePagesWithReExecute(
+                site.ExceptionHandlerPath + "/{0}", null, createScopeForStatusCodePages: true);
         }
+
+        // Stamp the active Site onto the request scope BEFORE anything reads it.
+        // INavigationProvider, breadcrumbs and consumer code rely on ICurrentSite to
+        // filter their output to the current mount-point.
+        //
+        // This MUST stay BELOW the two registrations above, and the reason is the fresh scope they
+        // now create. Re-execution restarts the pipeline from the error middleware inwards, so a
+        // stamp placed above it never runs again, and in a brand-new scope this resolves a
+        // brand-new CurrentSite on which Set() was never called.
+        //
+        // That does not crash: CurrentSite keeps _explicit false and every accessor falls through
+        // to the WebsiteMountRegistry snapshot, which is resolved best-effort from the request.
+        // It is still the wrong source. The snapshot is a per-mount copy, so the error page would
+        // read Appearance, Document and LocalizedRoutes from it instead of from the live
+        // SiteOptions this branch was actually built with — a quiet divergence on exactly the page
+        // nobody looks at twice. Keeping the stamp below means re-execution re-stamps the new
+        // scope and the error page sees the same Site as every other page on the mount.
+        //
+        // Nothing above this point reads ICurrentSite: only UsePathBase and framework error
+        // middleware sit there, so moving it down costs nothing.
+        branch.Use(async (ctx, next) =>
+        {
+            var current = ctx.RequestServices.GetRequiredService<ICurrentSite>();
+            current.Set(site);
+            await next();
+        });
 
         // Production-only edge middleware (matches ASP.NET template order).
         if (!isDev)

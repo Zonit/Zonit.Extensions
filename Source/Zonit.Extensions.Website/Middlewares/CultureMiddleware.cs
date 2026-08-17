@@ -160,9 +160,11 @@ internal sealed class CultureMiddleware(
             return _next(context);
         }
 
-        var statusPages = context.Features.Get<IStatusCodePagesFeature>();
-        if (statusPages is not null)
-            statusPages.Enabled = false;
+        // Same rule as the gate: keep the styled page for a caller that would read it. These paths
+        // carry a static extension, so nearly all of them are subresource fetches — but "nearly"
+        // is why the test is on the request rather than on the path.
+        if (!CultureRouteGate.WantsHtml(context))
+            CultureRouteGate.SuppressStatusPage(context);
 
         context.Response.StatusCode = StatusCodes.Status404NotFound;
         return Task.CompletedTask;

@@ -224,6 +224,20 @@ Same mechanism as the layout key — a static attribute applied before the first
 runtime `PageBase.Width` for the rare page whose answer depends on data. Reset on navigation, so a
 page never inherits the previous one's width.
 
+### Fixed — a prefixed non-page URL answered a blank 404 instead of the error page
+
+`CultureRouteGate` suppressed status-code re-execution for every non-page endpoint under a language
+prefix. The intent was to avoid rendering an HTML error page for a missing stylesheet; the effect
+was that `/pl/facebook` — an address a person types or clicks — returned an empty body, while
+`/pl/anything-unrouted` right next to it returned the site's real 404. Two adjacent URLs, same
+status code, completely different experience, and nothing in the response to explain why.
+
+Suppression is now conditional on the caller not accepting `text/html` — the same `Accept` test the
+language redirect already uses. A browser navigation gets the styled page in the URL's own language;
+a subresource fetch or an API client still gets an empty 404 and no wasted render. The same rule was
+applied to `CultureMiddleware`'s static-extension fast path, where the path shape makes it nearly
+always right and "nearly" is exactly why the test belongs on the request instead.
+
 ### Fixed — the page heading vanished after every in-app navigation
 
 `PageBase.Dispose` cleared the shared `IPageMetaState` unconditionally. Blazor renders the incoming

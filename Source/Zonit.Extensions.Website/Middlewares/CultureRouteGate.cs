@@ -106,11 +106,17 @@ internal sealed class CultureRouteGate(RequestDelegate next)
         // does not exist. Clearing the endpoint keeps anything downstream from running it.
         context.SetEndpoint(null);
 
-        // Empty body on purpose: these are asset- and API-shaped URLs, and re-executing the
-        // styled error page would render HTML for a consumer that wanted bytes.
-        var statusPages = context.Features.Get<IStatusCodePagesFeature>();
-        if (statusPages is not null)
-            statusPages.Enabled = false;
+        // The styled error page is suppressed for clients that did not ask for HTML, and kept for
+        // the ones that did.
+        //
+        // Suppressing it unconditionally was wrong, and wrong in a way only a person would notice:
+        // /pl/app.css and /pl/facebook are both non-page endpoints, but the first is fetched by a
+        // browser subresource loader that will never read HTML, while the second is something
+        // somebody typed or clicked. Both answered an empty 404 — so a visitor got a blank page
+        // from one address and the site's real 404 from the next one along, with nothing to
+        // explain the difference.
+        if (!WantsHtml(context))
+            SuppressStatusPage(context);
 
         context.Response.StatusCode = StatusCodes.Status404NotFound;
         return Task.CompletedTask;
@@ -149,6 +155,35 @@ internal sealed class CultureRouteGate(RequestDelegate next)
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Whether the caller would read an HTML error page — a browser navigation rather than a
+    /// subresource fetch or an API call.
+    /// </summary>
+    /// <remarks>
+    /// The same <c>Accept</c> test the language redirect uses, and for the same reason: it admits
+    /// browsers and crawlers without a hand-maintained list of paths, and a client sending
+    /// <c>*/*</c> is treated as not wanting one.
+    /// </remarks>
+    internal static bool WantsHtml(HttpContext context)
+    {
+        foreach (var accept in context.Request.Headers.Accept)
+        {
+            if (accept is not null && accept.Contains("text/html", StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Turns off status-code re-execution for this response, so the 404 stays an empty one.
+    /// </summary>
+    internal static void SuppressStatusPage(HttpContext context)
+    {
+        if (context.Features.Get<IStatusCodePagesFeature>() is { } statusPages)
+            statusPages.Enabled = false;
     }
 
     /// <summary>

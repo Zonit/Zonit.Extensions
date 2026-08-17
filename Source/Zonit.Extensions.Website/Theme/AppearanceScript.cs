@@ -21,6 +21,23 @@ namespace Zonit.Extensions.Website;
 /// behind. While no explicit choice is stored, the script tracks live OS changes, so flipping
 /// the system theme repaints the page without a reload.</para>
 ///
+/// <para><b>Why it re-applies on <c>enhancedload</c>.</b> Enhanced navigation does not reload the
+/// document, so this script does not run again — but it does synchronise <c>&lt;html&gt;</c> with
+/// the incoming server markup, and that markup deliberately carries no theme attribute (the choice
+/// lives in a cookie the server never reads, so that one cached HTML response serves every
+/// visitor). The attribute this script set at boot is therefore *removed* on the first in-page
+/// navigation, and the page silently falls back to the stylesheet default. Measured on a Static
+/// mount: pick light, follow one link, and <c>data-theme</c> and <c>style.colorScheme</c> are both
+/// gone while the cookie still says <c>light</c>. Re-applying on the event puts them back;
+/// <c>enhancedload</c> fires after the synchronisation, which is what makes this the right hook
+/// rather than a race.</para>
+///
+/// <para>Registration is deferred to <c>DOMContentLoaded</c> because this script is blocking and
+/// runs in <c>&lt;head&gt;</c>, long before <c>blazor.web.js</c> has defined the global. That
+/// script is emitted at the end of <c>&lt;body&gt;</c> without <c>defer</c> or <c>async</c>, so it
+/// has always executed by then. A site with no Blazor global (or with enhanced navigation off)
+/// simply never registers the handler and keeps the old behaviour.</para>
+///
 /// <para>Everything configurable is emitted through <see cref="JavaScriptEncoder"/>. The values
 /// come from server configuration rather than from a request, but a configuration value that can
 /// terminate a script literal is a code-injection primitive regardless of who wrote it.</para>
@@ -69,7 +86,9 @@ public static class AppearanceScript
         window['{{{global}}}']={get:function(){return c()||'system'},effective:function(){return e(c())},
         set:function(v){document.cookie=v==='dark'||v==='light'?'{{{cookie}}}='+v+';path=/;max-age=31536000;SameSite=Lax':'{{{cookie}}}=;path=/;max-age=0;SameSite=Lax';a(v)},
         toggle:function(){this.set(e(c())==='dark'?'light':'dark')}};
-        var q=m();if(q&&q.addEventListener)q.addEventListener('change',function(){if(!c())a('')})})();
+        var q=m();if(q&&q.addEventListener)q.addEventListener('change',function(){if(!c())a('')});
+        function h(){var B=window.Blazor;if(B&&B.addEventListener)try{B.addEventListener('enhancedload',function(){a(c())})}catch(x){}}
+        if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',h);else h();})();
         """;
     }
 }
